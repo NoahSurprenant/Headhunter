@@ -1,0 +1,45 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35919.96
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Headhunter.API", "Headhunter.API\Headhunter.API.csproj", "{11CCFBE8-D60B-4088-8CF6-30D435A08A4C}"
+EndProject
+Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "Headhunter.Client", "Headhunter.Client\Headhunter.Client.esproj", "{2745C648-485F-7533-2AAC-84464E05F4B6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Headhunter.Database", "Headhunter.Database\Headhunter.Database.csproj", "{13A0FCC3-4B03-4565-89DF-A6F39176B731}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Headhunter.CSVDump", "Headhunter.CSVDump\Headhunter.CSVDump.csproj", "{1432AB59-9673-42BB-AC9A-65BBD88A1255}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{11CCFBE8-D60B-4088-8CF6-30D435A08A4C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11CCFBE8-D60B-4088-8CF6-30D435A08A4C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11CCFBE8-D60B-4088-8CF6-30D435A08A4C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11CCFBE8-D60B-4088-8CF6-30D435A08A4C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2745C648-485F-7533-2AAC-84464E05F4B6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2745C648-485F-7533-2AAC-84464E05F4B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2745C648-485F-7533-2AAC-84464E05F4B6}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{2745C648-485F-7533-2AAC-84464E05F4B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2745C648-485F-7533-2AAC-84464E05F4B6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2745C648-485F-7533-2AAC-84464E05F4B6}.Release|Any CPU.Deploy.0 = Release|Any CPU
+		{13A0FCC3-4B03-4565-89DF-A6F39176B731}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{13A0FCC3-4B03-4565-89DF-A6F39176B731}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{13A0FCC3-4B03-4565-89DF-A6F39176B731}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{13A0FCC3-4B03-4565-89DF-A6F39176B731}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1432AB59-9673-42BB-AC9A-65BBD88A1255}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1432AB59-9673-42BB-AC9A-65BBD88A1255}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1432AB59-9673-42BB-AC9A-65BBD88A1255}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1432AB59-9673-42BB-AC9A-65BBD88A1255}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {9BCC9876-51E9-4B76-84D0-EFCB81C452C8}
+	EndGlobalSection
+EndGlobal
