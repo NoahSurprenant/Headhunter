@@ -1,6 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.Extensions.Configuration;
 
 namespace Headhunter.Database.Configuration;
 internal class AddressConfiguration : IEntityTypeConfiguration<Address>
@@ -12,5 +11,7 @@ internal class AddressConfiguration : IEntityTypeConfiguration<Address>
 
         builder.Property(x => x.Latitude).HasPrecision(15, 12);
         builder.Property(x => x.Longitude).HasPrecision(15, 12);
+
+        builder.HasIndex(x => new { x.Latitude, x.Longitude }).HasDatabaseName("IX_Addresses_Latitude_Longitude");
     }
 }

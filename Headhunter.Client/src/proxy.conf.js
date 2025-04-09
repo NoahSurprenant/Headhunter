@@ -1,7 +1,7 @@
 const PROXY_CONFIG = [
   {
     context: [
-      "/api/"
+      "/Api"
     ],
     //pathRewrite: { '^/api': '' },
     target: "https://localhost:7257",

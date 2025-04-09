@@ -1,6 +1,8 @@
-import { AfterViewInit, Component, OnInit } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { AfterViewInit, Component, inject, OnInit } from '@angular/core';
 import { ArcGisBaseMapType, ArcGisMapServerImageryProvider, buildModuleUrl,
   Math as CesiumMath, Cartesian3, OpenStreetMapImageryProvider, ProviderViewModel, Viewer } from 'cesium';
+import { debounceTime, distinctUntilChanged, Subject, switchMap, takeUntil, tap } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -12,6 +14,9 @@ export class AppComponent implements OnInit, AfterViewInit {
   title = 'headhunter.client';
 
   private viewer!: Viewer;
+  private http = inject(HttpClient);
+  private searchParams$ = new Subject<{ west: number, east: number, north: number, south: number }>();
+  private cancelRequest$ = new Subject<void>();
 
   async ngOnInit(): Promise<any> {
 
@@ -44,6 +49,36 @@ export class AppComponent implements OnInit, AfterViewInit {
       }
     });
 
+    this.searchParams$
+    .pipe(
+      //debounceTime(200),
+      distinctUntilChanged((prev, curr) => // Ignore duplicate requests, 
+        prev.west === curr.west && // it likes to do this on load before user adjusts camera for some reason
+        prev.east === curr.east &&
+        prev.north === curr.north &&
+        prev.south === curr.south
+      ),
+      tap(() => this.cancelRequest$.next()), // Cancel existing request
+      switchMap((params) => {
+        let httpParams = new HttpParams()
+          .append('west', params.west)
+          .append('east', params.east)
+          .append('north', params.north)
+          .append('south', params.south);
+
+        return this.http.get<AddressDto[]>('Api/Get', { params: httpParams })
+          .pipe(takeUntil(this.cancelRequest$));
+      })
+    )
+    .subscribe({
+      next: (result) => {
+        console.log(result);
+      },
+      error: (error) => {
+        console.error(error);
+      }
+    });
+    
     this.viewer.camera.moveEnd.addEventListener(this.computeBounds, this);
   }
 
@@ -84,6 +119,8 @@ export class AppComponent implements OnInit, AfterViewInit {
     // console.log(`Top Right: ${topRight.lat}, ${topRight.long}`);
     // console.log(`Bottom Left: ${bottomLeft.lat}, ${bottomLeft.long}`);
     // console.log(`Bottom Right: ${bottomRight.lat}, ${bottomRight.long}`);
+
+    this.searchParams$.next({ west, east, north, south });
   }
 
   createDefaultImageryProviderViewModels() {
@@ -377,4 +414,16 @@ export class AppComponent implements OnInit, AfterViewInit {
   
     return providerViewModels;
   }
+}
+
+export interface AddressDto
+{
+  ID: string,
+  STREET_NUMBER: string,
+  STREET_NAME: string,
+  CITY: string,
+  STATE: string,
+  ZIP_CODE: string,
+  latitude: number,
+  longitude: number,
 }
