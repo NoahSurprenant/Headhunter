@@ -13,17 +13,12 @@ public class HeadhunterContext : DbContext
     }
 
     public DbSet<MichiganVoterRecord> MichiganVoterRecords { get; set; }
+    public DbSet<Address> Addresses { get; set; }
+    public DbSet<Voter> Voters { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-
-        modelBuilder.Entity<MichiganVoterRecord>()
-            .ToTable("MichiganVoterRecords")
-            .HasKey(x => x.ID);
-
-        modelBuilder.Entity<MichiganVoterRecord>()
-            .Property(x => x.ID)
-            .ValueGeneratedNever();
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(HeadhunterContext).Assembly);
     }
 }

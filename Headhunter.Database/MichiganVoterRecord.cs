@@ -54,4 +54,5 @@ public class MichiganVoterRecord
     public string UOCAVA_STATUS_CODE { get; set; }
     public string UOCAVA_STATUS_NAME { get; set; }
     public bool IS_PERM_AV_APP_VOTER { get; set; }
+    public Voter? Voter { get; set; } = null!;
 }

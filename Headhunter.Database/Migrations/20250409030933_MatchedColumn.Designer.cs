@@ -4,6 +4,7 @@ using Headhunter.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Headhunter.Database.Migrations
 {
     [DbContext(typeof(HeadhunterContext))]
-    partial class HeadhunterContextModelSnapshot : ModelSnapshot
+    [Migration("20250409030933_MatchedColumn")]
+    partial class MatchedColumn
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -65,12 +68,10 @@ namespace Headhunter.Database.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal?>("Latitude")
-                        .HasPrecision(15, 12)
-                        .HasColumnType("decimal(15,12)");
+                        .HasColumnType("decimal(18,2)");
 
-                    b.Property<decimal?>("Longitude")
-                        .HasPrecision(15, 12)
-                        .HasColumnType("decimal(15,12)");
+                    b.Property<decimal?>("Longtitude")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<bool?>("Matched")
                         .HasColumnType("bit");

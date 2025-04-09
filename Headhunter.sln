@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Headhunter.Database", "Head
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Headhunter.CSVDump", "Headhunter.CSVDump\Headhunter.CSVDump.csproj", "{1432AB59-9673-42BB-AC9A-65BBD88A1255}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Headhunter.Geocoding", "Headhunter.Geocoding\Headhunter.Geocoding.csproj", "{49117D75-EFB6-4FAF-BF98-259E6E73A2C5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -35,6 +37,10 @@ Global
 		{1432AB59-9673-42BB-AC9A-65BBD88A1255}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1432AB59-9673-42BB-AC9A-65BBD88A1255}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1432AB59-9673-42BB-AC9A-65BBD88A1255}.Release|Any CPU.Build.0 = Release|Any CPU
+		{49117D75-EFB6-4FAF-BF98-259E6E73A2C5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{49117D75-EFB6-4FAF-BF98-259E6E73A2C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{49117D75-EFB6-4FAF-BF98-259E6E73A2C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{49117D75-EFB6-4FAF-BF98-259E6E73A2C5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
