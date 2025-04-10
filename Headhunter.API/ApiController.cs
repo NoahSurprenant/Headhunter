@@ -20,9 +20,19 @@ public class ApiController : ControllerBase
     [HttpGet(Name = "Get")]
     public async Task<IActionResult> Get(decimal west, decimal east, decimal north, decimal south, CancellationToken ct)
     {
-        var address = await _context.Addresses
-            .Where(x => x.Latitude <= north && x.Latitude >= south)
-            .Where(x => x.Longitude <= east && x.Longitude >= west)
+        var query = _context.Addresses
+            .Where(x => x.Latitude <= north && x.Latitude >= south);
+
+        if (west > east) // If we cross International Date Line, adjust logic
+        {
+            query = query.Where(x => x.Longitude <= east || x.Longitude >= west);
+        }
+        else
+        {
+            query = query.Where(x => x.Longitude <= east && x.Longitude >= west);
+        }
+
+        var address = await query
             .Select(x => new AddressDto()
             {
                 Id = x.ID,
