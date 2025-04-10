@@ -27,12 +27,12 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   async ngOnInit(): Promise<any> {
     //Use proxy to hide API key from client
-    const proxy = new DefaultProxy('/proxy');
-    const resourceWithProxy = new Resource({
-      url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
-      proxy: proxy
-    });
-    ArcGisMapService.defaultWorldImageryServer = resourceWithProxy;
+    // const proxy = new DefaultProxy('/proxy');
+    // const resourceWithProxy = new Resource({
+    //   url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
+    //   proxy: proxy
+    // });
+    // ArcGisMapService.defaultWorldImageryServer = resourceWithProxy;
 
     ArcGisMapService.defaultAccessToken = "foobar";
 
