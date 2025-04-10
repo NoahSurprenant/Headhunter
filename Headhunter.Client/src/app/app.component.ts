@@ -1,7 +1,11 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { AfterViewInit, Component, inject, OnInit } from '@angular/core';
 import { ArcGisBaseMapType, ArcGisMapServerImageryProvider, buildModuleUrl,
-  Math as CesiumMath, Cartesian3, OpenStreetMapImageryProvider, ProviderViewModel, Viewer } from 'cesium';
+  Math as CesiumMath, Cartesian3, OpenStreetMapImageryProvider, ProviderViewModel, Viewer, 
+  Cartesian2,
+  LabelStyle,
+  VerticalOrigin,
+  Color} from 'cesium';
 import { debounceTime, distinctUntilChanged, Subject, switchMap, takeUntil, tap } from 'rxjs';
 
 @Component({
@@ -72,7 +76,36 @@ export class AppComponent implements OnInit, AfterViewInit {
     )
     .subscribe({
       next: (result) => {
-        console.log(result);
+        this.viewer.entities.suspendEvents();
+        this.viewer.entities.removeAll();
+        result.forEach(x => {
+          let desc = "<div>" + x.streetNumber + ' ' + x.streetName + ", " + x.city + " " + x.state + " " + x.zipCode + "</div>";
+          x.voters.forEach(voter => {
+            desc += "<div>" + voter.firstName + " " + voter.lastName + "</div>";
+          });
+
+          this.viewer.entities.add({
+            id: x.id,
+            name: x.streetNumber + ' ' + x.streetName,
+            description: desc,
+            position: Cartesian3.fromDegrees(x.longitude, x.latitude),
+            point: {
+              pixelSize: 5,
+              color: Color.AQUA,
+              outlineColor: Color.WHITE,
+              outlineWidth: 2,
+            },
+            label: {
+              text: x.streetNumber + ' ' + x.streetName,
+              font: "10pt monospace",
+              style: LabelStyle.FILL_AND_OUTLINE,
+              outlineWidth: 2,
+              verticalOrigin: VerticalOrigin.TOP,
+              pixelOffset: new Cartesian2(0, -9),
+            },
+          });
+        });
+        this.viewer.entities.resumeEvents();
       },
       error: (error) => {
         console.error(error);
@@ -93,9 +126,6 @@ export class AppComponent implements OnInit, AfterViewInit {
   computeBounds() {
     const camera = this.viewer.camera;
     const scene = this.viewer.scene;
-
-    // Get the bounding rectangle of the view
-    const canvas = scene.canvas;
     const rectangle = camera.computeViewRectangle(scene.globe.ellipsoid);
 
     if (rectangle == null)
@@ -106,19 +136,6 @@ export class AppComponent implements OnInit, AfterViewInit {
     const south = CesiumMath.toDegrees(rectangle.south);
     const east = CesiumMath.toDegrees(rectangle.east);
     const north = CesiumMath.toDegrees(rectangle.north);
-    console.log(`West: ${west}`);
-    console.log(`South: ${south}`);
-    console.log(`East: ${east}`);
-    console.log(`North: ${north}`);
-
-    // const topLeft = { lat: north, long: west};
-    // const topRight = { lat: north, long: east};
-    // const bottomLeft = { lat: south, long: west};
-    // const bottomRight = { lat: south, long: east};
-    // console.log(`Top Left: ${topLeft.lat}, ${topLeft.long}`);
-    // console.log(`Top Right: ${topRight.lat}, ${topRight.long}`);
-    // console.log(`Bottom Left: ${bottomLeft.lat}, ${bottomLeft.long}`);
-    // console.log(`Bottom Right: ${bottomRight.lat}, ${bottomRight.long}`);
 
     this.searchParams$.next({ west, east, north, south });
   }
@@ -418,12 +435,19 @@ export class AppComponent implements OnInit, AfterViewInit {
 
 export interface AddressDto
 {
-  ID: string,
-  STREET_NUMBER: string,
-  STREET_NAME: string,
-  CITY: string,
-  STATE: string,
-  ZIP_CODE: string,
+  id: string,
+  streetNumber: string,
+  streetName: string,
+  city: string,
+  state: string,
+  zipCode: string,
   latitude: number,
   longitude: number,
+  voters: VoterDto[],
+}
+
+export interface VoterDto
+{
+  firstName: string,
+  lastName: string,
 }

@@ -25,18 +25,24 @@ public class ApiController : ControllerBase
             .Where(x => x.Longitude <= east && x.Longitude >= west)
             .Select(x => new AddressDto()
             {
-                ID = x.ID,
-                STREET_NUMBER = x.STREET_NUMBER,
-                STREET_NAME = x.STREET_NAME,
-                CITY = x.CITY,
-                STATE = x.STATE,
-                ZIP_CODE = x.ZIP_CODE,
+                Id = x.ID,
+                StreetNumber = x.STREET_NUMBER,
+                StreetName = x.STREET_NAME,
+                City = x.CITY,
+                State = x.STATE,
+                ZipCode = x.ZIP_CODE,
                 Latitude = (decimal)x.Latitude!,
                 Longitude = (decimal)x.Longitude!,
+                Voters = x.Voters.Select(v => new VoterDto()
+                {
+                    FirstName = v.FIRST_NAME,
+                    LastName = v.LAST_NAME
+                }).ToArray()
             })
-            .OrderBy(a => a.ID)
+            .OrderBy(a => a.Id)
             .Take(1000)
-            .ToListAsync(ct);
+            .AsSplitQuery()
+            .ToArrayAsync(ct);
 
         return Ok(address);
     }
@@ -44,12 +50,19 @@ public class ApiController : ControllerBase
 
 public class AddressDto
 {
-    public required Guid ID { get; set; }
-    public required string STREET_NUMBER { get; set; }
-    public required string STREET_NAME { get; set; }
-    public required string CITY { get; set; }
-    public required string STATE { get; set; }
-    public required string ZIP_CODE { get; set; }
+    public required Guid Id { get; set; }
+    public required string StreetNumber { get; set; }
+    public required string StreetName { get; set; }
+    public required string City { get; set; }
+    public required string State { get; set; }
+    public required string ZipCode { get; set; }
     public required decimal Latitude { get; set; }
     public required decimal Longitude { get; set; }
+    public required VoterDto[] Voters { get; set; }
+}
+
+public class VoterDto
+{
+    public required string FirstName { get; set; }
+    public required string LastName { get; set; }
 }

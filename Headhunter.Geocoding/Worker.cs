@@ -91,6 +91,13 @@ public class Worker : BackgroundService
                     //var street = x.STREET_NUMBER + " " + x.STREET_NAME;
                     return new BulkLine(x.ID.ToString(), fullAlt, x.CITY, x.STATE, x.ZIP_CODE);
                 }).ToArray();
+
+                if (request.Length == 0)
+                {
+                    task.Increment(batchSize);
+                    continue;
+                }
+
                 var response = await client.BulkAddressAsync(request, ct);
 
                 // Insert into db
@@ -118,9 +125,6 @@ public class Worker : BackgroundService
                         address.Matched = false;
                     }
                 });
-
-                //var notExact = response.Where(x => x.Match == Match.Match && x.MatchKind != "Exact").ToList();
-                //var noMatch = response.Where(x => x.Match != Match.Match).ToList();
 
                 await db.SaveChangesAsync(ct);
                 task.Increment(batchSize);
