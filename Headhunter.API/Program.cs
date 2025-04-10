@@ -20,6 +20,7 @@ public class Program
         {
             options.UseSqlServer(builder.Configuration.GetConnectionString("Headhunter"));
         });
+        builder.Services.AddHttpClient();
 
         var app = builder.Build();
 

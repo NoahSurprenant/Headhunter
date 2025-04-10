@@ -5,7 +5,10 @@ import { ArcGisBaseMapType, ArcGisMapServerImageryProvider, buildModuleUrl,
   Cartesian2,
   LabelStyle,
   VerticalOrigin,
-  Color} from 'cesium';
+  Color,
+  DefaultProxy,
+  Resource,
+  ArcGisMapService} from 'cesium';
 import { debounceTime, distinctUntilChanged, Subject, switchMap, takeUntil, tap } from 'rxjs';
 
 @Component({
@@ -23,7 +26,15 @@ export class AppComponent implements OnInit, AfterViewInit {
   private cancelRequest$ = new Subject<void>();
 
   async ngOnInit(): Promise<any> {
+    //Use proxy to hide API key from client
+    const proxy = new DefaultProxy('/proxy');
+    const resourceWithProxy = new Resource({
+      url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
+      proxy: proxy
+    });
+    ArcGisMapService.defaultWorldImageryServer = resourceWithProxy;
 
+    ArcGisMapService.defaultAccessToken = "foobar";
 
     // Your access token can be found at: https://ion.cesium.com/tokens.
     // Replace `your_access_token` with your Cesium ion access token.
