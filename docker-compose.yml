@@ -1,0 +1,34 @@
+services:
+  headhunter:
+    image: headhunter
+    restart: unless-stopped
+    container_name: headhunter
+    # If you wish to expose directly rather than using traefik, do so here
+    #ports:
+    #  - "8080:8080"
+    environment:
+      - ConnectionStrings__Headhunter=${SqlConnectionString}
+    depends_on:
+      - sqlserver
+    labels:
+      # Example traefik labels, you may wish to adjust these depending on your infrastructure and setup
+      - "traefik.enable=true"
+      - "traefik.http.routers.headhunter.rule=Host(`${Host}`)"
+      - "traefik.http.routers.headhunter.entrypoints=https"
+      - "traefik.http.routers.headhunter.tls=true"
+      - "traefik.http.services.headhunter.loadbalancer.server.port=8080"
+      - "traefik.http.routers.headhunter.middlewares=headers@file"
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    container_name: sqlserver
+    ports:
+     - "7878:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${SqlServerPassword}
+    # You may wish to bind the SQL Server data to a local directory
+    volumes:
+      - C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\Backup:/var/opt/mssql/backups
+    #  - sqlserver_data:/var/opt/mssql
