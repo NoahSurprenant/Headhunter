@@ -1,0 +1,11 @@
+<div id="cesiumContainer">
+</div>
+@if (selectedEntity) {
+    <app-custom-info-box
+    #customInfoBox
+    [entity]="selectedEntity"
+    [viewer]="viewer"
+    (closeInfoBox)="closeInfoBox()"
+    >
+    </app-custom-info-box>
+}
