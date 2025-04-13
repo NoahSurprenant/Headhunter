@@ -1,29 +1,36 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { AfterViewInit, Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, signal, viewChild } from '@angular/core';
 import { ArcGisBaseMapType, ArcGisMapServerImageryProvider, buildModuleUrl,
   Math as CesiumMath, Cartesian3, OpenStreetMapImageryProvider, ProviderViewModel, Viewer, 
-  Cartesian2,
+  Cartesian2, ScreenSpaceEventHandler,
   LabelStyle,
   VerticalOrigin,
   Color,
   DefaultProxy,
   Resource,
-  ArcGisMapService} from 'cesium';
-import { debounceTime, distinctUntilChanged, Subject, switchMap, takeUntil, tap } from 'rxjs';
+  ArcGisMapService,
+  ScreenSpaceEventType,
+  defined,
+  Entity
+} from 'cesium';
+import { distinctUntilChanged, Subject, switchMap, takeUntil, tap } from 'rxjs';
+import { CustomInfoBoxComponent } from './custom-info-box/custom-info-box.component';
 
 @Component({
   selector: 'app-root',
-  imports: [],
+  imports: [CustomInfoBoxComponent],
   templateUrl: './app.component.html',
-  styleUrl: './app.component.css'
+  styleUrls: ['./app.component.css'],
 })
-export class AppComponent implements OnInit, AfterViewInit {
+export class AppComponent implements OnInit {
   title = 'headhunter.client';
-
-  private viewer!: Viewer;
+  viewer!: Viewer;
   private http = inject(HttpClient);
   private searchParams$ = new Subject<{ west: number, east: number, north: number, south: number }>();
   private cancelRequest$ = new Subject<void>();
+  selectedEntity: Entity | undefined = undefined;
+  trackedEntity = signal<Entity | undefined>(undefined);
+  customInfoBox = viewChild<CustomInfoBoxComponent>('customInfoBox');
 
   async ngOnInit(): Promise<any> {
     //Use proxy to hide API key from client
@@ -50,6 +57,7 @@ export class AppComponent implements OnInit, AfterViewInit {
       baseLayerPicker: true,
       animation: false, // No need for animation over time
       timeline: false,
+      infoBox: false,
       selectedImageryProviderViewModel: vm,
       imageryProviderViewModels: vms,
       terrainProviderViewModels: [],
@@ -66,7 +74,6 @@ export class AppComponent implements OnInit, AfterViewInit {
 
     this.searchParams$
     .pipe(
-      //debounceTime(200),
       distinctUntilChanged((prev, curr) => // Ignore duplicate requests, 
         prev.west === curr.west && // it likes to do this on load before user adjusts camera for some reason
         prev.east === curr.east &&
@@ -88,8 +95,23 @@ export class AppComponent implements OnInit, AfterViewInit {
     .subscribe({
       next: (result) => {
         this.viewer.entities.suspendEvents();
-        this.viewer.entities.removeAll();
+
+        // Only remove entities that are not in the new result set
+        const all = this.viewer.entities.values.map(x => x.id);
+        const current = result.map(x => x.id);
+        const remove = all.filter(x => !current.includes(x));
+        remove.forEach(x => {
+          this.viewer.entities.removeById(x);
+        });
+
         result.forEach(x => {
+          const existing = this.viewer.entities.getById(x.id);
+          if (existing) {
+            // Do any updates here, not really needed for now
+            //existing.position = new ConstantPositionProperty(Cartesian3.fromDegrees(long, lat));
+            return;
+          }
+
           let desc = "<div>" + x.streetNumber + ' ' + x.streetName + ", " + x.city + " " + x.state + " " + x.zipCode + "</div>";
           x.voters.forEach(voter => {
             desc += "<div>" + voter.firstName + " " + voter.lastName + "</div>";
@@ -124,14 +146,30 @@ export class AppComponent implements OnInit, AfterViewInit {
     });
     
     this.viewer.camera.moveEnd.addEventListener(this.computeBounds, this);
+
+    const handler = new ScreenSpaceEventHandler(this.viewer.scene.canvas);
+    handler.setInputAction((movement: { position: Cartesian2 }) => {
+      const pickedObject = this.viewer.scene.pick(movement.position);
+      if (defined(pickedObject) && pickedObject.id) {
+        this.selectedEntity = pickedObject.id as Entity;
+      } else {
+        const cib = this.customInfoBox();
+        if (cib) {
+          cib.close();
+        } else {
+          // Just to be safe set to undefined
+          this.selectedEntity = undefined;
+        }
+      }
+    }, ScreenSpaceEventType.LEFT_CLICK);
+
+    this.viewer.trackedEntityChanged.addEventListener(() => {
+      this.trackedEntity.set(this.viewer.trackedEntity);
+    });
   }
 
-  ngAfterViewInit(): void {
-    // Not sure why this is needed but for some reason the iframe's load is not being triggered in InfoBox.js
-    // even though they are setting it to about:blank it seems to not trigger to load unless I do it here
-    window.setTimeout(() => {
-      this.viewer.infoBox.frame.src = "about:blank";
-    }, 1);
+  closeInfoBox(): void {
+    this.selectedEntity = undefined;
   }
 
   computeBounds() {
@@ -142,7 +180,6 @@ export class AppComponent implements OnInit, AfterViewInit {
     if (rectangle == null)
       return;
 
-    // Rectangle contains the west, south, east, and north extents
     const west = CesiumMath.toDegrees(rectangle.west);
     const south = CesiumMath.toDegrees(rectangle.south);
     const east = CesiumMath.toDegrees(rectangle.east);
@@ -154,49 +191,6 @@ export class AppComponent implements OnInit, AfterViewInit {
   createDefaultImageryProviderViewModels() {
     const providerViewModels = [];
     const useRetinaTiles = devicePixelRatio >= 2.0;
-    // providerViewModels.push(
-    //   new ProviderViewModel({
-    //     name: "Bing Maps Aerial",
-    //     iconUrl: buildModuleUrl("Widgets/Images/ImageryProviders/bingAerial.png"),
-    //     tooltip: "Bing Maps aerial imagery, provided by Cesium ion",
-    //     category: "Cesium ion",
-    //     creationFunction: function () {
-    //       return createWorldImageryAsync({
-    //         style: IonWorldImageryStyle.AERIAL,
-    //       });
-    //     },
-    //   }),
-    // );
-  
-    // providerViewModels.push(
-    //   new ProviderViewModel({
-    //     name: "Bing Maps Aerial with Labels",
-    //     iconUrl: buildModuleUrl(
-    //       "Widgets/Images/ImageryProviders/bingAerialLabels.png",
-    //     ),
-    //     tooltip: "Bing Maps aerial imagery with labels, provided by Cesium ion",
-    //     category: "Cesium ion",
-    //     creationFunction: function () {
-    //       return createWorldImageryAsync({
-    //         style: IonWorldImageryStyle.AERIAL_WITH_LABELS,
-    //       });
-    //     },
-    //   }),
-    // );
-  
-    // providerViewModels.push(
-    //   new ProviderViewModel({
-    //     name: "Bing Maps Roads",
-    //     iconUrl: buildModuleUrl("Widgets/Images/ImageryProviders/bingRoads.png"),
-    //     tooltip: "Bing Maps standard road maps, provided by Cesium ion",
-    //     category: "Cesium ion",
-    //     creationFunction: function () {
-    //       return createWorldImageryAsync({
-    //         style: IonWorldImageryStyle.ROAD,
-    //       });
-    //     },
-    //   }),
-    // );
   
     providerViewModels.push(
       new ProviderViewModel({
@@ -214,7 +208,6 @@ export class AppComponent implements OnInit, AfterViewInit {
   GIS User Community. This imagery ranges from 0.3m to 0.03m resolution (down to ~1:280 nin select communities). \
   For more information on this map, including the terms of use, visit us online at \n\
   https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9",
-        //category: "Other",
         creationFunction: function () {
           return ArcGisMapServerImageryProvider.fromBasemapType(
             ArcGisBaseMapType.SATELLITE,
@@ -239,7 +232,6 @@ export class AppComponent implements OnInit, AfterViewInit {
   The basemap has global coverage down to a scale of ~1:72k. In select areas of the United States and Europe, coverage is available \
   down to ~1:9k. For more information on this map, including the terms of use, visit us online at \n\
   https://www.arcgis.com/home/item.html?id=1b243539f4514b6ba35e7d995890db1d",
-        //category: "Other",
         creationFunction: function () {
           return ArcGisMapServerImageryProvider.fromBasemapType(
             ArcGisBaseMapType.HILLSHADE,
@@ -267,7 +259,6 @@ export class AppComponent implements OnInit, AfterViewInit {
   Coverage down to ~ 1:9k is available limited areas based on regional hydrographic survey data. The base map was designed and developed by Esri. \
   For more information on this map, including our terms of use, visit us online at \n\
   https://www.arcgis.com/home/item.html?id=1e126e7520f9466c9ca28b8f28b5e500",
-        //category: "Other",
         creationFunction: function () {
           return ArcGisMapServerImageryProvider.fromBasemapType(
             ArcGisBaseMapType.OCEANS,
@@ -288,7 +279,6 @@ export class AppComponent implements OnInit, AfterViewInit {
         tooltip:
           "OpenStreetMap (OSM) is a collaborative project to create a free editable map \
   of the world.\nhttp://www.openstreetmap.org",
-        //category: "Other",
         creationFunction: function () {
           return new OpenStreetMapImageryProvider({
             url: "https://tile.openstreetmap.org/",
@@ -305,7 +295,6 @@ export class AppComponent implements OnInit, AfterViewInit {
         ),
         tooltip:
           "Based on the original basemaps created for the Knight Foundation and reminiscent of hand drawn maps, the watercolor maps from Stamen Design apply raster effect area washes and organic edges over a paper texture to add warm pop to any map.\nhttps://docs.stadiamaps.com/map-styles/stamen-watercolor/",
-        //category: "Other",
         creationFunction: function () {
           return new OpenStreetMapImageryProvider({
             url: "https://tiles.stadiamaps.com/tiles/stamen_watercolor/",
@@ -327,7 +316,6 @@ export class AppComponent implements OnInit, AfterViewInit {
         ),
         tooltip:
           "Based on the original basemaps created for the Knight Foundation and the most popular of the excellent styles from Stamen Design, these high-contrast B+W (black and white) maps are the perfect backdrop for your colorful and eye-catching overlays.\nhttps://docs.stadiamaps.com/map-styles/stamen-toner/",
-        //category: "Other",
         creationFunction: function () {
           return new OpenStreetMapImageryProvider({
             url: "https://tiles.stadiamaps.com/tiles/stamen_toner/",
@@ -349,7 +337,6 @@ export class AppComponent implements OnInit, AfterViewInit {
         ),
         tooltip:
           "Stadia's custom Alidade Smooth style is designed for maps that use a lot of markers or overlays. It features a muted color scheme and fewer points of interest to allow your added data to shine.\nhttps://docs.stadiamaps.com/map-styles/alidade-smooth/",
-        //category: "Other",
         creationFunction: function () {
           return new OpenStreetMapImageryProvider({
             url: "https://tiles.stadiamaps.com/tiles/alidade_smooth/",
@@ -370,7 +357,6 @@ export class AppComponent implements OnInit, AfterViewInit {
         ),
         tooltip:
           "Stadia Alidade Smooth Dark, like its lighter cousin, is also designed to stay out of the way. It just flips the dark mode switch on the color scheme. With the lights out, your data can now literally shine.\nhttps://docs.stadiamaps.com/map-styles/alidade-smooth-dark/",
-        //category: "Other",
         creationFunction: function () {
           return new OpenStreetMapImageryProvider({
             url: "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/",
@@ -382,63 +368,6 @@ export class AppComponent implements OnInit, AfterViewInit {
         },
       }),
     );
-  
-    // providerViewModels.push(
-    //   new ProviderViewModel({
-    //     name: "Sentinel-2",
-    //     iconUrl: buildModuleUrl("Widgets/Images/ImageryProviders/sentinel-2.png"),
-    //     tooltip:
-    //       "Sentinel-2 cloudless by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016 and 2017).",
-    //     category: "Cesium ion",
-    //     creationFunction: function () {
-    //       return IonImageryProvider.fromAssetId(3954);
-    //     },
-    //   }),
-    // );
-  
-    // providerViewModels.push(
-    //   new ProviderViewModel({
-    //     name: "Blue Marble",
-    //     iconUrl: buildModuleUrl("Widgets/Images/ImageryProviders/blueMarble.png"),
-    //     tooltip: "Blue Marble Next Generation July, 2004 imagery from NASA.",
-    //     category: "Cesium ion",
-    //     creationFunction: function () {
-    //       return IonImageryProvider.fromAssetId(3845);
-    //     },
-    //   }),
-    // );
-  
-    // providerViewModels.push(
-    //   new ProviderViewModel({
-    //     name: "Earth at night",
-    //     iconUrl: buildModuleUrl(
-    //       "Widgets/Images/ImageryProviders/earthAtNight.png",
-    //     ),
-    //     tooltip:
-    //       "The Earth at night, also known as The Black Marble, is a 500 meter resolution global composite imagery layer released by NASA.",
-    //     category: "Cesium ion",
-    //     creationFunction: function () {
-    //       return IonImageryProvider.fromAssetId(3812);
-    //     },
-    //   }),
-    // );
-  
-    // providerViewModels.push(
-    //   new ProviderViewModel({
-    //     name: "Natural Earth\u00a0II",
-    //     iconUrl: buildModuleUrl(
-    //       "Widgets/Images/ImageryProviders/naturalEarthII.png",
-    //     ),
-    //     tooltip:
-    //       "Natural Earth II, darkened for contrast.\nhttp://www.naturalearthdata.com/",
-    //     category: "Cesium ion",
-    //     creationFunction: function () {
-    //       return TileMapServiceImageryProvider.fromUrl(
-    //         buildModuleUrl("Assets/Textures/NaturalEarthII"),
-    //       );
-    //     },
-    //   }),
-    // );
   
     return providerViewModels;
   }
