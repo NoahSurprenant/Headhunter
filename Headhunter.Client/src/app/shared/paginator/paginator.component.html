@@ -1,0 +1,9 @@
+
+<div class="flex items-center space-x-4">
+    <x-dropdown [options]="[2, 5, 10, 20, 30]" class="w-50" [formControl]="formControl">
+    </x-dropdown>
+    <p class="inline-block">{{text()}}</p>
+    <p class="inline-block">{{textAlt()}}</p>
+    <x-button (clicked)="previous()" [disabled]="!hasPreviousPage()"><</x-button>
+    <x-button (clicked)="next()" [disabled]="!hasNextPage()">></x-button>
+</div>

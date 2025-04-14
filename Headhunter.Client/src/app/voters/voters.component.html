@@ -1,0 +1,25 @@
+<div class="space-x-4 place-self-center mt-2">
+    <x-button [disabled]="x.isLoading()" (clicked)="clicked()">Refresh</x-button>
+</div>
+
+<div class="grid grid-cols-[minmax(100px,_1fr)_minmax(100px,_1fr)_minmax(100px,_1fr)] mx-4">
+    <div class="font-bold flex items-center py-1.5">First Name</div>
+    <div class="font-bold flex items-center py-1.5">Last Name</div>
+    <div class="font-bold flex items-center py-1.5">Details</div>
+@for (voter of current().results; track voter.id) {
+
+<div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
+    {{voter.firstName}}
+</div>
+
+<div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
+    {{voter.lastName}}
+</div>
+
+<div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
+    <a [routerLink]="['/voter', voter.id]">{{voter.id}}</a>
+</div>
+}
+</div>
+
+<x-paginator [paginationResult]="current()" class="mt-2 place-self-center" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize" ></x-paginator>

@@ -1,3 +1,4 @@
+using Headhunter.API.Pagination;
 using Headhunter.Database;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -56,7 +57,19 @@ public class ApiController : ControllerBase
 
         return Ok(address);
     }
+
+    [HttpGet(Name = "Voters")]
+    public async Task<PaginationResult<VoterGridDto>> Voters([FromQuery] PaginationFilter filter, CancellationToken ct)
+    {
+        var x = _context.Voters.AsQueryable();
+
+        var final = x.OrderBy(x => x.ID).Select(x => new VoterGridDto(x.ID, x.FIRST_NAME, x.LAST_NAME));
+
+        return await final.PaginationResult(filter, ct);
+    }
 }
+
+public record VoterGridDto(Guid ID, string FirstName, string LastName);
 
 public class AddressDto
 {

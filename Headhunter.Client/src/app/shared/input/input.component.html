@@ -1,0 +1,11 @@
+<div>
+    <label class="block mb-.5 text-sm font-medium">
+        <ng-content></ng-content>
+        @if (errors()) {
+            - <span class="text-red-500">{{errors()}}</span>
+        }
+    </label>
+    <input [type]="type()" [formControl]="control"
+      class="border border-gray-300 bg-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:placeholder-gray-400"
+      [placeholder]="placeholder()" [required]="required()" />
+</div>

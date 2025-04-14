@@ -1,5 +1,6 @@
 :host {
   display: block;
+  background-color: #000;
   width: 100%;
   height: 100%;
   margin: 0;
@@ -7,6 +8,7 @@
 }
 
 #cesiumContainer {
+  background-color: #000;
   width: 100%;
   height: 100%;
   margin: 0;
