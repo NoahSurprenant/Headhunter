@@ -13,6 +13,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 export class ButtonComponent {
   clicked = output();
   disabled = input<boolean>(false);
+  type = input<'submit' | 'reset' | 'button'>('button');
 
   handleClick() {
     this.clicked.emit();

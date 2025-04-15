@@ -2,24 +2,55 @@
     <x-button [disabled]="x.isLoading()" (clicked)="clicked()">Refresh</x-button>
 </div>
 
-<div class="grid grid-cols-[minmax(100px,_1fr)_minmax(100px,_1fr)_minmax(100px,_1fr)] mx-4">
-    <div class="font-bold flex items-center py-1.5">First Name</div>
-    <div class="font-bold flex items-center py-1.5">Last Name</div>
-    <div class="font-bold flex items-center py-1.5">Details</div>
-@for (voter of current().results; track voter.id) {
+<div class="flex">
+    <div class="w-80 p-4">
+        <h2 class="text-2xl">Search Filters</h2>
+        <form [formGroup]="formGroup" (ngSubmit)="onSubmit()">
+            <label class="text-xs">First Name</label>
+            <x-input formControlName="firstName" placeholder="John"></x-input>
+            <label class="text-xs">Middle Name</label>
+            <x-input formControlName="middleName" placeholder="Lee"></x-input>
+            <label class="text-xs">Last Name</label>
+            <x-input formControlName="lastName" placeholder="Doe"></x-input>
+            <label class="text-xs">City</label>
+            <x-input formControlName="city" placeholder="Detroit"></x-input>
 
-<div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
-    {{voter.firstName}}
+            <div class="mt-6"></div>
+            <label class="text-xs">Birth Year</label>
+            <x-input formControlName="birthYear" placeholder="2000" type="number" [convertEmptyToNull]="true"></x-input>
+            <div class="text-l">OR</div>
+            <label class="text-xs">Age</label>
+            <x-input formControlName="age" placeholder="21" type="number" [convertEmptyToNull]="true"></x-input>
+            <label class="text-xs">Astrology Sign</label>
+            <x-dropdown formControlName="astrology" [options]="astrologyOptions"></x-dropdown>
+
+            <x-button class="mt-4" type="submit" [disabled]="!formGroup.valid">Submit</x-button>
+            <x-button class="mt-4" (clicked)="clearAll()">Clear All</x-button>
+        </form>
+    </div>
+    <div class="w-full">
+        <div class="grid grid-cols-[minmax(100px,_1fr)_minmax(100px,_1fr)_minmax(100px,_1fr)] mx-4">
+            <div class="font-bold flex items-center py-1.5">First Name</div>
+            <div class="font-bold flex items-center py-1.5">Last Name</div>
+            <div class="font-bold flex items-center py-1.5">Details</div>
+        @for (voter of current().results; track voter.id) {
+        
+        <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
+            {{voter.firstName}}
+        </div>
+        
+        <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
+            {{voter.lastName}}
+        </div>
+        
+        <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
+            <a [routerLink]="['/voter', voter.id]">{{voter.id}}</a>
+        </div>
+        }
+        </div>
+        
+        <x-paginator [paginationResult]="current()" class="mt-2 place-self-center" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize" ></x-paginator>
+    </div>
+    
 </div>
 
-<div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
-    {{voter.lastName}}
-</div>
-
-<div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
-    <a [routerLink]="['/voter', voter.id]">{{voter.id}}</a>
-</div>
-}
-</div>
-
-<x-paginator [paginationResult]="current()" class="mt-2 place-self-center" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize" ></x-paginator>

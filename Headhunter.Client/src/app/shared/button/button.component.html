@@ -1,4 +1,4 @@
-<button type="button"
+<button [type]="type()"
   (click)="handleClick()"
   [disabled]="disabled()"
   [ngClass]="{'grayscale-80': disabled(), 'hover:bg-gradient-to-bl hover:cursor-pointer': !disabled()}"

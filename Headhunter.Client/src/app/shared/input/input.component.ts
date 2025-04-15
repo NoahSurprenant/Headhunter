@@ -23,7 +23,7 @@ export class InputComponent implements ControlValueAccessor, OnDestroy {
   placeholder = input<string>('');
   required = input<boolean>(false);
   displayErrors = input<boolean>(true);
-  convertEmptyToNull = input<boolean>(true);
+  convertEmptyToNull = input<boolean>(false);
 
   private subscription?: Subscription;
   private subscriptionToNull?: Subscription;
