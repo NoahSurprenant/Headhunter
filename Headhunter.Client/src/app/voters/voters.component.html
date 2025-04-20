@@ -29,18 +29,35 @@
         </form>
     </div>
     <div class="w-full">
-        <div class="grid grid-cols-[minmax(100px,_1fr)_minmax(100px,_1fr)_minmax(100px,_1fr)] mx-4">
-            <div class="font-bold flex items-center py-1.5">First Name</div>
-            <div class="font-bold flex items-center py-1.5">Last Name</div>
+        <div class="grid grid-cols-[minmax(200px,_1fr)_100px_100px_minmax(150px,_1fr)_minmax(100px,_.5fr)] mx-4">
+            <div class="font-bold flex items-center py-1.5">Name</div>
+            <div class="font-bold flex items-center py-1.5">Birth Year</div>
+            <div class="font-bold flex items-center py-1.5">Gender</div>
+            <div class="font-bold flex items-center py-1.5">Address</div>
             <div class="font-bold flex items-center py-1.5">Details</div>
         @for (voter of current().results; track voter.id) {
         
         <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
-            {{voter.firstName}}
+            @if(voter.middleName) {
+                {{voter.firstName}} {{voter.middleName}} {{voter.lastName}}
+            } @else {
+                {{voter.firstName}} {{voter.lastName}}
+            }
         </div>
-        
+
         <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
-            {{voter.lastName}}
+            {{voter.birthYear}}
+        </div>
+
+        <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
+            {{voter.gender}}
+        </div>
+
+        <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
+            <div>
+                <div>{{addressColumn(voter)}}</div>
+                <div>{{voter.city}}, {{voter.state}} {{voter.zipCode}}</div>
+            </div>
         </div>
         
         <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">

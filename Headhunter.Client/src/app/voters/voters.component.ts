@@ -131,13 +131,50 @@ export class VotersComponent implements OnInit {
     this.x.reload();
   }
 
+  addressColumn(voter: VoterDto): string {
+    const arr: string[] = [];
+    if (voter.streetNumberPrefix)
+      arr.push(voter.streetNumberPrefix);
+    if (voter.streetNumber)
+      arr.push(voter.streetNumber);
+    if (voter.streetNumberSuffix)
+      arr.push(voter.streetNumberSuffix);
+    if (voter.directionPrefix)
+      arr.push(voter.directionPrefix);
+    if (voter.streetName)
+      arr.push(voter.streetName);
+    if (voter.streetType)
+      arr.push(voter.streetType);
+    if (voter.directionSuffix)
+      arr.push(voter.directionSuffix);
+    if (voter.extension)
+      arr.push(voter.extension);
+    return arr.join(' ');
+  }
+
 }
 
 export interface VoterDto
 {
   id: number,
   firstName: string,
+  middleName: string,
   lastName: string,
+  birthYear: number,
+  gender: string,
+  streetNumberPrefix: string,
+  streetNumber: string,
+  streetNumberSuffix: string,
+  directionPrefix: string,
+  streetName: string,
+  streetType: string,
+  directionSuffix: string,
+  extension: string,
+  city: string,
+  state: string,
+  zipCode: string,
+  latitude: number | null,
+  longitude: number | null,
 }
 
 export interface SearchFilterForm

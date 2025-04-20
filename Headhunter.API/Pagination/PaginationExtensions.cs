@@ -12,7 +12,7 @@ public static class PaginationExtensions
             return new()
             {
                 TotalCount = count,
-                Results = Array.Empty<T>(),
+                Results = [],
             };
         }
 

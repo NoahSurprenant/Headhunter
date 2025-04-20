@@ -48,7 +48,7 @@ public class ApiController : ControllerBase
                 {
                     FirstName = v.FIRST_NAME,
                     LastName = v.LAST_NAME
-                }).ToArray()
+                }).ToArray(),
             })
             .OrderBy(a => a.Id)
             .Take(1000)
@@ -104,12 +104,33 @@ public class ApiController : ControllerBase
             }
         }
 
-        var final = x.OrderBy(x => x.ID).Select(x => new VoterGridDto(x.ID, x.FIRST_NAME, x.LAST_NAME));
+        var final = x.OrderBy(x => x.ID).Select(x => new VoterGridDto()
+        {
+            ID = x.ID,
+            FirstName = x.FIRST_NAME,
+            MiddleName = x.MIDDLE_NAME,
+            LastName = x.LAST_NAME,
+            BirthYear = x.YEAR_OF_BIRTH,
+            Gender = x.GENDER,
+            StreetNumberPrefix = x.Address.STREET_NUMBER_PREFIX,
+            StreetNumber = x.Address.STREET_NUMBER,
+            StreetNumberSuffix = x.Address.STREET_NUMBER_SUFFIX,
+            DirectionPrefix = x.Address.DIRECTION_PREFIX,
+            StreetName = x.Address.STREET_NAME,
+            StreetType = x.Address.STREET_TYPE,
+            DirectionSuffix = x.Address.DIRECTION_SUFFIX,
+            Extension = x.EXTENSION, // TODO: This belongs on the address entity
+            City = x.Address.CITY,
+            State = x.Address.STATE,
+            ZipCode = x.Address.ZIP_CODE,
+            Latitude = x.Address.Latitude,
+            Longitude = x.Address.Longitude,
+        });
 
         return await final.PaginationResult(filter, ct);
     }
 
-    private (DateTime Start, DateTime End) GetAstrologySignDates(string astrologySign)
+    private static (DateTime Start, DateTime End) GetAstrologySignDates(string astrologySign)
     {
         var zodiacSigns = new Dictionary<string, (DateTime Start, DateTime End)>
         {
@@ -169,7 +190,28 @@ public class SearchFilterDto
     public string Astrology { get; set; } = "";
 }
 
-public record VoterGridDto(Guid ID, string FirstName, string LastName);
+public class VoterGridDto
+{
+    public required Guid ID { get; set; }
+    public required string FirstName { get; set; }
+    public required string MiddleName { get; set; }
+    public required string LastName { get; set; }
+    public required int BirthYear { get; set; }
+    public required string Gender { get; set; }
+    public required string StreetNumberPrefix { get; set; }
+    public required string StreetNumber { get; set; }
+    public required string StreetNumberSuffix { get; set; }
+    public required string DirectionPrefix { get; set; }
+    public required string StreetName { get; set; }
+    public required string StreetType { get; set; }
+    public required string DirectionSuffix { get; set; }
+    public required string Extension { get; set; }
+    public required string City { get; set; }
+    public required string State { get; set; }
+    public required string ZipCode { get; set; }
+    public required decimal? Latitude { get; set; }
+    public required decimal? Longitude { get; set; }
+}
 
 public class AddressDto
 {
