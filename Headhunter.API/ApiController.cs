@@ -18,6 +18,54 @@ public class ApiController : ControllerBase
         _context = context;
     }
 
+    [HttpGet(Name = "FirstNameSuggestions")]
+    public async Task<string[]> FirstNameSuggestions(string query, CancellationToken ct)
+    {
+        return await _context.Voters
+            .Where(x => x.FIRST_NAME.StartsWith(query))
+            .Select(x => x.FIRST_NAME)
+            .Distinct()
+            .OrderBy(x => x)
+            .Take(50)
+            .ToArrayAsync(ct);
+    }
+
+    [HttpGet(Name = "MiddleNameSuggestions")]
+    public async Task<string[]> MiddleNameSuggestions(string query, CancellationToken ct)
+    {
+        return await _context.Voters
+            .Where(x => x.MIDDLE_NAME.StartsWith(query))
+            .Select(x => x.MIDDLE_NAME)
+            .Distinct()
+            .OrderBy(x => x)
+            .Take(50)
+            .ToArrayAsync(ct);
+    }
+
+    [HttpGet(Name = "LastNameSuggestions")]
+    public async Task<string[]> LastNameSuggestions(string query, CancellationToken ct)
+    {
+        return await _context.Voters
+            .Where(x => x.LAST_NAME.StartsWith(query))
+            .Select(x => x.LAST_NAME)
+            .Distinct()
+            .OrderBy(x => x)
+            .Take(50)
+            .ToArrayAsync(ct);
+    }
+
+    [HttpGet(Name = "CitySuggestions")]
+    public async Task<string[]> CitySuggestions(string query, CancellationToken ct)
+    {
+        return await _context.Addresses
+            .Where(x => x.CITY.StartsWith(query))
+            .Select(x => x.CITY)
+            .Distinct()
+            .OrderBy(x => x)
+            .Take(50)
+            .ToArrayAsync(ct);
+    }
+
     [HttpGet(Name = "Get")]
     public async Task<IActionResult> Get(decimal west, decimal east, decimal north, decimal south, CancellationToken ct)
     {

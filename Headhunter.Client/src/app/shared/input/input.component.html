@@ -1,4 +1,4 @@
-<div>
+<div class="relative">
     <label class="block mb-.5 text-sm font-medium">
         <ng-content></ng-content>
         @if (errors()) {
@@ -7,5 +7,16 @@
     </label>
     <input [type]="type()" [formControl]="control"
       class="border border-gray-300 bg-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:placeholder-gray-400"
-      [placeholder]="placeholder()" [required]="required()" />
+      [placeholder]="placeholder()" [required]="required()"
+      (blur)="show.set(false)" (focus)="show.set(true)" />
+
+    @if (show() && suggestions().length > 0) {
+        <ul class="absolute left-0 border border-gray-300 bg-white mt-1 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto w-full">
+            @for (suggestion of suggestions(); track suggestion) {
+                <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer" (mousedown)="selectSuggestion(suggestion)">
+                    {{ suggestion }}
+                </li>
+            }
+        </ul>
+    }
 </div>

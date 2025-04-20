@@ -7,13 +7,13 @@
         <h2 class="text-2xl">Search Filters</h2>
         <form [formGroup]="formGroup" (ngSubmit)="onSubmit()">
             <label class="text-xs">First Name</label>
-            <x-input formControlName="firstName" placeholder="John"></x-input>
+            <x-input formControlName="firstName" placeholder="John" [onSearch]="firstNameSuggestions"></x-input>
             <label class="text-xs">Middle Name</label>
-            <x-input formControlName="middleName" placeholder="Lee"></x-input>
+            <x-input formControlName="middleName" placeholder="Lee" [onSearch]="middleNameSuggestions"></x-input>
             <label class="text-xs">Last Name</label>
-            <x-input formControlName="lastName" placeholder="Doe"></x-input>
+            <x-input formControlName="lastName" placeholder="Doe" [onSearch]="lastNameSuggestions"></x-input>
             <label class="text-xs">City</label>
-            <x-input formControlName="city" placeholder="Detroit"></x-input>
+            <x-input formControlName="city" placeholder="Detroit" [onSearch]="citySuggestions"></x-input>
 
             <div class="mt-6"></div>
             <label class="text-xs">Birth Year</label>

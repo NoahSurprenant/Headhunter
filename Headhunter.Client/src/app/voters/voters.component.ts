@@ -7,6 +7,8 @@ import { RouterModule } from '@angular/router';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { InputComponent } from '../shared/input/input.component';
 import { DropdownComponent } from '../shared/dropdown/dropdown.component';
+import { Observable } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
 
 @Component({
   selector: 'app-voters',
@@ -44,7 +46,7 @@ export class VotersComponent implements OnInit {
     'Pisces',
   ];
 
-  constructor(private builder: FormBuilder) {
+  constructor(private builder: FormBuilder, private http: HttpClient) {
     this.formGroup = builder.nonNullable.group<SearchFilterForm>({
       firstName: builder.nonNullable.control<string>(''),
       middleName: builder.nonNullable.control<string>(''),
@@ -151,6 +153,11 @@ export class VotersComponent implements OnInit {
       arr.push(voter.extension);
     return arr.join(' ');
   }
+
+  firstNameSuggestions = (query: string) => this.http.get<string[]>(`/api/firstNameSuggestions?query=${query}`);
+  middleNameSuggestions = (query: string) => this.http.get<string[]>(`/api/middleNameSuggestions?query=${query}`);
+  lastNameSuggestions = (query: string) => this.http.get<string[]>(`/api/lastNameSuggestions?query=${query}`);
+  citySuggestions = (query: string) => this.http.get<string[]>(`/api/citySuggestions?query=${query}`);
 
 }
 
