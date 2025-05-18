@@ -27,7 +27,7 @@ import { HttpClient } from '@angular/common/http';
 })
 export class VotersComponent implements OnInit {
 
-  searchFilter?: SearchFilterDto;
+  searchFilter = signal<SearchFilterDto | undefined>(undefined);
   formGroup: FormGroup<SearchFilterForm>;
 
   astrologyOptions: string[] = [
@@ -81,22 +81,26 @@ export class VotersComponent implements OnInit {
   pageNumber = signal(1);
 
   x = resource({
-    request: () => ({ pageSize: this.pageSize(),
-                      pageNumber: this.pageNumber(),
-                    }),
-    loader: async ({request}) => {
+    request: () => ({
+      pageSize: this.pageSize(),
+      pageNumber: this.pageNumber(),
+      searchFilter: this.searchFilter(),
+    }),
+    loader: async ({ request, abortSignal }) => {
       const params = new URLSearchParams();
       params.set('pageSize', request.pageSize.toString());
       params.set('pageNumber', request.pageNumber.toString());
 
-      return await fetch(`Api/voters?${params}`, {
+      const response = await fetch(`Api/voters?${params}`, {
         method: 'POST',
         headers: {
           "Content-Type": "application/json",
         },
-        body: this.searchFilter ? JSON.stringify(this.searchFilter) : undefined,
-      })
-        .then(x => x.json() as Promise<PaginationResult<VoterDto>>);
+        body: request.searchFilter ? JSON.stringify(request.searchFilter) : undefined,
+        signal: abortSignal,
+      });
+
+      return response.json() as Promise<PaginationResult<VoterDto>>;
     },
   });
 
@@ -114,7 +118,7 @@ export class VotersComponent implements OnInit {
       birthYear: rawValues.birthYear !== null ? Number(rawValues.birthYear) : null,
       age: rawValues.age !== null ? Number(rawValues.age) : null,
     };
-    this.searchFilter = searchFilter;
+    this.searchFilter.set(searchFilter);
     this.x.reload();
   }
 
@@ -131,7 +135,7 @@ export class VotersComponent implements OnInit {
       age: this.builder.control<number | null>(null),
       astrology: this.builder.nonNullable.control<string>(''),
     });
-    this.searchFilter = undefined;
+    this.searchFilter.set(undefined);
     this.x.reload();
   }
 
