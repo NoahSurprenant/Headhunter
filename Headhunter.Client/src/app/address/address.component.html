@@ -1,0 +1,16 @@
+<div class="max-w-xl mx-auto mt-12 bg-gray-200 rounded-xl shadow-lg p-8 border border-gray-200 animate-fade-in">
+    <div class="flex items-center mb-4">
+        <p class="text-3xl font-extrabold text-gray-900">
+            {{x.value()?.length}} voters at this address
+        </p>
+    </div>
+    <div class="mb-2">
+        <p class="font-semibold text-gray-700">Address</p>
+        <p class="text-gray-800">{{x.value()?.at(0)?.fullStreetAddress}}</p>
+        <p class="text-gray-600">{{x.value()?.at(0)?.city}}, {{x.value()?.at(0)?.state}} {{x.value()?.at(0)?.zip}}</p>
+    </div>
+</div>
+
+@for(voter of x.value(); track voter) {
+  <app-voter-card [voter]="voter" [displayAddress]="false"></app-voter-card>
+}

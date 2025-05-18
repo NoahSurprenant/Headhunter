@@ -1,0 +1,10 @@
+@if (x.hasValue()) {
+    <app-voter-card [voter]="x.value()" [displayAddress]="displayAddress()"></app-voter-card>
+} @else {
+  <div class="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-purple-100 to-blue-100 animate-fade-in">
+    <h1 class="text-4xl font-extrabold text-gray-800">Voter</h1>
+    <p class="mt-4 text-lg text-gray-600">No Voter Loaded</p>
+  </div>
+}
+
+

@@ -89,7 +89,7 @@ export class CesiumComponent implements OnInit {
           .append('north', params.north)
           .append('south', params.south);
 
-        return this.http.get<AddressDto[]>('Api/Get', { params: httpParams })
+        return this.http.get<AddressDto[]>('api/area', { params: httpParams })
           .pipe(takeUntil(this.cancelRequest$));
       })
     )

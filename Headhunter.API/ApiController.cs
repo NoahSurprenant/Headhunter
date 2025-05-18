@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Headhunter.API;
 
 [ApiController]
-[Route("[controller]/[action]")]
+[Route("[controller]")]
 public class ApiController : ControllerBase
 {
     private readonly ILogger<ApiController> _logger;
@@ -18,7 +18,7 @@ public class ApiController : ControllerBase
         _context = context;
     }
 
-    [HttpGet(Name = "FirstNameSuggestions")]
+    [HttpGet("FirstNameSuggestions")]
     public async Task<string[]> FirstNameSuggestions(string query, CancellationToken ct)
     {
         return await _context.Voters
@@ -30,7 +30,7 @@ public class ApiController : ControllerBase
             .ToArrayAsync(ct);
     }
 
-    [HttpGet(Name = "MiddleNameSuggestions")]
+    [HttpGet("MiddleNameSuggestions")]
     public async Task<string[]> MiddleNameSuggestions(string query, CancellationToken ct)
     {
         return await _context.Voters
@@ -42,7 +42,7 @@ public class ApiController : ControllerBase
             .ToArrayAsync(ct);
     }
 
-    [HttpGet(Name = "LastNameSuggestions")]
+    [HttpGet("LastNameSuggestions")]
     public async Task<string[]> LastNameSuggestions(string query, CancellationToken ct)
     {
         return await _context.Voters
@@ -54,7 +54,7 @@ public class ApiController : ControllerBase
             .ToArrayAsync(ct);
     }
 
-    [HttpGet(Name = "CitySuggestions")]
+    [HttpGet("CitySuggestions")]
     public async Task<string[]> CitySuggestions(string query, CancellationToken ct)
     {
         return await _context.Addresses
@@ -66,7 +66,7 @@ public class ApiController : ControllerBase
             .ToArrayAsync(ct);
     }
 
-    [HttpGet(Name = "StreetSuggestions")]
+    [HttpGet("StreetSuggestions")]
     public async Task<string[]> StreetSuggestions(string query, CancellationToken ct)
     {
         return await _context.Addresses
@@ -78,8 +78,8 @@ public class ApiController : ControllerBase
             .ToArrayAsync(ct);
     }
 
-    [HttpGet(Name = "Get")]
-    public async Task<IActionResult> Get(decimal west, decimal east, decimal north, decimal south, CancellationToken ct)
+    [HttpGet("Area")]
+    public async Task<IActionResult> Area(decimal west, decimal east, decimal north, decimal south, CancellationToken ct)
     {
         var query = _context.Addresses
             .Where(x => x.Latitude <= north && x.Latitude >= south);
@@ -118,10 +118,61 @@ public class ApiController : ControllerBase
         return Ok(address);
     }
 
-    [HttpPost(Name = "Voters")]
+    [ProducesResponseType(typeof(VoterDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [HttpGet("Voter/{id}")]
+    public async Task<IActionResult> Voter([FromRoute] Guid id, CancellationToken ct)
+    {
+        var voter = await _context.Voters
+            .Where(v => v.ID == id)
+            .Select(x => new VoterDetailDto()
+            {
+                FirstName = x.FIRST_NAME,
+                MiddleName = x.MIDDLE_NAME,
+                LastName = x.LAST_NAME,
+                BirthYear = x.YEAR_OF_BIRTH,
+                RegistrationDate = x.REGISTRATION_DATE,
+                AddressId = x.Address.ID,
+                FullStreetAddress = x.Address.FullStreetAddress,
+                City = x.Address.CITY,
+                State = x.Address.STATE,
+                Zip = x.Address.ZIP_CODE
+            })
+            .FirstOrDefaultAsync(ct);
+        if (voter is null)
+            return NotFound();
+        return Ok(voter);
+    }
+
+    [ProducesResponseType(typeof(VoterDetailDto[]), StatusCodes.Status200OK)]
+    //[ProducesResponseType(StatusCodes.Status404NotFound)]
+    [HttpGet("Address/{id}")]
+    public async Task<IActionResult> Address([FromRoute] Guid id, CancellationToken ct)
+    {
+        var voters = await _context.Voters
+            .Where(v => v.AddressID == id)
+            .Select(x => new VoterDetailDto()
+            {
+                FirstName = x.FIRST_NAME,
+                MiddleName = x.MIDDLE_NAME,
+                LastName = x.LAST_NAME,
+                BirthYear = x.YEAR_OF_BIRTH,
+                RegistrationDate = x.REGISTRATION_DATE,
+                AddressId = x.Address.ID,
+                FullStreetAddress = x.Address.FullStreetAddress,
+                City = x.Address.CITY,
+                State = x.Address.STATE,
+                Zip = x.Address.ZIP_CODE
+            })
+            .ToArrayAsync(ct);
+        //if (voter is null)
+        //    return NotFound();
+        return Ok(voters);
+    }
+
+    [HttpPost("Voters")]
     public async Task<PaginationResult<VoterGridDto>> Voters([FromQuery] PaginationFilter filter, [FromBody] SearchFilterDto? dto, CancellationToken ct)
     {
-        await Task.Delay(10000, ct);
         var x = _context.Voters.AsQueryable();
 
         if (dto is not null)
@@ -231,7 +282,7 @@ public class ApiController : ControllerBase
         return (Start, End);
     }
 
-    public BeforeAfter GetAstrologySignsRelativeToToday(string sign)
+    private BeforeAfter GetAstrologySignsRelativeToToday(string sign)
     {
         // Impossible to tell if Capricorn is before or after since it wraps the year
         if (sign is "Capricorn")
@@ -309,6 +360,20 @@ public class VoterDto
 {
     public required string FirstName { get; set; }
     public required string LastName { get; set; }
+}
+
+public class VoterDetailDto
+{
+    public required string FirstName { get; set; }
+    public required string MiddleName { get; set; }
+    public required string LastName { get; set; }
+    public required int BirthYear { get; set; }
+    public required DateTime RegistrationDate { get; set; }
+    public required Guid AddressId { get; set; }
+    public required string FullStreetAddress { get; set; }
+    public required string City { get; set; }
+    public required string State { get; set; }
+    public required string Zip { get; set; }
 }
 
 public enum BeforeAfter

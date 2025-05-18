@@ -1,0 +1,33 @@
+<div class="max-w-xl mx-auto mt-12 bg-gray-200 rounded-xl shadow-lg p-8 border border-gray-200 animate-fade-in">
+<div class="flex items-center gap-4 mb-4">
+    <div class="flex-shrink-0 bg-gradient-to-br from-purple-400 to-blue-400 rounded-full w-16 h-16 flex items-center justify-center text-white text-3xl font-bold shadow">
+    {{ voter().firstName[0] }}{{ voter().lastName[0] }}
+    </div>
+    <div>
+    <p class="text-3xl font-extrabold text-gray-900">
+        @if (voter().middleName) {
+        {{voter().firstName}} <span class="text-purple-500">{{voter().middleName}}</span> {{voter().lastName}}
+        } @else {
+        {{voter().firstName}} {{voter().lastName}}
+        }
+    </p>
+    <p class="text-gray-500 text-lg mt-1">Born {{voter().birthYear}}</p>
+    </div>
+</div>
+<div class="mb-2">
+    <span class="inline-block bg-blue-100 text-blue-800 text-xs px-3 py-1 rounded-full font-semibold mr-2">
+    Registered: {{voter().registrationDate | date:'longDate'}}
+    </span>
+</div>
+@if (displayAddress())
+{
+    <a [routerLink]="['/address', voter().addressId]">
+        <div class="mb-2">
+            <p class="font-semibold text-gray-700">Address</p>
+            <p class="text-gray-800">{{voter().fullStreetAddress}}</p>
+            <p class="text-gray-600">{{voter().city}}, {{voter().state}} {{voter().zip}}</p>
+        </div>
+    </a>
+}
+
+</div>
