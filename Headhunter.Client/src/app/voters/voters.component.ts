@@ -51,6 +51,7 @@ export class VotersComponent implements OnInit {
       firstName: builder.nonNullable.control<string>(''),
       middleName: builder.nonNullable.control<string>(''),
       lastName: builder.nonNullable.control<string>(''),
+      street: builder.nonNullable.control<string>(''),
       city: builder.nonNullable.control<string>(''),
       birthYear: builder.control<number | null>(null),
       age: builder.control<number | null>(null),
@@ -124,6 +125,7 @@ export class VotersComponent implements OnInit {
       firstName: this.builder.nonNullable.control<string>(''),
       middleName: this.builder.nonNullable.control<string>(''),
       lastName: this.builder.nonNullable.control<string>(''),
+      street: this.builder.nonNullable.control<string>(''),
       city: this.builder.nonNullable.control<string>(''),
       birthYear: this.builder.control<number | null>(null),
       age: this.builder.control<number | null>(null),
@@ -157,6 +159,7 @@ export class VotersComponent implements OnInit {
   firstNameSuggestions = (query: string) => this.http.get<string[]>(`/api/firstNameSuggestions?query=${query}`);
   middleNameSuggestions = (query: string) => this.http.get<string[]>(`/api/middleNameSuggestions?query=${query}`);
   lastNameSuggestions = (query: string) => this.http.get<string[]>(`/api/lastNameSuggestions?query=${query}`);
+  streetSuggestions = (query: string) => this.http.get<string[]>(`/api/streetSuggestions?query=${query}`);
   citySuggestions = (query: string) => this.http.get<string[]>(`/api/citySuggestions?query=${query}`);
 
 }
@@ -189,6 +192,7 @@ export interface SearchFilterForm
   firstName: FormControl<string>,
   middleName: FormControl<string>,
   lastName: FormControl<string>,
+  street: FormControl<string>,
   city: FormControl<string>,
   birthYear: FormControl<number | null>,
   age: FormControl<number | null>,
@@ -200,6 +204,7 @@ export interface SearchFilterDto
   firstName: string,
   middleName: string,
   lastName: string,
+  street: string,
   city: string,
   birthYear: number | null,
   age: number | null,

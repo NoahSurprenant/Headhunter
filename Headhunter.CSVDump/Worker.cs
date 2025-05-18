@@ -40,14 +40,18 @@ public class Worker : BackgroundService
         using var reader = File.OpenRead(path);
         using var sr = new StreamReader(reader);
 
-        var config = new CsvConfiguration(System.Globalization.CultureInfo.InvariantCulture);
+        var config = new CsvConfiguration(System.Globalization.CultureInfo.InvariantCulture)
+        {
+            //HeaderValidated = null, // Ignore missing headers
+            //MissingFieldFound = null, // Ignore missing fields
+        };
         using var csv = new CsvReader(sr, config);
 
         csv.Context.RegisterClassMap<RecordMap>();
 
 
         //var count = csv.GetRecords<MichiganVoterRecord>().Count();
-        var records = csv.GetRecords<MichiganVoterRecord>();
+        var records = csv.GetRecords<Raw>();
         var batches = GetBatches(records, 500);
 
         //var progress = AnsiConsole.Progress();
@@ -65,7 +69,63 @@ public class Worker : BackgroundService
             using var innerScope = _serviceScopeFactory.CreateScope();
             var context = innerScope.ServiceProvider.GetRequiredService<HeadhunterContext>();
 
-            context.MichiganVoterRecords.AddRange(batch);
+            var mapped = batch.Select(x =>
+            {
+                return new MichiganVoterRecord()
+                {
+                    LAST_NAME = x.LAST_NAME,
+                    FIRST_NAME = x.FIRST_NAME,
+                    MIDDLE_NAME = x.MIDDLE_NAME,
+                    NAME_SUFFIX = x.NAME_SUFFIX,
+                    YEAR_OF_BIRTH = x.YEAR_OF_BIRTH,
+                    GENDER = x.GENDER,
+                    REGISTRATION_DATE = x.REGISTRATION_DATE,
+                    STREET_NUMBER_PREFIX = x.STREET_NUMBER_PREFIX,
+                    STREET_NUMBER = x.STREET_NUMBER,
+                    STREET_NUMBER_SUFFIX = x.STREET_NUMBER_SUFFIX,
+                    DIRECTION_PREFIX = x.DIRECTION_PREFIX,
+                    STREET_NAME = x.STREET_NAME,
+                    STREET_TYPE = x.STREET_TYPE,
+                    DIRECTION_SUFFIX = x.DIRECTION_SUFFIX,
+                    EXTENSION = x.EXTENSION,
+                    CITY = x.CITY,
+                    STATE = x.STATE,
+                    ZIP_CODE = x.ZIP_CODE,
+                    MAILING_ADDRESS_LINE_ONE = x.MAILING_ADDRESS_LINE_ONE,
+                    MAILING_ADDRESS_LINE_TWO = x.MAILING_ADDRESS_LINE_TWO,
+                    MAILING_ADDRESS_LINE_THREE = x.MAILING_ADDRESS_LINE_THREE,
+                    MAILING_ADDRESS_LINE_FOUR = x.MAILING_ADDRESS_LINE_FOUR,
+                    MAILING_ADDRESS_LINE_FIVE = x.MAILING_ADDRESS_LINE_FIVE,
+                    VOTER_IDENTIFICATION_NUMBER = x.VOTER_IDENTIFICATION_NUMBER,
+                    COUNTY_CODE = x.COUNTY_CODE,
+                    COUNTY_NAME = x.COUNTY_NAME,
+                    JURISDICTION_CODE = x.JURISDICTION_CODE,
+                    JURISDICTION_NAME = x.JURISDICTION_NAME,
+                    PRECINCT = x.PRECINCT,
+                    WARD = x.WARD,
+                    SCHOOL_DISTRICT_CODE = x.SCHOOL_DISTRICT_CODE,
+                    SCHOOL_DISTRICT_NAME = x.SCHOOL_DISTRICT_NAME,
+                    STATE_HOUSE_DISTRICT_CODE = x.STATE_HOUSE_DISTRICT_CODE,
+                    STATE_HOUSE_DISTRICT_NAME = x.STATE_HOUSE_DISTRICT_NAME,
+                    STATE_SENATE_DISTRICT_CODE = x.STATE_SENATE_DISTRICT_CODE,
+                    STATE_SENATE_DISTRICT_NAME = x.STATE_SENATE_DISTRICT_NAME,
+                    US_CONGRESS_DISTRICT_CODE = x.US_CONGRESS_DISTRICT_CODE,
+                    US_CONGRESS_DISTRICT_NAME = x.US_CONGRESS_DISTRICT_NAME,
+                    COUNTY_COMMISSIONER_DISTRICT_CODE = x.COUNTY_COMMISSIONER_DISTRICT_CODE,
+                    COUNTY_COMMISSIONER_DISTRICT_NAME = x.COUNTY_COMMISSIONER_DISTRICT_NAME,
+                    VILLAGE_DISTRICT_CODE = x.VILLAGE_DISTRICT_CODE,
+                    VILLAGE_DISTRICT_NAME = x.VILLAGE_DISTRICT_NAME,
+                    VILLAGE_PRECINCT = x.VILLAGE_PRECINCT,
+                    SCHOOL_PRECINCT = x.SCHOOL_PRECINCT,
+                    IS_PERM_AV_BALLOT_VOTER = x.IS_PERM_AV_BALLOT_VOTER,
+                    VOTER_STATUS_TYPE_CODE = x.VOTER_STATUS_TYPE_CODE,
+                    UOCAVA_STATUS_CODE = x.UOCAVA_STATUS_CODE,
+                    UOCAVA_STATUS_NAME = x.UOCAVA_STATUS_NAME,
+                    IS_PERM_AV_APP_VOTER = x.IS_PERM_AV_APP_VOTER,
+                };
+            });
+
+            context.MichiganVoterRecords.AddRange(mapped);
 
             await context.SaveChangesAsync(ct);
             //task.Increment(batch.Count);
@@ -90,6 +150,8 @@ INSERT INTO Addresses (
     STREET_NAME,
     STREET_TYPE,
     DIRECTION_SUFFIX,
+    EXTENSION,
+    FullStreetAddress,
     CITY,
     STATE,
     ZIP_CODE,
@@ -123,6 +185,20 @@ SELECT
     STREET_NAME,
     STREET_TYPE,
     DIRECTION_SUFFIX,
+    EXTENSION,
+    -- Ensuring no extra spaces and handling empty strings properly
+    LTRIM(RTRIM(
+        CONCAT_WS(' ', 
+            NULLIF(STREET_NUMBER_PREFIX, ''), 
+            NULLIF(STREET_NUMBER, ''), 
+            NULLIF(STREET_NUMBER_SUFFIX, ''), 
+            NULLIF(DIRECTION_PREFIX, ''), 
+            NULLIF(STREET_NAME, ''), 
+            NULLIF(STREET_TYPE, ''), 
+            NULLIF(DIRECTION_SUFFIX, ''), 
+            NULLIF(EXTENSION, '')
+        )
+    )) AS FullStreetAddress,
     CITY,
     STATE,
     ZIP_CODE,
@@ -155,6 +231,7 @@ GROUP BY
     STREET_NAME,
     STREET_TYPE,
     DIRECTION_SUFFIX,
+    EXTENSION,
     CITY,
     STATE,
     ZIP_CODE,
@@ -200,7 +277,6 @@ INSERT INTO Voters (
     YEAR_OF_BIRTH,
     GENDER,
     REGISTRATION_DATE,
-    EXTENSION,
     MAILING_ADDRESS_LINE_ONE,
     MAILING_ADDRESS_LINE_TWO,
     MAILING_ADDRESS_LINE_THREE,
@@ -223,7 +299,6 @@ SELECT
     YEAR_OF_BIRTH,
     GENDER,
     REGISTRATION_DATE,
-    EXTENSION,
     MAILING_ADDRESS_LINE_ONE,
     MAILING_ADDRESS_LINE_TWO,
     MAILING_ADDRESS_LINE_THREE,
@@ -245,6 +320,7 @@ ON AL.STREET_NUMBER_PREFIX = MR.STREET_NUMBER_PREFIX AND
    AL.STREET_NAME = MR.STREET_NAME AND
    AL.STREET_TYPE = MR.STREET_TYPE AND
    AL.DIRECTION_SUFFIX = MR.DIRECTION_SUFFIX AND
+   AL.EXTENSION = MR.EXTENSION AND
    AL.CITY = MR.CITY AND
    AL.STATE = MR.STATE AND
    AL.ZIP_CODE = MR.ZIP_CODE AND

@@ -86,6 +86,12 @@ public class Worker : BackgroundService
                     if (x.DIRECTION_SUFFIX != string.Empty)
                         list.Add(x.DIRECTION_SUFFIX);
 
+                    var ext = x.EXTENSION.Replace('\\', ' ');
+                    if (ext != string.Empty)
+                    {
+                        list.Add(ext);
+                    }
+
                     var fullAlt = string.Join(' ', list.ToArray());
 
                     //var street = x.STREET_NUMBER + " " + x.STREET_NAME;

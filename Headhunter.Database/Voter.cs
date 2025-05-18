@@ -9,7 +9,6 @@ public class Voter
     public int YEAR_OF_BIRTH { get; set; }
     public string GENDER { get; set; }
     public DateTime REGISTRATION_DATE { get; set; }
-    public string EXTENSION { get; set; }
     public string MAILING_ADDRESS_LINE_ONE { get; set; }
     public string MAILING_ADDRESS_LINE_TWO { get; set; }
     public string MAILING_ADDRESS_LINE_THREE { get; set; }

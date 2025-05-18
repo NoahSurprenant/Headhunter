@@ -66,6 +66,18 @@ public class ApiController : ControllerBase
             .ToArrayAsync(ct);
     }
 
+    [HttpGet(Name = "StreetSuggestions")]
+    public async Task<string[]> StreetSuggestions(string query, CancellationToken ct)
+    {
+        return await _context.Addresses
+            .Where(x => x.FullStreetAddress.Contains(query))
+            .Select(x => x.FullStreetAddress)
+            .Distinct()
+            .OrderBy(x => x)
+            .Take(50)
+            .ToArrayAsync(ct);
+    }
+
     [HttpGet(Name = "Get")]
     public async Task<IActionResult> Get(decimal west, decimal east, decimal north, decimal south, CancellationToken ct)
     {
@@ -109,6 +121,7 @@ public class ApiController : ControllerBase
     [HttpPost(Name = "Voters")]
     public async Task<PaginationResult<VoterGridDto>> Voters([FromQuery] PaginationFilter filter, [FromBody] SearchFilterDto? dto, CancellationToken ct)
     {
+        await Task.Delay(10000, ct);
         var x = _context.Voters.AsQueryable();
 
         if (dto is not null)
@@ -119,6 +132,23 @@ public class ApiController : ControllerBase
                 x = x.Where(x => x.MIDDLE_NAME == dto.MiddleName);
             if (dto.LastName != string.Empty)
                 x = x.Where(x => x.LAST_NAME == dto.LastName);
+
+            if (dto.Street != string.Empty)
+            {
+                // This is too much, query times out, better to just have a column that appends all these values
+                //x = x.Where(x =>(
+                //                    (x.Address.STREET_NUMBER_PREFIX != "" ? " " + x.Address.STREET_NUMBER_PREFIX : "") +
+                //                    (x.Address.STREET_NUMBER != "" ? " " + x.Address.STREET_NUMBER : "") +
+                //                    (x.Address.STREET_NUMBER_SUFFIX != "" ? " " + x.Address.STREET_NUMBER_SUFFIX : "") +
+                //                    (x.Address.DIRECTION_PREFIX != "" ? " " + x.Address.DIRECTION_PREFIX : "") +
+                //                    (x.Address.STREET_NAME != "" ? " " + x.Address.STREET_NAME : "") +
+                //                    (x.Address.STREET_TYPE != "" ? " " + x.Address.STREET_TYPE : "") +
+                //                    (x.Address.DIRECTION_SUFFIX != "" ? " " + x.Address.DIRECTION_SUFFIX : "") +
+                //                    (x.EXTENSION != "" ? " " + x.EXTENSION : "")
+                //                ).Contains(dto.Street));
+                x = x.Where(x => x.Address.FullStreetAddress == dto.Street);
+            }
+
             if (dto.City != string.Empty)
                 x = x.Where(x => x.Address.CITY == dto.City);
             if (dto.BirthYear is not null)
@@ -167,7 +197,7 @@ public class ApiController : ControllerBase
             StreetName = x.Address.STREET_NAME,
             StreetType = x.Address.STREET_TYPE,
             DirectionSuffix = x.Address.DIRECTION_SUFFIX,
-            Extension = x.EXTENSION, // TODO: This belongs on the address entity
+            Extension = x.Address.EXTENSION,
             City = x.Address.CITY,
             State = x.Address.STATE,
             ZipCode = x.Address.ZIP_CODE,
@@ -232,6 +262,7 @@ public class SearchFilterDto
     public string FirstName { get; set; } = "";
     public string MiddleName { get; set; } = "";
     public string LastName { get; set; } = "";
+    public string Street { get; set; } = "";
     public string City { get; set; } = "";
     public int? BirthYear { get; set; }
     public int? Age { get; set; }

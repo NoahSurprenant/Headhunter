@@ -9,6 +9,8 @@ public class Address
     public string STREET_NAME { get; set; }
     public string STREET_TYPE { get; set; }
     public string DIRECTION_SUFFIX { get; set; }
+    public string EXTENSION { get; set; }
+    public string FullStreetAddress { get; set; }
     public string CITY { get; set; }
     public string STATE { get; set; }
     public string ZIP_CODE { get; set; }
