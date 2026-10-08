@@ -1,11 +1,14 @@
 import { animate, state, style, transition, trigger } from '@angular/animations';
-import { AfterContentInit, Component, HostBinding, input, output } from '@angular/core';
+import { AfterContentInit, Component, HostBinding, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { Entity, Viewer } from 'cesium';
 
 @Component({
   selector: 'app-custom-info-box',
   templateUrl: './custom-info-box.component.html',
   styleUrls: ['./custom-info-box.component.css'],
+  // Eager: animationState is flipped in setTimeout callbacks and isTracking() reads
+  // the mutable Cesium viewer.trackedEntity, neither of which notifies OnPush.
+  changeDetection: ChangeDetectionStrategy.Eager,
   animations: [
     trigger('slideInOut', [
       state('in', style({ transform: 'translateX(0)', opacity: 1 })),
