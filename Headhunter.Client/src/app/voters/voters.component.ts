@@ -59,9 +59,9 @@ export class VotersComponent implements OnInit {
     });
 
     effect(() => {
-      const x = this.x.value();
-      if (x)
-        this.current.set(x);
+      // value() throws while the resource is in an error state (Angular 20+), so guard with hasValue().
+      if (this.x.hasValue())
+        this.current.set(this.x.value());
     });
   }
 
@@ -81,22 +81,22 @@ export class VotersComponent implements OnInit {
   pageNumber = signal(1);
 
   x = resource({
-    request: () => ({
+    params: () => ({
       pageSize: this.pageSize(),
       pageNumber: this.pageNumber(),
       searchFilter: this.searchFilter(),
     }),
-    loader: async ({ request, abortSignal }) => {
-      const params = new URLSearchParams();
-      params.set('pageSize', request.pageSize.toString());
-      params.set('pageNumber', request.pageNumber.toString());
+    loader: async ({ params, abortSignal }) => {
+      const query = new URLSearchParams();
+      query.set('pageSize', params.pageSize.toString());
+      query.set('pageNumber', params.pageNumber.toString());
 
-      const response = await fetch(`Api/voters?${params}`, {
+      const response = await fetch(`Api/voters?${query}`, {
         method: 'POST',
         headers: {
           "Content-Type": "application/json",
         },
-        body: request.searchFilter ? JSON.stringify(request.searchFilter) : undefined,
+        body: params.searchFilter ? JSON.stringify(params.searchFilter) : undefined,
         signal: abortSignal,
       });
 

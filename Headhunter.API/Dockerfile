@@ -29,7 +29,7 @@ ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "./Headhunter.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:DefineConstants=DOCKER_BUILD
 
 # This stage is used to build the client project
-FROM node:20.11.1-alpine AS angular
+FROM node:24.21.0-alpine AS angular
 WORKDIR /usr/angular
 COPY Headhunter.Client/package.json ./
 COPY Headhunter.Client/package-lock.json ./

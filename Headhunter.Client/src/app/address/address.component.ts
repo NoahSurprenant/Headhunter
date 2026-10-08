@@ -15,11 +15,11 @@ export class AddressComponent {
   id = input.required<string>();
 
   x = resource({
-    request: () => ({
+    params: () => ({
       id: this.id(),
     }),
-    loader: async ({ request, abortSignal }) => {
-      const response = await fetch(`api/address/${request.id}`, {
+    loader: async ({ params, abortSignal }) => {
+      const response = await fetch(`api/address/${params.id}`, {
         method: 'GET',
         signal: abortSignal,
       });

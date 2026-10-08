@@ -15,11 +15,11 @@ export class VoterComponent {
   displayAddress = input<boolean>(true);
 
   x = resource({
-    request: () => ({
+    params: () => ({
       id: this.id(),
     }),
-    loader: async ({ request, abortSignal }) => {
-      const response = await fetch(`api/voter/${request.id}`, {
+    loader: async ({ params, abortSignal }) => {
+      const response = await fetch(`api/voter/${params.id}`, {
         method: 'GET',
         signal: abortSignal,
       });
