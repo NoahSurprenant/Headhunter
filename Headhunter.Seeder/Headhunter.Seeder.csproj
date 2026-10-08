@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-Headhunter.Seeder-c1abeeb1-21c8-4e01-a1f6-b9d25722fd26</UserSecretsId>
@@ -10,7 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Bogus" Version="35.6.2" />
     <PackageReference Include="CountryData.Bogus" Version="6.12.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>
