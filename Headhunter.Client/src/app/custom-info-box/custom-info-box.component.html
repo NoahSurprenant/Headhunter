@@ -1,6 +1,7 @@
 @defer {
-<div class="cesium-infoBox cesium-infoBox-visible"
-[@slideInOut]="animationState">
+<div class="cesium-infoBox"
+  [class.cesium-infoBox-visible]="!closing()"
+  animate.enter="info-box-enter">
   <div class="cesium-infoBox-title">
     {{entity().name}}
   </div>

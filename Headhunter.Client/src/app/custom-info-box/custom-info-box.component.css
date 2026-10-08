@@ -1,3 +1,13 @@
 .cesium-infoBox {
     position: fixed;
 }
+.info-box-enter {
+    animation: info-box-slide-in 300ms ease-out;
+}
+
+@keyframes info-box-slide-in {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
