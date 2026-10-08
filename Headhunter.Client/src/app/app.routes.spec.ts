@@ -35,7 +35,6 @@ describe('app routes (real appConfig)', () => {
     const fetchMock = stubFetch(() => voterDetail());
     const harness = await RouterTestingHarness.create('/voter/42');
     await harness.fixture.whenStable();
-    harness.detectChanges();
 
     expect(fetchMock.mock.calls[0][0]).toBe('api/voter/42');
     expect(TestBed.inject(Title).getTitle()).toBe('Voter');
@@ -46,7 +45,6 @@ describe('app routes (real appConfig)', () => {
     const fetchMock = stubFetch(() => [voterDetail()]);
     const harness = await RouterTestingHarness.create('/address/addr-0001');
     await harness.fixture.whenStable();
-    harness.detectChanges();
 
     expect(fetchMock.mock.calls[0][0]).toBe('api/address/addr-0001');
     expect(TestBed.inject(Title).getTitle()).toBe('Address');
@@ -61,19 +59,18 @@ describe('app routes (real appConfig)', () => {
   });
 
   it('opens the info box when a globe entity is picked, rendered through the root component', async () => {
-    // Cesium's click callback is a raw DOM listener that only sets a field, so the
-    // globe page relies on a change-detection pass that starts at the root reaching
-    // it (in the browser, the zone-triggered application tick). This failed while
-    // AppComponent was OnPush.
+    // Cesium's click callback is a raw DOM listener outside Angular. The pick must
+    // reach the OnPush root -> globe page -> info box purely through the
+    // selectedEntity signal (no zone.js, no manual detectChanges after the click).
+    // This failed when selectedEntity was a plain field under an OnPush root.
     const fixture = TestBed.createComponent(AppComponent);
     await TestBed.inject(Router).navigateByUrl('/globe');
-    fixture.detectChanges();
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('app-cesium')).not.toBeNull();
 
     cesium.state.picked = { id: { id: 'addr-0001', name: '123 Fake St', description: '<div>Alex Example</div>' } };
     cesium.state.clickHandler!({ position: {} });
-    fixture.detectChanges();
+    await fixture.whenStable();
 
     expect(fixture.nativeElement.querySelector('app-custom-info-box')).not.toBeNull();
   });

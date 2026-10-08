@@ -5,7 +5,12 @@ import { vi } from 'vitest';
 export function createFakeCesium() {
   class FakeEvent {
     listeners: { fn: (...args: unknown[]) => void; scope?: unknown }[] = [];
-    addEventListener(fn: (...args: unknown[]) => void, scope?: unknown) { this.listeners.push({ fn, scope }); }
+    // Like Cesium's Event, returns a function that removes the listener.
+    addEventListener(fn: (...args: unknown[]) => void, scope?: unknown) {
+      const listener = { fn, scope };
+      this.listeners.push(listener);
+      return () => { this.listeners = this.listeners.filter(l => l !== listener); };
+    }
     raise(...args: unknown[]) { this.listeners.forEach(l => l.fn.apply(l.scope, args)); }
   }
 
@@ -48,6 +53,7 @@ export function createFakeCesium() {
 
   return {
     state,
+    FakeEvent,
     module: {
       Viewer: FakeViewer,
       ScreenSpaceEventHandler: class {

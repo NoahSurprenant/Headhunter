@@ -129,29 +129,32 @@ describe('CesiumComponent', () => {
     expect(viewer.entities.values.length).toBe(1);
   });
 
+  // Cesium invokes the click handler from its own DOM listener, outside anything
+  // Angular knows about. With zoneless change detection the info box must still
+  // appear and disappear without a manual fixture.detectChanges().
   it('opens the info box for a clicked entity and closes it on an empty click', async () => {
+    const { fixture, viewer } = render();
+    await fixture.whenStable();
+    const entity = { id: 'addr-0001', name: '123 Fake St', description: '<div>Alex Example</div>' };
+
+    cesium.state.picked = { id: entity };
+    cesium.state.clickHandler!({ position: {} });
+    await fixture.whenStable();
+    expect(fixture.componentInstance.selectedEntity()).toBe(entity);
+    expect(fixture.nativeElement.querySelector('app-custom-info-box')).not.toBeNull();
+
     vi.useFakeTimers();
     try {
-      const { fixture, viewer } = render();
-      const entity = { id: 'addr-0001', name: '123 Fake St', description: '<div>Alex Example</div>' };
-
-      cesium.state.picked = { id: entity };
-      cesium.state.clickHandler!({ position: {} });
-      fixture.detectChanges();
-      expect(fixture.componentInstance.selectedEntity).toBe(entity);
-      expect(fixture.nativeElement.querySelector('app-custom-info-box')).not.toBeNull();
-
       cesium.state.picked = undefined;
       cesium.state.clickHandler!({ position: {} });
-      fixture.detectChanges();
       await vi.advanceTimersByTimeAsync(300);
-      fixture.detectChanges();
-      expect(fixture.componentInstance.selectedEntity).toBeUndefined();
-      expect(fixture.nativeElement.querySelector('app-custom-info-box')).toBeNull();
-      expect(viewer.trackedEntity).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }
+    await fixture.whenStable();
+    expect(fixture.componentInstance.selectedEntity()).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('app-custom-info-box')).toBeNull();
+    expect(viewer.trackedEntity).toBeUndefined();
   });
 
   it('mirrors the viewer tracked entity into a signal', () => {
