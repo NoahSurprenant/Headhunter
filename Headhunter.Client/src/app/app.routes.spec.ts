@@ -6,6 +6,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { createFakeCesium } from '../testing/fake-cesium';
 import { stubFetch } from '../testing/fetch-stub';
 import { voterDetail } from '../testing/synthetic-data';
+import { AppComponent } from './app.component';
 import { appConfig } from './app.config';
 
 // /globe lazy-loads CesiumComponent, whose Viewer needs WebGL; swap in the fake
@@ -57,5 +58,23 @@ describe('app routes (real appConfig)', () => {
     const harness = await RouterTestingHarness.create('/voters');
     expect(TestBed.inject(Title).getTitle()).toBe('Voters');
     expect(harness.routeNativeElement?.textContent).toContain('Search Filters');
+  });
+
+  it('opens the info box when a globe entity is picked, rendered through the root component', async () => {
+    // Cesium's click callback is a raw DOM listener that only sets a field, so the
+    // globe page relies on a change-detection pass that starts at the root reaching
+    // it (in the browser, the zone-triggered application tick). This failed while
+    // AppComponent was OnPush.
+    const fixture = TestBed.createComponent(AppComponent);
+    await TestBed.inject(Router).navigateByUrl('/globe');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('app-cesium')).not.toBeNull();
+
+    cesium.state.picked = { id: { id: 'addr-0001', name: '123 Fake St', description: '<div>Alex Example</div>' } };
+    cesium.state.clickHandler!({ position: {} });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-custom-info-box')).not.toBeNull();
   });
 });

@@ -21,7 +21,7 @@ describe('AppComponent', () => {
     expect(fixture.nativeElement.querySelector('router-outlet')).not.toBeNull();
   });
 
-  it('renders the routed page inside its outlet (OnPush root)', async () => {
+  it('renders the routed page inside its outlet', async () => {
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     await TestBed.inject(Router).navigateByUrl('/stub');
