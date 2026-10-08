@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Title } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { createFakeCesium } from '../testing/fake-cesium';
+import { fakeCesium, resetFakeCesium } from '../testing/fake-cesium';
 import { stubFetch } from '../testing/fetch-stub';
 import { voterDetail } from '../testing/synthetic-data';
 import { AppComponent } from './app.component';
@@ -11,11 +11,12 @@ import { appConfig } from './app.config';
 
 // /globe lazy-loads CesiumComponent, whose Viewer needs WebGL; swap in the fake
 // before any route loads it (see cesium.component.spec.ts).
-const cesium = createFakeCesium();
+const cesium = fakeCesium();
 vi.doMock('cesium', () => cesium.module);
 
 describe('app routes (real appConfig)', () => {
   beforeEach(() => {
+    resetFakeCesium(cesium);
     TestBed.configureTestingModule({
       providers: [...appConfig.providers, provideHttpClientTesting()],
     });

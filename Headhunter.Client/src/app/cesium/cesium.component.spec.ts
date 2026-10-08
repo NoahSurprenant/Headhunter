@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { createFakeCesium } from '../../testing/fake-cesium';
+import { fakeCesium, resetFakeCesium } from '../../testing/fake-cesium';
 import { areaAddress } from '../../testing/synthetic-data';
 import type { CesiumComponent as CesiumComponentType } from './cesium.component';
 
@@ -9,7 +9,7 @@ import type { CesiumComponent as CesiumComponentType } from './cesium.component'
 // replaced with a fake that records what the component does. vi.mock() cannot be
 // used here because the Angular builder bundles specs before Vitest sees them, so
 // the mock is registered with vi.doMock() and the component is imported afterwards.
-const cesium = createFakeCesium();
+const cesium = fakeCesium();
 vi.doMock('cesium', () => cesium.module);
 let CesiumComponent: typeof CesiumComponentType;
 
@@ -23,8 +23,7 @@ describe('CesiumComponent', () => {
   });
 
   beforeEach(() => {
-    cesium.state.viewer = undefined;
-    cesium.state.picked = undefined;
+    resetFakeCesium(cesium);
     cesium.state.rectangle = { west: rad(-85), south: rad(42), east: rad(-84), north: rad(43) };
     TestBed.configureTestingModule({
       imports: [CesiumComponent],
