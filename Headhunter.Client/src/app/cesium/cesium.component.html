@@ -1,9 +1,9 @@
 <div id="cesiumContainer">
 </div>
-@if (selectedEntity) {
+@if (selectedEntity(); as entity) {
     <app-custom-info-box
     #customInfoBox
-    [entity]="selectedEntity"
+    [entity]="entity"
     [viewer]="viewer"
     (closeInfoBox)="closeInfoBox()"
     >

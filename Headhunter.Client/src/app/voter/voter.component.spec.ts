@@ -17,9 +17,7 @@ describe('VoterComponent', () => {
   async function render(id: string) {
     const fixture = TestBed.createComponent(VoterComponent);
     fixture.componentRef.setInput('id', id);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await fixture.whenStable(); // zoneless: no manual detectChanges()
     return fixture.nativeElement as HTMLElement;
   }
 

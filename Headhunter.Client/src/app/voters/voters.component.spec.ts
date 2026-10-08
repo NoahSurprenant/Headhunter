@@ -21,12 +21,10 @@ describe('VotersComponent', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  // resource() reacts to signal changes through effects, which run during change
-  // detection, so flush a pass before waiting for the fetch to settle.
+  // Zoneless: no manual detectChanges(). whenStable() waits for the scheduled
+  // change detection, the resource fetch and the resulting re-render.
   async function settle(fixture: ComponentFixture<VotersComponent>) {
-    fixture.detectChanges();
     await fixture.whenStable();
-    fixture.detectChanges();
   }
 
   async function render() {
@@ -145,6 +143,30 @@ describe('VotersComponent', () => {
       req.flush(['Alpha', 'Alder']);
       expect(result).toEqual(['Alpha', 'Alder']);
     }
+    http.verify();
+  });
+
+  it('shows live name suggestions once the HTTP response arrives', async () => {
+    stubFetch(() => page);
+    const { fixture, el } = await render();
+    const http = TestBed.inject(HttpTestingController);
+    const firstName = el.querySelector('x-input[formcontrolname="firstName"] input') as HTMLInputElement;
+
+    vi.useFakeTimers();
+    try {
+      firstName.value = 'Al';
+      firstName.dispatchEvent(new Event('input'));
+      firstName.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(300); // InputComponent debounce
+    } finally {
+      vi.useRealTimers();
+    }
+
+    http.expectOne('/api/firstNameSuggestions?query=Al').flush(['Alex', 'Alma']);
+    await fixture.whenStable();
+
+    const items = Array.from(el.querySelectorAll('x-input[formcontrolname="firstName"] li'));
+    expect(items.map(li => li.textContent!.trim())).toEqual(['Alex', 'Alma']);
     http.verify();
   });
 });

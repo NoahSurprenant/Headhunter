@@ -1,13 +1,15 @@
 import { DeferBlockState, TestBed } from '@angular/core/testing';
 import type { Entity, Viewer } from 'cesium';
+import { createFakeCesium } from '../../testing/fake-cesium';
 import { CustomInfoBoxComponent } from './custom-info-box.component';
 
 describe('CustomInfoBoxComponent', () => {
-  let viewer: { trackedEntity: unknown };
+  const { FakeEvent } = createFakeCesium();
+  let viewer: { trackedEntity: unknown; trackedEntityChanged: InstanceType<typeof FakeEvent> };
   let entity: { name: string; description: string };
 
   beforeEach(() => {
-    viewer = { trackedEntity: undefined };
+    viewer = { trackedEntity: undefined, trackedEntityChanged: new FakeEvent() };
     entity = {
       name: '123 Fake St',
       description: '<div>123 Fake St, Testville MI 49999</div><div>Alex Example</div>',
@@ -53,14 +55,37 @@ describe('CustomInfoBoxComponent', () => {
     expect(camera.title).toBe('Focus camera on object');
 
     camera.click();
-    fixture.detectChanges();
+    await fixture.whenStable();
     expect(viewer.trackedEntity).toBe(entity);
     expect(camera.title).toBe('Stop tracking entity');
 
     camera.click();
-    fixture.detectChanges();
+    await fixture.whenStable();
     expect(viewer.trackedEntity).toBeUndefined();
     expect(camera.title).toBe('Focus camera on object');
+  });
+
+  it('follows tracking changes made by Cesium itself', async () => {
+    const { fixture, el } = await render();
+    const camera = el.querySelector('.cesium-infoBox-camera') as HTMLButtonElement;
+
+    // e.g. the user double-clicks the entity or presses Cesium's home button
+    viewer.trackedEntity = entity;
+    viewer.trackedEntityChanged.raise(entity);
+    await fixture.whenStable();
+    expect(camera.title).toBe('Stop tracking entity');
+
+    viewer.trackedEntity = undefined;
+    viewer.trackedEntityChanged.raise(undefined);
+    await fixture.whenStable();
+    expect(camera.title).toBe('Focus camera on object');
+  });
+
+  it('stops listening to the viewer when destroyed', async () => {
+    const { fixture } = await render();
+    expect(viewer.trackedEntityChanged.listeners.length).toBe(1);
+    fixture.destroy();
+    expect(viewer.trackedEntityChanged.listeners.length).toBe(0);
   });
 
   it('slides out and then emits closeInfoBox after the transition', async () => {
@@ -70,7 +95,8 @@ describe('CustomInfoBoxComponent', () => {
     fixture.componentInstance.closeInfoBox.subscribe(() => closed++);
 
     (el.querySelector('.cesium-infoBox-close') as HTMLButtonElement).click();
-    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(0);
+    await fixture.whenStable();
     expect(box.classList).not.toContain('cesium-infoBox-visible');
     expect(closed).toBe(0);
 

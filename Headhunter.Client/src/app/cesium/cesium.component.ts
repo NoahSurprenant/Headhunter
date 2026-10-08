@@ -1,5 +1,5 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Component, inject, OnInit, signal, viewChild, ChangeDetectionStrategy } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnInit, signal, viewChild } from '@angular/core';
 import { ArcGisBaseMapType, ArcGisMapServerImageryProvider, buildModuleUrl,
   Math as CesiumMath, Cartesian3, OpenStreetMapImageryProvider, ProviderViewModel, Viewer, 
   Cartesian2, ScreenSpaceEventHandler,
@@ -22,9 +22,7 @@ import { CustomInfoBoxComponent } from '../custom-info-box/custom-info-box.compo
     CustomInfoBoxComponent,
   ],
   templateUrl: './cesium.component.html',
-  // Eager: selectedEntity is a plain field set from a Cesium ScreenSpaceEventHandler
-  // callback, not a signal, so OnPush would not re-render when an entity is picked.
-  changeDetection: ChangeDetectionStrategy.Eager,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './cesium.component.css',
 })
 export class CesiumComponent implements OnInit {
@@ -32,7 +30,9 @@ export class CesiumComponent implements OnInit {
   private http = inject(HttpClient);
   private searchParams$ = new Subject<{ west: number, east: number, north: number, south: number }>();
   private cancelRequest$ = new Subject<void>();
-  selectedEntity: Entity | undefined = undefined;
+  // A signal because it is set from Cesium's own DOM callbacks, which Angular
+  // (zoneless) does not see; writing the signal schedules change detection.
+  selectedEntity = signal<Entity | undefined>(undefined);
   trackedEntity = signal<Entity | undefined>(undefined);
   customInfoBox = viewChild<CustomInfoBoxComponent>('customInfoBox');
 
@@ -155,14 +155,14 @@ export class CesiumComponent implements OnInit {
     handler.setInputAction((movement: { position: Cartesian2 }) => {
       const pickedObject = this.viewer.scene.pick(movement.position);
       if (defined(pickedObject) && pickedObject.id) {
-        this.selectedEntity = pickedObject.id as Entity;
+        this.selectedEntity.set(pickedObject.id as Entity);
       } else {
         const cib = this.customInfoBox();
         if (cib) {
           cib.close();
         } else {
           // Just to be safe set to undefined
-          this.selectedEntity = undefined;
+          this.selectedEntity.set(undefined);
         }
       }
     }, ScreenSpaceEventType.LEFT_CLICK);
@@ -173,7 +173,7 @@ export class CesiumComponent implements OnInit {
   }
 
   closeInfoBox(): void {
-    this.selectedEntity = undefined;
+    this.selectedEntity.set(undefined);
   }
 
   computeBounds() {
