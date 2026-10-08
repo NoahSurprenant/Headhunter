@@ -1,0 +1,52 @@
+name: .NET tests
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dotnet-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: API and EF Core tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # SDK band comes from global.json, same as local builds.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      # Pulled up front so the image download isn't charged to the first test's timeout.
+      # Keep in sync with SqlServerFixture.SqlServerImage.
+      - name: Pull SQL Server 2025 image
+        run: docker pull mcr.microsoft.com/mssql/server:2025-CU8-ubuntu-24.04@sha256:4bab24f36c1ecd48e85f7d37df26e6bf301641d84c3fe652f9a0dcc947d512e1
+
+      # Every C# project, not just what the tests reference, so the console tools keep compiling.
+      # (Headhunter.sln also contains the Angular .esproj, which the client-tests workflow covers.)
+      - name: Build
+        run: |
+          for project in Headhunter.Tests Headhunter.Seeder Headhunter.Geocoding Headhunter.CSVDump; do
+            dotnet build "$project/$project.csproj" -c Release
+          done
+
+      # Testcontainers starts SQL Server 2025 on the runner's Docker; data is synthetic only.
+      - name: Test
+        run: dotnet test Headhunter.Tests/Headhunter.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"

@@ -68,7 +68,9 @@ public class Program
 
             app.Run();
         }
-        catch (Exception ex)
+        // HostAbortedException is how tooling (dotnet ef, WebApplicationFactory) stops the app
+        // right after building the host; it isn't a crash, so let it through unlogged.
+        catch (Exception ex) when (ex is not HostAbortedException)
         {
             Log.Logger.ForContext<Program>().Fatal(ex, "Fatal error");
             return 1;
