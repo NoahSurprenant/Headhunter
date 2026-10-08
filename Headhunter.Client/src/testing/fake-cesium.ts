@@ -76,3 +76,23 @@ export function createFakeCesium() {
     },
   };
 }
+
+type FakeCesium = ReturnType<typeof createFakeCesium>;
+
+/**
+ * The fake shared by every spec in a test worker. Specs can run in one worker
+ * without module isolation, and the first vi.doMock('cesium') factory used is
+ * the one CesiumComponent keeps, so all specs must hand out the same object.
+ * Call resetFakeCesium() in beforeEach.
+ */
+export function fakeCesium(): FakeCesium {
+  const holder = globalThis as { __headhunterFakeCesium?: FakeCesium };
+  return (holder.__headhunterFakeCesium ??= createFakeCesium());
+}
+
+export function resetFakeCesium(fake: FakeCesium) {
+  fake.state.viewer = undefined;
+  fake.state.clickHandler = undefined;
+  fake.state.picked = undefined;
+  fake.state.rectangle = undefined;
+}
