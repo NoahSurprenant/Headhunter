@@ -1,0 +1,106 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigestsToSemver",
+    ":enableVulnerabilityAlerts"
+  ],
+  "schedule": [
+    "* 0-5 1 * *"
+  ],
+  "packageRules": [
+    {
+      "description": "Everything goes into one PR, majors included",
+      "matchPackageNames": [
+        "*"
+      ],
+      "groupName": "all dependencies",
+      "groupSlug": "all-dependencies",
+      "separateMajorMinor": false
+    },
+    {
+      "description": "Packages tied to the Angular or .NET version: keep minors in the big PR but split majors out",
+      "matchPackageNames": [
+        "@angular/**",
+        "@angular-devkit/**",
+        "@schematics/angular",
+        "zone.js",
+        "typescript",
+        "node",
+        "Microsoft.AspNetCore.**",
+        "Microsoft.EntityFrameworkCore.**",
+        "Microsoft.Extensions.**",
+        "Serilog.Extensions.Hosting",
+        "Serilog.Settings.Configuration",
+        "mcr.microsoft.com/dotnet/**"
+      ],
+      "separateMajorMinor": true
+    },
+    {
+      "description": "Angular majors get their own PR; they need ng update migrations and careful testing. zone.js versions and the node build image are tied to the Angular version, so they ride along",
+      "matchPackageNames": [
+        "@angular/**",
+        "@angular-devkit/**",
+        "@schematics/angular"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "Angular major",
+      "groupSlug": "angular"
+    },
+    {
+      "description": "zone.js is 0.x and each minor pairs with an Angular major; the slug makes its minor land in the same renovate/major-angular branch as the Angular majors",
+      "matchPackageNames": [
+        "zone.js"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "major"
+      ],
+      "groupName": "Angular major",
+      "groupSlug": "major-angular"
+    },
+    {
+      "description": "The node build image must be a version the Angular CLI supports",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "node"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "Angular major",
+      "groupSlug": "angular"
+    },
+    {
+      "description": "Angular only supports one TypeScript minor at a time and ng update bumps it during Angular majors, so Renovate only does TypeScript patches",
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": ".NET majors get their own PR: the projects' TargetFramework (net9.0) has to move with them, which Renovate can't do",
+      "matchPackageNames": [
+        "Microsoft.AspNetCore.**",
+        "Microsoft.EntityFrameworkCore.**",
+        "Microsoft.Extensions.**",
+        "Serilog.Extensions.Hosting",
+        "Serilog.Settings.Configuration",
+        "mcr.microsoft.com/dotnet/**"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": ".NET major",
+      "groupSlug": "dotnet"
+    }
+  ]
+}
