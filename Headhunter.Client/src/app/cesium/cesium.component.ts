@@ -1,5 +1,5 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Component, inject, OnInit, signal, viewChild } from '@angular/core';
+import { Component, inject, OnInit, signal, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { ArcGisBaseMapType, ArcGisMapServerImageryProvider, buildModuleUrl,
   Math as CesiumMath, Cartesian3, OpenStreetMapImageryProvider, ProviderViewModel, Viewer, 
   Cartesian2, ScreenSpaceEventHandler,
@@ -22,6 +22,9 @@ import { CustomInfoBoxComponent } from '../custom-info-box/custom-info-box.compo
     CustomInfoBoxComponent,
   ],
   templateUrl: './cesium.component.html',
+  // Eager: selectedEntity is a plain field set from a Cesium ScreenSpaceEventHandler
+  // callback, not a signal, so OnPush would not re-render when an entity is picked.
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './cesium.component.css',
 })
 export class CesiumComponent implements OnInit {
