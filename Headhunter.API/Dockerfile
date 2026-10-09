@@ -15,18 +15,21 @@ EXPOSE 8081
 # This stage is used to build the service project
 FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
 ARG BUILD_CONFIGURATION=Release
+# The commit, for service.version in telemetry (.git is not in the build context).
+ARG SOURCE_REVISION=
 WORKDIR /src
 COPY ["Headhunter.API/Headhunter.API.csproj", "Headhunter.API/"]
 COPY ["Headhunter.Database/Headhunter.Database.csproj", "Headhunter.Database/"]
 RUN dotnet restore "./Headhunter.API/Headhunter.API.csproj"
 COPY . .
 WORKDIR "/src/Headhunter.API"
-RUN dotnet build "./Headhunter.API.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:DefineConstants=DOCKER_BUILD
+RUN dotnet build "./Headhunter.API.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:DefineConstants=DOCKER_BUILD /p:SourceRevisionId=$SOURCE_REVISION
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./Headhunter.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:DefineConstants=DOCKER_BUILD
+ARG SOURCE_REVISION=
+RUN dotnet publish "./Headhunter.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:DefineConstants=DOCKER_BUILD /p:SourceRevisionId=$SOURCE_REVISION
 
 # This stage is used to build the client project
 FROM node:24.21.0-alpine AS angular
