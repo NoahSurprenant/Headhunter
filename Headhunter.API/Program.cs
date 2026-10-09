@@ -1,4 +1,4 @@
-
+using Headhunter.API.Telemetry;
 using Headhunter.Database;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -7,22 +7,17 @@ namespace Headhunter.API;
 
 public class Program
 {
-    public static int Main(string[] args)
+    public static async Task<int> Main(string[] args)
     {
-        Log.Logger = new LoggerConfiguration()
-                .Enrich.FromLogContext()
-                .WriteTo.Debug(Serilog.Events.LogEventLevel.Verbose)
-                .WriteTo.Console(Serilog.Events.LogEventLevel.Verbose)
-                .MinimumLevel.Verbose()
-                .CreateBootstrapLogger();
+        Log.Logger = LoggingExtensions.CreateBootstrapLogger();
 
         try
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            builder.Host.UseSerilog((context, services, configuration) => configuration
-                .ReadFrom.Configuration(context.Configuration)
-                .ReadFrom.Services(services));
+            var telemetry = TelemetryOptions.FromConfiguration(builder.Configuration, builder.Environment, TelemetryOptions.ServiceVersionOf(typeof(Program).Assembly));
+            builder.AddSerilogLogging(telemetry);
+            builder.Services.AddMetricsAndTracing(telemetry, builder.Configuration);
 
             // Add services to the container.
 
@@ -35,8 +30,14 @@ public class Program
                 options.UseSqlServer(builder.Configuration.GetConnectionString("Headhunter"));
             });
             builder.Services.AddHttpClient();
+            builder.Services.AddAppHealthChecks(builder.Configuration);
+            (await builder.Services.ConfigureAppForwardedHeadersAsync(builder.Configuration)).LogTo(Log.Logger);
 
             var app = builder.Build();
+
+            // Forwarded headers first: everything after sees the real client address and scheme.
+            app.UseForwardedHeaders();
+            app.UseRequestTelemetry();
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -58,7 +59,7 @@ public class Program
 
             app.UseAuthorization();
 
-
+            app.MapAppHealthChecks();
             app.MapControllers();
 
             if (app.Environment.IsDevelopment() is false)
@@ -66,7 +67,7 @@ public class Program
                 app.MapFallbackToFile("index.html");
             }
 
-            app.Run();
+            await app.RunAsync();
         }
         // HostAbortedException is how tooling (dotnet ef, WebApplicationFactory) stops the app
         // right after building the host; it isn't a crash, so let it through unlogged.
@@ -77,7 +78,7 @@ public class Program
         }
         finally
         {
-            Log.CloseAndFlush();
+            await Log.CloseAndFlushAsync();
         }
         return 0;
     }
