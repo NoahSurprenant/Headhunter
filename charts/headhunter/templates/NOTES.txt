@@ -1,0 +1,16 @@
+Headhunter is installed in {{ .Release.Namespace }}.
+{{- if .Values.migrations.enabled }}
+
+The migration Job applies the image's EF Core migrations{{ if .Values.mssql.backup.enabled }} (after a backup when any are pending){{ end }}:
+  kubectl logs -n {{ .Release.Namespace }} -l app=headhunter-migrate --all-containers --prefix
+{{- end }}
+{{- if .Values.ingress.enabled }}
+
+Ingress: {{ join ", " .Values.ingress.hosts }}
+{{- else if .Values.ingressRoute.enabled }}
+
+IngressRoute: {{ .Values.ingressRoute.host }}
+{{- else }}
+
+No ingress: kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Values.app.service.name }} 8080:{{ .Values.app.service.port }}
+{{- end }}

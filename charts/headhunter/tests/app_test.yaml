@@ -1,0 +1,100 @@
+suite: app
+templates:
+  - templates/app.yaml
+release:
+  namespace: hh
+set:
+  mssql.acceptEula: true
+tests:
+  - it: keeps the Deployment's name and selector
+    asserts:
+      - equal: { path: metadata.name, value: headhunter }
+        documentIndex: 0
+      - equal: { path: spec.selector.matchLabels, value: { app: headhunter } }
+        documentIndex: 0
+      - equal: { path: spec.template.spec.automountServiceAccountToken, value: false }
+        documentIndex: 0
+
+  - it: builds the connection string from the administrator, the password from the Secret
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: headhunter-secrets, key: SA_PASSWORD } } }
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ConnectionStrings__Headhunter
+            value: Server=mssql,1433;Database=Headhunter;User Id=sa;Password="$(DB_PASSWORD)";Encrypt=True;TrustServerCertificate=True
+        documentIndex: 0
+
+  - it: takes a whole connection string from a Secret instead
+    set:
+      database.connectionString.key: ConnectionString
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: ConnectionStrings__Headhunter, valueFrom: { secretKeyRef: { name: headhunter-secrets, key: ConnectionString } } }
+        documentIndex: 0
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: headhunter-secrets, key: SA_PASSWORD } } }
+        documentIndex: 0
+
+  - it: needs database.host without the chart's SQL Server
+    set:
+      mssql.enabled: false
+    asserts:
+      - failedTemplate: { errorMessage: "database.host is required with mssql.enabled false" }
+
+  - it: turns config into environment variables, numbers without float notation
+    set:
+      app.config:
+        ForwardedHeaders: { KnownIPNetworks: [10.42.0.0/16], FetchCloudflare: false }
+        HealthChecks: { MaxAllocatedMegabytes: 384 }
+        Literal: "a$b"
+    asserts:
+      - contains: { path: "spec.template.spec.containers[0].env", content: { name: ForwardedHeaders__KnownIPNetworks__0, value: 10.42.0.0/16 } }
+        documentIndex: 0
+      - contains: { path: "spec.template.spec.containers[0].env", content: { name: ForwardedHeaders__FetchCloudflare, value: "false" } }
+        documentIndex: 0
+      - contains: { path: "spec.template.spec.containers[0].env", content: { name: HealthChecks__MaxAllocatedMegabytes, value: "384" } }
+        documentIndex: 0
+      - contains: { path: "spec.template.spec.containers[0].env", content: { name: Literal, value: "a$$b" } }
+        documentIndex: 0
+
+  - it: sets the OpenTelemetry variables
+    set:
+      app.telemetry: { enabled: true, endpoint: "http://collector:4317", environment: prod, resourceAttributes: { team: grunt } }
+    asserts:
+      - contains: { path: "spec.template.spec.containers[0].env", content: { name: OTEL_SERVICE_NAME, value: headhunter } }
+        documentIndex: 0
+      - contains: { path: "spec.template.spec.containers[0].env", content: { name: OTEL_RESOURCE_ATTRIBUTES, value: "deployment.environment.name=prod,team=grunt" } }
+        documentIndex: 0
+      - contains: { path: "spec.template.spec.containers[0].env", content: { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://collector:4317" } }
+        documentIndex: 0
+
+  - it: waits for the migrations, as the administrator, before starting
+    asserts:
+      - equal: { path: "spec.template.spec.initContainers[0].name", value: wait-for-migrations }
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content: { name: SQLCMDPASSWORD, valueFrom: { secretKeyRef: { name: headhunter-secrets, key: SA_PASSWORD } } }
+        documentIndex: 0
+      - matchRegex: { path: "spec.template.spec.initContainers[0].args[0]", pattern: "/app/migrations.txt" }
+        documentIndex: 0
+
+  - it: doesn't wait with the migrations off
+    set:
+      migrations.enabled: false
+    asserts:
+      - notExists: { path: spec.template.spec.initContainers }
+        documentIndex: 0
+
+  - it: pins the image by digest
+    set:
+      app.image.digest: sha256:abc
+    asserts:
+      - equal: { path: "spec.template.spec.containers[0].image", value: "ghcr.io/noahsurprenant/headhunter:master@sha256:abc" }
+        documentIndex: 0

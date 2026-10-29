@@ -1,0 +1,74 @@
+# Everything on, the way the homelab runs it (home/manifests/headhunter in NoahSurprenant/homelab):
+# its existing object names, a Traefik IngressRoute, NFS backups, OTLP, sql-exporter, NetworkPolicies.
+defaultServiceAccount:
+  manage: true
+
+database:
+  password: { key: Password }
+  connectionString: { key: ConnectionString }
+
+app:
+  image:
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  config:
+    ForwardedHeaders:
+      KnownIPNetworks: [10.42.0.0/16]
+      ForwardedForHeaderName: X-Real-IP
+      FetchCloudflare: false
+    HealthChecks:
+      MaxAllocatedMegabytes: 384
+  telemetry:
+    enabled: true
+    endpoint: http://otel-collector.opentelemetry.svc.cluster.local:4317
+    environment: prod
+
+ingressRoute:
+  enabled: true
+  host: headhunter.example.com
+  middlewares: [{ name: security-headers, namespace: traefik }]
+  annotations:
+    gethomepage.dev/enabled: "true"
+
+mssql:
+  acceptEula: true
+  saPassword: { key: Password }
+  loadBalancer:
+    enabled: true
+    port: 5555
+    externalTrafficPolicy: Local
+  persistence:
+    size: 30Gi
+    storageClass: longhorn
+  backup:
+    claimName: nfs-pvc
+    accessModes: [ReadWriteMany]
+    nfs:
+      server: 192.0.2.10
+      path: /sqlbackups
+      pvName: nfs-sqlbackups-headhunter
+
+sqlExporter:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    labels: { otel-scrape: "true" }
+
+networkPolicy:
+  enabled: true
+  dns:
+    to:
+      - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+        podSelector: { matchLabels: { k8s-app: kube-dns } }
+  app:
+    from:
+      - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: traefik } }
+        podSelector: { matchLabels: { app.kubernetes.io/name: traefik } }
+    telemetryTo:
+      - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: opentelemetry } }
+        podSelector: { matchLabels: { app.kubernetes.io/instance: otel-collector } }
+  mssql:
+    loadBalancerFrom:
+      - ipBlock: { cidr: 10.0.0.0/8, except: [10.42.0.0/16, 10.43.0.0/16] }
+  sqlExporter:
+    from:
+      - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: opentelemetry } }

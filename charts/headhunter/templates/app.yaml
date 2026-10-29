@@ -1,0 +1,164 @@
+{{- $a := .Values.app -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $a.name }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: {{ $a.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $a.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $a.name }}
+        {{- include "headhunter.podLabels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+        {{- with $a.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $a.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $a.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and .Values.migrations.enabled $a.waitForMigrations }}
+      initContainers:
+        # Until the database has every migration in this image, changing nothing: the migration Job
+        # applies them. Under Argo CD the Job has already run; with plain Helm they start together.
+        - name: wait-for-migrations
+          {{- include "headhunter.stepContainer" . | nindent 10 }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -u
+              {{- include "headhunter.waitForDatabaseScript" . | nindent 14 }}
+              last=""
+              while :; do
+                if ( {{- include "headhunter.appliedMigrationsQuery" . | nindent 18 }}
+                   ) 2>/work/error.txt; then
+                  {{ include "headhunter.pendingMigrations" . }} > /work/pending.txt
+                  if [ ! -s /work/pending.txt ]; then echo "Database $DB_NAME is up to date."; exit 0; fi
+                  state="Waiting for the migration Job to apply: $(tr '\n' ' ' < /work/pending.txt)"
+                else
+                  state="Waiting for the database: $(head -c 300 /work/error.txt | tr '\n' ' ')"
+                fi
+                [ "$state" = "$last" ] || echo "$state"
+                last=$state
+                sleep 5
+              done
+          env:
+            {{- include "headhunter.dbEnv" . | nindent 12 }}
+            - name: WAIT_SECONDS
+              value: {{ .Values.migrations.waitSeconds | quote }}
+            - name: HOME
+              value: /tmp
+          resources:
+            {{- toYaml .Values.migrations.stepResources | nindent 12 }}
+          volumeMounts:
+            - name: work
+              mountPath: /work
+            - name: tmp
+              mountPath: /tmp
+      {{- end }}
+      containers:
+        - name: {{ $a.name }}
+          image: {{ include "headhunter.appImage" . }}
+          imagePullPolicy: {{ $a.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          {{- with $a.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $a.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $a.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $a.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $a.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- include "headhunter.connectionEnv" . | nindent 12 }}
+            {{- with $a.telemetry }}
+            {{- if .enabled }}
+            # Logs, metrics and traces, all pushed over OTLP.
+            - name: OTEL_SERVICE_NAME
+              value: {{ .serviceName | default $a.name | quote }}
+            {{- $attrs := list }}
+            {{- if .environment }}{{ $attrs = append $attrs (printf "deployment.environment.name=%s" .environment) }}{{ end }}
+            {{- range $k, $v := .resourceAttributes }}{{ $attrs = append $attrs (printf "%s=%v" $k $v) }}{{ end }}
+            {{- if $attrs }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ join "," $attrs | quote }}
+            {{- end }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ required "app.telemetry.endpoint is required with app.telemetry.enabled" .endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ .protocol | quote }}
+            {{- end }}
+            {{- end }}
+            {{- include "headhunter.configEnv" (dict "name" "" "value" $a.config) | indent 12 }}
+            {{- with $a.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if and .Values.migrations.enabled $a.waitForMigrations }}
+        - name: work
+          emptyDir: {}
+        {{- end }}
+      {{- with $a.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $a.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $a.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $a.service.name }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $a.name }}
+  ports:
+    - name: http
+      port: {{ $a.service.port }}
+      targetPort: http

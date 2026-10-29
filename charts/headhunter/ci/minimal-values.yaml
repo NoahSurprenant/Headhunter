@@ -1,0 +1,9 @@
+# The smallest working install: the chart's SQL Server, a Kubernetes Ingress, defaults for the rest.
+# Installed as is by e2e/run.sh.
+mssql:
+  acceptEula: true                # required to run the chart's SQL Server
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts: [headhunter.example.com]

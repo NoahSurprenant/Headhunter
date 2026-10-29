@@ -1,0 +1,54 @@
+suite: sql-exporter
+templates:
+  - templates/sql-exporter.yaml
+release:
+  namespace: hh
+set:
+  mssql.acceptEula: true
+tests:
+  - it: is off by default
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: reads the chart's SQL Server as the administrator, with both collectors
+    set:
+      sqlExporter.enabled: true
+    asserts:
+      - hasDocuments: { count: 3 }
+      - equal: { path: spec.selector.matchLabels, value: { app.kubernetes.io/name: sql-exporter } }
+        documentIndex: 1
+      - contains: { path: "spec.template.spec.containers[0].env", content: { name: DB_HOST, value: mssql } }
+        documentIndex: 1
+      - contains: { path: "spec.template.spec.containers[0].env", content: { name: DB_USER, value: sa } }
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: headhunter-secrets, key: SA_PASSWORD } } }
+        documentIndex: 1
+      - matchRegex: { path: "data['sql_exporter.yml']", pattern: 'collectors: \["mssql_standard","mssql_query_stats"\]' }
+        documentIndex: 0
+      - exists: { path: "data['mssql_query_stats.collector.yml']" }
+        documentIndex: 0
+
+  - it: uses its own login when given one
+    set:
+      sqlExporter: { enabled: true, user: monitor, password: { key: MONITOR_PASSWORD } }
+    asserts:
+      - contains: { path: "spec.template.spec.containers[0].env", content: { name: DB_USER, value: monitor } }
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: headhunter-secrets, key: MONITOR_PASSWORD } } }
+        documentIndex: 1
+
+  - it: makes a ServiceMonitor with the namespace as instance
+    set:
+      sqlExporter: { enabled: true, serviceMonitor: { enabled: true, labels: { otel-scrape: "true" } } }
+    asserts:
+      - hasDocuments: { count: 4 }
+      - isKind: { of: ServiceMonitor }
+        documentIndex: 3
+      - equal: { path: metadata.labels.otel-scrape, value: "true" }
+        documentIndex: 3
+      - equal: { path: "spec.endpoints[0].relabelings[0].targetLabel", value: instance }
+        documentIndex: 3

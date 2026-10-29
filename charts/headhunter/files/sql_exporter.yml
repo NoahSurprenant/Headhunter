@@ -1,0 +1,17 @@
+# Rendered with tpl: sqlExporter.collectors picks the collectors the target runs.
+global:
+  scrape_timeout_offset: 500ms
+  min_interval: 0s
+  max_connections: 3
+  # None kept between scrapes: a kept connection outlives a SQL Server restart and keeps failing
+  # ("Read: EOF" on every scrape) until the exporter restarts, since go-mssqldb doesn't report it as
+  # broken. A fresh login per scrape is cheap.
+  max_idle_connections: 0
+# A placeholder, overwritten at load by SQLEXPORTER_TARGET_DSN, which is how the password stays out
+# of this file. It cannot be left empty: the YAML unmarshaller rejects a blank data_source_name
+# before the environment is ever consulted.
+target:
+  data_source_name: 'sqlserver://placeholder:placeholder@127.0.0.1:1433'
+  collectors: {{ .Values.sqlExporter.collectors | toJson }}
+collector_files:
+  - '*.collector.yml'
