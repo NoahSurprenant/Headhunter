@@ -68,7 +68,7 @@ tests:
       - equal: { path: "spec.template.spec.initContainers[2].name", value: check-pending }
       - matchRegex:
           path: "spec.template.spec.initContainers[1].args[0]"
-          pattern: "WHERE name = N'max degree of parallelism'\\) <> 2\\s+BEGIN"
+          pattern: "WHERE name = N'max degree of parallelism'\\);\\s+IF @current IS NULL THROW[^\\n]*\\n\\s+IF @current <> 2\\s+BEGIN"
       - matchRegex:
           path: "spec.template.spec.initContainers[1].args[0]"
           pattern: "EXEC sp_configure N'cost threshold for parallelism', 50;"
