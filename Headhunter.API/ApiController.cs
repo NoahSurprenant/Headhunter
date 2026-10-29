@@ -118,6 +118,7 @@ public class ApiController : ControllerBase
                     Longitude = (decimal)x.Longitude!,
                     Voters = x.Voters.Select(v => new VoterDto()
                     {
+                        Id = v.ID,
                         FirstName = v.FIRST_NAME,
                         LastName = v.LAST_NAME
                     }).ToArray(),
@@ -186,6 +187,10 @@ public class ApiController : ControllerBase
             .Where(v => v.ID == id)
             .Select(x => new VoterDetailDto()
             {
+                Id = x.ID,
+                Gender = x.GENDER,
+                Latitude = x.Address.Latitude,
+                Longitude = x.Address.Longitude,
                 FirstName = x.FIRST_NAME,
                 MiddleName = x.MIDDLE_NAME,
                 LastName = x.LAST_NAME,
@@ -212,6 +217,10 @@ public class ApiController : ControllerBase
             .Where(v => v.AddressID == id)
             .Select(x => new VoterDetailDto()
             {
+                Id = x.ID,
+                Gender = x.GENDER,
+                Latitude = x.Address.Latitude,
+                Longitude = x.Address.Longitude,
                 FirstName = x.FIRST_NAME,
                 MiddleName = x.MIDDLE_NAME,
                 LastName = x.LAST_NAME,
@@ -300,6 +309,7 @@ public class ApiController : ControllerBase
             LastName = x.LAST_NAME,
             BirthYear = x.YEAR_OF_BIRTH,
             Gender = x.GENDER,
+            AddressId = x.AddressID,
             StreetNumberPrefix = x.Address.STREET_NUMBER_PREFIX,
             StreetNumber = x.Address.STREET_NUMBER,
             StreetNumberSuffix = x.Address.STREET_NUMBER_SUFFIX,
@@ -387,6 +397,7 @@ public class VoterGridDto
     public required string LastName { get; set; }
     public required int BirthYear { get; set; }
     public required string Gender { get; set; }
+    public required Guid AddressId { get; set; }
     public required string StreetNumberPrefix { get; set; }
     public required string StreetNumber { get; set; }
     public required string StreetNumberSuffix { get; set; }
@@ -442,12 +453,17 @@ public class AddressDto
 
 public class VoterDto
 {
+    public required Guid Id { get; set; }
     public required string FirstName { get; set; }
     public required string LastName { get; set; }
 }
 
 public class VoterDetailDto
 {
+    public required Guid Id { get; set; }
+    public required string Gender { get; set; }
+    public required decimal? Latitude { get; set; }
+    public required decimal? Longitude { get; set; }
     public required string FirstName { get; set; }
     public required string MiddleName { get; set; }
     public required string LastName { get; set; }

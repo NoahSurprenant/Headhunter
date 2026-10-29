@@ -28,4 +28,12 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.stub')?.textContent).toBe('stub page');
   });
+
+  it('has a nav bar to the globe and the voter search', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    const links = [...(fixture.nativeElement as HTMLElement).querySelectorAll('nav a')]
+      .map(a => [a.textContent!.trim(), a.getAttribute('href')]);
+    expect(links).toEqual([['Headhunter', '/globe'], ['Globe', '/globe'], ['Voters', '/voters']]);
+  });
 });

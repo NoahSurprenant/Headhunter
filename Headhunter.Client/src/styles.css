@@ -20,3 +20,22 @@ html, body
         }
     }
 }
+
+/* Shared page pieces: cards, chips and link buttons (voter, address and voters pages). */
+@layer components {
+    .card {
+        @apply bg-gray-100 rounded-xl shadow p-5 border border-gray-200;
+    }
+    .card-title {
+        @apply text-sm font-bold uppercase tracking-wide text-gray-500 mb-2;
+    }
+    .chip {
+        @apply inline-block text-xs px-3 py-1 rounded-full font-semibold;
+    }
+    .btn-primary {
+        @apply inline-block text-sm text-white font-medium rounded-lg px-4 py-2 bg-gradient-to-br from-purple-600 to-blue-500 hover:from-purple-700 hover:to-blue-600;
+    }
+    .btn-secondary {
+        @apply inline-block text-sm font-medium rounded-lg px-4 py-2 bg-white text-purple-700 border border-purple-300 hover:bg-purple-50;
+    }
+}

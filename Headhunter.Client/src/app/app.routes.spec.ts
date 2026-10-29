@@ -49,14 +49,14 @@ describe('app routes (real appConfig)', () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe('api/address/addr-0001');
     expect(TestBed.inject(Title).getTitle()).toBe('Address');
-    expect(harness.routeNativeElement?.textContent).toContain('1 voters at this address');
+    expect(harness.routeNativeElement?.textContent).toContain('1 voter registered here');
   });
 
   it('serves the voter search page', async () => {
     stubFetch(() => ({ totalCount: 0, results: [] }));
     const harness = await RouterTestingHarness.create('/voters');
     expect(TestBed.inject(Title).getTitle()).toBe('Voters');
-    expect(harness.routeNativeElement?.textContent).toContain('Search Filters');
+    expect(harness.routeNativeElement?.textContent).toContain('Astrology Sign');
   });
 
   it('opens the info box when a globe entity is picked, rendered through the root component', async () => {

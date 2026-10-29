@@ -1,11 +1,16 @@
-import { ChangeDetectionStrategy, Component, input, resource } from '@angular/core';
-import { VoterCardComponent } from '../voter/voterCard/voterCard.component';
+import { ChangeDetectionStrategy, Component, computed, input, resource } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { VoterDetailDto } from '../voter/voter.component';
+import { MapPreviewComponent } from '../shared/map-preview/map-preview.component';
+import { approximateAge, fullName, genderLabel, globeParams, initials } from '../shared/people/people';
 
 @Component({
   selector: 'app-address',
   imports: [
-    VoterCardComponent,
+    DatePipe,
+    RouterLink,
+    MapPreviewComponent,
   ],
   templateUrl: './address.component.html',
   styleUrl: './address.component.css',
@@ -23,8 +28,20 @@ export class AddressComponent {
         method: 'GET',
         signal: abortSignal,
       });
-
+      if (!response.ok) throw new Error(`Address ${params.id}: ${response.status}`);
       return response.json() as Promise<VoterDetailDto[]>;
     },
   });
+
+  voters = computed(() => (this.x.hasValue() ? this.x.value() : []));
+  first = computed(() => this.voters().at(0));
+  globe = computed(() => {
+    const v = this.first();
+    return v ? globeParams(v.latitude, v.longitude, v.addressId) : null;
+  });
+
+  protected readonly fullName = fullName;
+  protected readonly initials = initials;
+  protected readonly genderLabel = genderLabel;
+  protected readonly approximateAge = approximateAge;
 }

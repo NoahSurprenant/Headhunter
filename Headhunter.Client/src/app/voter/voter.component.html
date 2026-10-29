@@ -1,10 +1,69 @@
 @if (x.hasValue()) {
-    <app-voter-card [voter]="x.value()" [displayAddress]="displayAddress()"></app-voter-card>
+@let v = x.value();
+<div class="max-w-5xl mx-auto p-6 animate-fade-in">
+    <div class="flex items-center gap-5 mb-6">
+        <div class="shrink-0 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full w-20 h-20 flex items-center justify-center text-white text-3xl font-bold shadow-lg">
+            {{ initials(v) }}
+        </div>
+        <div>
+            <h1 class="text-3xl font-extrabold text-gray-900">{{ fullName(v) }}</h1>
+            <div class="flex flex-wrap gap-2 mt-2">
+                <span class="chip bg-purple-100 text-purple-800">About {{ approximateAge(v.birthYear) }} (born {{ v.birthYear }})</span>
+                @if (genderLabel(v.gender); as g) {
+                    <span class="chip bg-gray-200 text-gray-800">{{ g }}</span>
+                }
+                <span class="chip bg-blue-100 text-blue-800">Registered {{ v.registrationDate | date:'longDate' }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid gap-6 md:grid-cols-2">
+        <div class="card">
+            <h2 class="card-title">Address</h2>
+            <a [routerLink]="['/address', v.addressId]" class="block group">
+                <p class="text-lg text-gray-900 group-hover:text-purple-700 group-hover:underline">{{ v.fullStreetAddress }}</p>
+                <p class="text-gray-600">{{ v.city }}, {{ v.state }} {{ v.zip }}</p>
+            </a>
+            <div class="flex flex-wrap gap-2 mt-4">
+                <a [routerLink]="['/address', v.addressId]" class="btn-secondary">Everyone at this address</a>
+                @if (globe(); as params) {
+                    <a routerLink="/globe" [queryParams]="params" class="btn-primary">Show on globe</a>
+                }
+            </div>
+        </div>
+
+        @if (v.latitude !== null && v.longitude !== null) {
+            <a routerLink="/globe" [queryParams]="globe()" class="block" title="Show on globe">
+                <app-map-preview [latitude]="v.latitude" [longitude]="v.longitude" [height]="220"></app-map-preview>
+            </a>
+        } @else {
+            <div class="card flex items-center justify-center text-gray-500">This address hasn't been placed on the map.</div>
+        }
+    </div>
+
+    <div class="card mt-6">
+        <h2 class="card-title">Also registered at this address</h2>
+        @if (others().length === 0) {
+            <p class="text-gray-500">{{ household.isLoading() ? 'Loading…' : 'Nobody else.' }}</p>
+        } @else {
+            <ul class="divide-y divide-gray-300">
+                @for (o of others(); track o.id) {
+                    <li>
+                        <a [routerLink]="['/voter', o.id]" class="flex items-center justify-between py-2 hover:bg-white/60 rounded px-2 -mx-2">
+                            <span class="font-semibold text-gray-900">{{ fullName(o) }}</span>
+                            <span class="text-sm text-gray-600">about {{ approximateAge(o.birthYear) }}@if (genderLabel(o.gender); as g) {, {{ g }}}</span>
+                        </a>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+</div>
+} @else if (x.isLoading()) {
+    <div class="p-12 text-center text-gray-500">Loading…</div>
 } @else {
-  <div class="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-purple-100 to-blue-100 animate-fade-in">
+  <div class="flex flex-col items-center justify-center h-full bg-gradient-to-br from-purple-100 to-blue-100 animate-fade-in">
     <h1 class="text-4xl font-extrabold text-gray-800">Voter</h1>
     <p class="mt-4 text-lg text-gray-600">No Voter Loaded</p>
   </div>
 }
-
-

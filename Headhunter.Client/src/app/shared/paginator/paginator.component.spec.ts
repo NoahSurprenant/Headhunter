@@ -5,7 +5,7 @@ import { PaginatorComponent } from './paginator.component';
 describe('PaginatorComponent', () => {
   async function render(pageNumber: number, pageSize: number, totalCount: number, rowsOnPage: number) {
     const fixture = TestBed.createComponent(PaginatorComponent);
-    const rows = Array.from({ length: rowsOnPage }, (_, i) => voterRow({ id: i + 1 }));
+    const rows = Array.from({ length: rowsOnPage }, (_, i) => voterRow({ id: `voter-${i + 1}` }));
     fixture.componentRef.setInput('paginationResult', votersPage(rows, totalCount));
     fixture.componentRef.setInput('pageNumber', pageNumber);
     fixture.componentRef.setInput('pageSize', pageSize);

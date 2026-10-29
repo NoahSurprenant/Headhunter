@@ -11,3 +11,12 @@
         opacity: 0;
     }
 }
+
+/* Links inside the description, which is set as innerHTML (so ::ng-deep reaches it). */
+:host ::ng-deep .info-links a {
+  color: #7dd3fc;
+  text-decoration: underline;
+}
+:host ::ng-deep .info-links a:hover {
+  color: #e0f2fe;
+}
