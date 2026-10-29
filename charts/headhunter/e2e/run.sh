@@ -72,6 +72,8 @@ mssql:
   configuration: { max degree of parallelism: 2, cost threshold for parallelism: 50 }
 sqlExporter:
   enabled: true
+database:
+  recoveryModel: SIMPLE
 networkPolicy:
   enabled: true
 EOF
@@ -92,6 +94,9 @@ grep -q "max degree of parallelism: 0 -> 2" <<<"$logs" || fail "The configure st
 settings=$(sql "SELECT CONCAT(name, '=', CONVERT(int, value_in_use)) FROM sys.configurations WHERE name IN ('max degree of parallelism', 'cost threshold for parallelism') ORDER BY name" | tr -d '\r' | tr '\n' ' ')
 [ "$settings" = "cost threshold for parallelism=50 max degree of parallelism=2 " ] || fail "Server settings are: $settings"
 echo "Server settings applied: $settings"
+grep -q "Recovery model: FULL -> SIMPLE" <<<"$logs" || fail "The recovery model wasn't set"
+[ "$(sql "SELECT recovery_model_desc FROM sys.databases WHERE name = N'Headhunter'" | tr -d '[:space:]')" = SIMPLE ] \
+  || fail "The database isn't in SIMPLE recovery"
 
 kubectl port-forward -n "$NS" svc/headhunter 18080:8080 >"$WORK/pf-app.log" 2>&1 &
 pf_app=$!
@@ -132,6 +137,7 @@ logs=$(job_logs)
 echo "$logs"
 grep -q "Nothing pending: no backup." <<<"$logs" || fail "It backed up with nothing pending"
 grep -q "max degree of parallelism: 2 already" <<<"$logs" || fail "The configure step changed a setting that was already right"
+grep -q "Recovery model: SIMPLE already" <<<"$logs" || fail "The recovery model was changed again"
 grep -q "Nothing to migrate." <<<"$logs" || fail "It ran the bundle with nothing pending"
 
 step "5. Upgrade with a migration pending"

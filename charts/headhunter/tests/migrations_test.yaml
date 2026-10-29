@@ -20,7 +20,7 @@ tests:
       - equal: { path: "spec.template.spec.initContainers[1].name", value: check-pending }
       - equal: { path: "spec.template.spec.initContainers[2].name", value: backup }
       - equal: { path: "spec.template.spec.containers[0].name", value: migrate }
-      - matchRegex: { path: "spec.template.spec.containers[0].args[0]", pattern: "exec /app/efbundle" }
+      - matchRegex: { path: "spec.template.spec.containers[0].args[0]", pattern: "\\n\\s*/app/efbundle\\n" }
       - matchRegex: { path: "spec.template.spec.initContainers[2].args[0]", pattern: "WITH COPY_ONLY, COMPRESSION, CHECKSUM" }
 
   # Kubernetes turns $$ into $; the backslash keeps the shell from running $(DB_NAME) as a command.
@@ -79,3 +79,29 @@ tests:
       mssql.configuration: { max degree of parallelism: two }
     asserts:
       - failedTemplate: { errorMessage: "mssql.configuration: max degree of parallelism must be a number" }
+
+  - it: leaves the recovery model alone by default
+    asserts:
+      - notMatchRegex: { path: "spec.template.spec.containers[0].args[0]", pattern: "SET RECOVERY" }
+
+  - it: sets the recovery model after the migrations, only if it differs
+    set:
+      database.recoveryModel: SIMPLE
+    asserts:
+      - matchRegex: { path: "spec.template.spec.containers[0].args[0]", pattern: "/app/efbundle[\\s\\S]*IF @current <> N'SIMPLE'[\\s\\S]*SET RECOVERY SIMPLE" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: SQLCMDPASSWORD, valueFrom: { secretKeyRef: { name: headhunter-secrets, key: SA_PASSWORD } } }
+
+  - it: refuses an unknown recovery model
+    set:
+      database.recoveryModel: simple
+    asserts:
+      - failedTemplate: { errorMessage: "database.recoveryModel must be SIMPLE, FULL or BULK_LOGGED" }
+
+  # $(DB_NAME) without $$ would be expanded by Kubernetes itself (DB_NAME is in the env).
+  - it: escapes sqlcmd variables in the migrate step too
+    set:
+      database.recoveryModel: SIMPLE
+    asserts:
+      - notMatchRegex: { path: "spec.template.spec.containers[0].args[0]", pattern: '[^$]\$\(DB_NAME\)' }

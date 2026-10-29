@@ -35,6 +35,11 @@ database:
   #   Server=<host>,<port>;Database=<name>;User Id=<user>;Password="<password>";<options>
   # The password is quoted, so it must not contain '"'.
   options: "Encrypt=True;TrustServerCertificate=True"
+  # The database's recovery model, set by the migration Job after the migrations: SIMPLE, FULL or
+  # BULK_LOGGED. Empty: left as it is (a new database gets SQL Server's default, FULL). FULL keeps every
+  # change in the log until a log backup, so without log backups (the chart takes none) the log only
+  # grows; SIMPLE reuses it, and restores go back to a full backup, e.g. the Job's pre-migration ones.
+  recoveryModel: ""
   # Give the app this whole connection string instead (ConnectionStrings:Headhunter). The migrations
   # still connect as the administrator above. secretName empty: secret.name.
   connectionString:
