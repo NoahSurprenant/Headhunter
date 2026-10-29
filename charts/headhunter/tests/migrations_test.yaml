@@ -1,0 +1,57 @@
+suite: migrations
+templates:
+  - templates/migrations.yaml
+release:
+  namespace: hh
+set:
+  mssql.acceptEula: true
+tests:
+  - it: runs after SQL Server and before the app, without retries
+    asserts:
+      - isKind: { of: Job }
+      - matchRegex: { path: metadata.name, pattern: "^headhunter-migrate-[0-9a-f]{10}$" }
+      - equal: { path: "metadata.annotations['argocd.argoproj.io/sync-wave']", value: "-1" }
+      - equal: { path: spec.backoffLimit, value: 0 }
+      - equal: { path: spec.template.metadata.labels.app, value: headhunter-migrate }
+
+  - it: waits, checks, backs up, then migrates
+    asserts:
+      - equal: { path: "spec.template.spec.initContainers[0].name", value: wait-for-database }
+      - equal: { path: "spec.template.spec.initContainers[1].name", value: check-pending }
+      - equal: { path: "spec.template.spec.initContainers[2].name", value: backup }
+      - equal: { path: "spec.template.spec.containers[0].name", value: migrate }
+      - matchRegex: { path: "spec.template.spec.containers[0].args[0]", pattern: "exec /app/efbundle" }
+      - matchRegex: { path: "spec.template.spec.initContainers[2].args[0]", pattern: "WITH COPY_ONLY, COMPRESSION, CHECKSUM" }
+
+  # Kubernetes turns $$ into $; the backslash keeps the shell from running $(DB_NAME) as a command.
+  - it: passes sqlcmd variables through the shell untouched
+    asserts:
+      - matchRegex: { path: "spec.template.spec.initContainers[1].args[0]", pattern: 'DB_ID\(N.\\\$\$\(DB_NAME\)' }
+      - notMatchRegex: { path: "spec.template.spec.initContainers[1].args[0]", pattern: '[^\\]\$\$\(DB_NAME\)' }
+
+  - it: skips the backup step when told
+    set:
+      migrations.backup.enabled: false
+    asserts:
+      - lengthEqual: { path: spec.template.spec.initContainers, count: 2 }
+
+  - it: connects the bundle as the administrator, whatever the app uses
+    set:
+      database.connectionString.key: ConnectionString
+      database.password.key: Password
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ConnectionStrings__Headhunter
+            value: Server=mssql,1433;Database=Headhunter;User Id=sa;Password="$(DB_PASSWORD)";Encrypt=True;TrustServerCertificate=True;Command Timeout=3600
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: headhunter-secrets, key: Password } } }
+
+
+  - it: is off with migrations.enabled false
+    set:
+      migrations.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }
