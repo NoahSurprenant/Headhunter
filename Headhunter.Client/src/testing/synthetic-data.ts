@@ -6,23 +6,28 @@ import type { VoterDto } from '../app/voters/voters.component';
 
 export function voterDetail(overrides: Partial<VoterDetailDto> = {}): VoterDetailDto {
   return {
+    id: 'voter-0001',
     firstName: 'Alex',
     middleName: 'Quinn',
     lastName: 'Example',
     birthYear: 1990,
-    registrationDate: '2020-03-15T00:00:00' as unknown as Date, // the API sends ISO strings
+    gender: 'F',
+    registrationDate: '2020-03-15T00:00:00', // the API sends ISO strings
     addressId: 'addr-0001',
     fullStreetAddress: '123 Fake St',
     city: 'Testville',
     state: 'MI',
     zip: '49999',
+    latitude: 43.0,
+    longitude: -84.5,
     ...overrides,
   };
 }
 
 export function voterRow(overrides: Partial<VoterDto> = {}): VoterDto {
   return {
-    id: 1001,
+    id: 'voter-1001',
+    addressId: 'addr-0001',
     firstName: 'Alex',
     middleName: '',
     lastName: 'Example',
@@ -60,8 +65,8 @@ export function areaAddress(overrides: Partial<AddressDto> = {}): AddressDto {
     latitude: 43.0,
     longitude: -84.5,
     voters: [
-      { firstName: 'Alex', lastName: 'Example' },
-      { firstName: 'Jordan', lastName: 'Sample' },
+      { id: 'voter-0001', firstName: 'Alex', lastName: 'Example' },
+      { id: 'voter-0002', firstName: 'Jordan', lastName: 'Sample' },
     ],
     ...overrides,
   };

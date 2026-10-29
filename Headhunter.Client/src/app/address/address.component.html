@@ -1,17 +1,47 @@
-@let voters = x.hasValue() ? x.value() : [];
-<div class="max-w-xl mx-auto mt-12 bg-gray-200 rounded-xl shadow-lg p-8 border border-gray-200 animate-fade-in">
-    <div class="flex items-center mb-4">
-        <p class="text-3xl font-extrabold text-gray-900">
-            {{voters.length}} voters at this address
-        </p>
-    </div>
-    <div class="mb-2">
-        <p class="font-semibold text-gray-700">Address</p>
-        <p class="text-gray-800">{{voters.at(0)?.fullStreetAddress}}</p>
-        <p class="text-gray-600">{{voters.at(0)?.city}}, {{voters.at(0)?.state}} {{voters.at(0)?.zip}}</p>
-    </div>
-</div>
+<div class="max-w-5xl mx-auto p-6 animate-fade-in">
+    @if (first(); as a) {
+        <div class="grid gap-6 md:grid-cols-2 mb-6">
+            <div class="card">
+                <h2 class="card-title">Address</h2>
+                <h1 class="text-2xl font-extrabold text-gray-900">{{ a.fullStreetAddress }}</h1>
+                <p class="text-gray-600">{{ a.city }}, {{ a.state }} {{ a.zip }}</p>
+                <p class="mt-3 text-gray-800">
+                    {{ voters().length }} {{ voters().length === 1 ? 'voter' : 'voters' }} registered here
+                </p>
+                @if (globe(); as params) {
+                    <a routerLink="/globe" [queryParams]="params" class="btn-primary mt-4">Show on globe</a>
+                }
+            </div>
+            @if (a.latitude !== null && a.longitude !== null) {
+                <a routerLink="/globe" [queryParams]="globe()" class="block" title="Show on globe">
+                    <app-map-preview [latitude]="a.latitude" [longitude]="a.longitude" [height]="220"></app-map-preview>
+                </a>
+            }
+        </div>
 
-@for(voter of voters; track voter) {
-  <app-voter-card [voter]="voter" [displayAddress]="false"></app-voter-card>
-}
+        <div class="card">
+            <h2 class="card-title">Voters</h2>
+            <ul class="divide-y divide-gray-300">
+                @for (v of voters(); track v.id) {
+                    <li>
+                        <a [routerLink]="['/voter', v.id]" class="flex items-center gap-4 py-3 hover:bg-white/60 rounded px-2 -mx-2">
+                            <span class="shrink-0 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full w-10 h-10 flex items-center justify-center text-white font-bold">
+                                {{ initials(v) }}
+                            </span>
+                            <span class="flex-1">
+                                <span class="block font-semibold text-gray-900">{{ fullName(v) }}</span>
+                                <span class="block text-sm text-gray-600">
+                                    About {{ approximateAge(v.birthYear) }}@if (genderLabel(v.gender); as g) {, {{ g }}} · registered {{ v.registrationDate | date:'mediumDate' }}
+                                </span>
+                            </span>
+                        </a>
+                    </li>
+                }
+            </ul>
+        </div>
+    } @else if (x.isLoading()) {
+        <div class="p-12 text-center text-gray-500">Loading…</div>
+    } @else {
+        <div class="p-12 text-center text-gray-500">No voters registered at this address.</div>
+    }
+</div>

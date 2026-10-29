@@ -103,4 +103,23 @@ describe('CustomInfoBoxComponent', () => {
     vi.advanceTimersByTime(300);
     expect(closed).toBe(1);
   });
+
+  it('opens the description\'s links inside the app, leaving modified clicks to the browser', async () => {
+    entity.description = '<div><a href="/address/addr-0001">123 Fake St</a></div>';
+    const { el } = await render();
+    const { Router } = await import('@angular/router');
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    const link = el.querySelector('.cesium-infoBox-description a') as HTMLAnchorElement;
+
+    const plain = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    link.dispatchEvent(plain);
+    expect(navigate).toHaveBeenCalledWith('/address/addr-0001');
+    expect(plain.defaultPrevented).toBe(true);
+
+    navigate.mockClear();
+    const ctrl = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true });
+    link.dispatchEvent(ctrl);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(ctrl.defaultPrevented).toBe(false);
+  });
 });

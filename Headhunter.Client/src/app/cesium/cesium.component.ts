@@ -1,5 +1,5 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input, OnInit, signal, untracked, viewChild } from '@angular/core';
 import { buildModuleUrl,
   Math as CesiumMath, Cartesian3, ProviderViewModel, UrlTemplateImageryProvider, Viewer,
   Cartesian2, ScreenSpaceEventHandler,
@@ -7,6 +7,7 @@ import { buildModuleUrl,
   VerticalOrigin,
   Color,
   ScreenSpaceEventType,
+  DistanceDisplayCondition,
   defined,
   Entity
 } from 'cesium';
@@ -47,6 +48,26 @@ export class CesiumComponent implements OnInit {
   // A signal because it is set from Cesium's own DOM callbacks, which Angular
   // (zoneless) does not see; writing the signal schedules change detection.
   selectedEntity = signal<Entity | undefined>(undefined);
+
+  // A place to show: /globe?lat=..&lon=..&address=.. (the voter and address pages link here), or the voters page's
+  // selected row. The camera flies there, and the address's info box opens once its point has loaded.
+  lat = input(undefined, { transform: optionalNumber });
+  lon = input(undefined, { transform: optionalNumber });
+  address = input<string | undefined>(undefined);
+  private pendingAddress: string | undefined;
+  private lastFocus: string | undefined;
+
+  constructor() {
+    effect(() => {
+      const lat = this.lat();
+      const lon = this.lon();
+      const address = this.address();
+      // Before ngOnInit has made the viewer, it starts there instead.
+      if (lat !== undefined && lon !== undefined && this.viewer) {
+        untracked(() => this.focus(lat, lon, address));
+      }
+    });
+  }
   trackedEntity = signal<Entity | undefined>(undefined);
   // The clusters on the globe now, by entity id, so a click on one can zoom to it.
   private clusters = new Map<string, ClusterDto>();
@@ -73,14 +94,20 @@ export class CesiumComponent implements OnInit {
       terrainProviderViewModels: [],
     });
 
-    // Fly the camera to Michigan at the given longitude, latitude, and height.
-    this.viewer.camera.flyTo({
-      destination: Cartesian3.fromDegrees(-84.557916, 43.333202, 1000000),
-      orientation: {
-        heading: CesiumMath.toRadians(0.0),
-        pitch: CesiumMath.toRadians(-90),
-      }
-    });
+    // Fly the camera to the place asked for, else to Michigan at the given longitude, latitude, and height.
+    const lat = this.lat();
+    const lon = this.lon();
+    if (lat !== undefined && lon !== undefined) {
+      this.focus(lat, lon, this.address());
+    } else {
+      this.viewer.camera.flyTo({
+        destination: Cartesian3.fromDegrees(-84.557916, 43.333202, 1000000),
+        orientation: {
+          heading: CesiumMath.toRadians(0.0),
+          pitch: CesiumMath.toRadians(-90),
+        }
+      });
+    }
 
     this.searchParams$
     .pipe(
@@ -151,9 +178,11 @@ export class CesiumComponent implements OnInit {
             return;
           }
 
-          let desc = "<div>" + x.streetNumber + ' ' + x.streetName + ", " + x.city + " " + x.state + " " + x.zipCode + "</div>";
+          // Links to the address and voter pages; the info box routes them inside the app.
+          let desc = '<div><a href="/address/' + encodeURIComponent(x.id) + '">' + escapeHtml(x.streetNumber + ' ' + x.streetName) + '</a>, '
+            + escapeHtml(x.city + ' ' + x.state + ' ' + x.zipCode) + '</div>';
           x.voters.forEach(voter => {
-            desc += "<div>" + voter.firstName + " " + voter.lastName + "</div>";
+            desc += '<div><a href="/voter/' + encodeURIComponent(voter.id) + '">' + escapeHtml(voter.firstName + ' ' + voter.lastName) + '</a></div>';
           });
 
           this.viewer.entities.add({
@@ -174,10 +203,19 @@ export class CesiumComponent implements OnInit {
               outlineWidth: 2,
               verticalOrigin: VerticalOrigin.TOP,
               pixelOffset: new Cartesian2(0, -9),
+              // Street numbers only up close: a street of them from higher up is one unreadable line.
+              distanceDisplayCondition: new DistanceDisplayCondition(0, 400),
             },
           });
         });
         this.viewer.entities.resumeEvents();
+
+        // The address asked for, now that its point is here: open its info box.
+        const pending = this.pendingAddress && this.viewer.entities.getById(this.pendingAddress);
+        if (pending) {
+          this.pendingAddress = undefined;
+          this.selectedEntity.set(pending);
+        }
       },
       error: (error) => {
         console.error(error);
@@ -215,6 +253,25 @@ export class CesiumComponent implements OnInit {
 
   closeInfoBox(): void {
     this.selectedEntity.set(undefined);
+  }
+
+  /** Straight down on a point, a block or two across (labels show), and the address's info box when it loads. */
+  focus(latitude: number, longitude: number, address?: string): void {
+    // ngOnInit and the inputs' effect both see the starting place: fly there once.
+    const key = latitude + ',' + longitude + ',' + (address ?? '');
+    if (key === this.lastFocus) {
+      return;
+    }
+    this.lastFocus = key;
+    this.pendingAddress = address;
+    this.selectedEntity.set(undefined);
+    this.viewer.camera.flyTo({
+      destination: Cartesian3.fromDegrees(longitude, latitude, 350),
+      orientation: {
+        heading: CesiumMath.toRadians(0.0),
+        pitch: CesiumMath.toRadians(-90),
+      },
+    });
   }
 
   computeBounds() {
@@ -333,6 +390,17 @@ export interface AddressDto
 
 export interface VoterDto
 {
+  id: string,
   firstName: string,
   lastName: string,
+}
+/** Query parameters arrive as strings; an absent or empty one is no value. */
+export function optionalNumber(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }

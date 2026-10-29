@@ -6,10 +6,13 @@ import { API_UNAVAILABLE, stubFetch } from '../../testing/fetch-stub';
 import { voterRow, votersPage } from '../../testing/synthetic-data';
 import { VotersComponent } from './voters.component';
 
+// The page embeds the globe; Cesium itself needs WebGL, which jsdom has not. The shared fake (one per worker).
+vi.mock('cesium', async () => (await import('../../testing/fake-cesium')).fakeCesium().module);
+
 describe('VotersComponent', () => {
   const page = votersPage([
-    voterRow({ id: 1001, firstName: 'Alex', middleName: 'Quinn', lastName: 'Example', gender: 'F' }),
-    voterRow({ id: 1002, firstName: 'Jordan', lastName: 'Sample', birthYear: 1985, directionPrefix: 'N', streetName: 'Pretend', streetType: 'Ave' }),
+    voterRow({ id: 'voter-1001', firstName: 'Alex', middleName: 'Quinn', lastName: 'Example', gender: 'F' }),
+    voterRow({ id: 'voter-1002', firstName: 'Jordan', lastName: 'Sample', birthYear: 1985, directionPrefix: 'N', streetName: 'Pretend', streetType: 'Ave' }),
   ], 42);
 
   beforeEach(() => {
@@ -50,7 +53,7 @@ describe('VotersComponent', () => {
     expect(text).toContain('N Pretend Ave');
     expect(text).toContain('Items 1 - 2 of 42');
     const links = Array.from(el.querySelectorAll('a')).map(a => a.getAttribute('href'));
-    expect(links).toEqual(['/voter/1001', '/voter/1002']);
+    expect(links).toEqual(['/voter/voter-1001', '/voter/voter-1002']);
   });
 
   it('keeps the previous rows when a later request fails', async () => {
@@ -168,5 +171,20 @@ describe('VotersComponent', () => {
     const items = Array.from(el.querySelectorAll('x-input[formcontrolname="firstName"] li'));
     expect(items.map(li => li.textContent!.trim())).toEqual(['Alex', 'Alma']);
     http.verify();
+  });
+
+  it('flies the globe beside the list to a picked voter\'s address', async () => {
+    stubFetch(() => votersPage([voterRow({ id: 'voter-1001', addressId: 'addr-0009', latitude: 42.3, longitude: -83.1 })]));
+    const { fixture, component, el } = await render();
+    const { fakeCesium } = await import('../../testing/fake-cesium');
+    const viewer = fakeCesium().state.viewer!;
+    viewer.camera.flyTo.mockClear();
+
+    (el.querySelector('li') as HTMLElement).click();
+    await fixture.whenStable();
+
+    expect(component.selected()?.id).toBe('voter-1001');
+    expect(el.querySelector('li')!.classList).toContain('bg-purple-100');
+    expect(viewer.camera.flyTo).toHaveBeenCalledWith(expect.objectContaining({ destination: { lon: -83.1, lat: 42.3, height: 350 } }));
   });
 });

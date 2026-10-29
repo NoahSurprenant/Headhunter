@@ -1,75 +1,81 @@
-<div class="space-x-4 place-self-center mt-2">
-    <x-button [disabled]="x.isLoading()" (clicked)="clicked()">Refresh</x-button>
-</div>
-
-<div class="flex">
-    <div class="w-80 p-4">
-        <h2 class="text-2xl">Search Filters</h2>
-        <form [formGroup]="formGroup" (ngSubmit)="onSubmit()">
-            <label class="text-xs">First Name</label>
-            <x-input formControlName="firstName" placeholder="John" [onSearch]="firstNameSuggestions"></x-input>
-            <label class="text-xs">Middle Name</label>
-            <x-input formControlName="middleName" placeholder="Lee" [onSearch]="middleNameSuggestions"></x-input>
-            <label class="text-xs">Last Name</label>
-            <x-input formControlName="lastName" placeholder="Doe" [onSearch]="lastNameSuggestions"></x-input>
-            <label class="text-xs">Street</label>
-            <x-input formControlName="street" placeholder="123 Main St" [onSearch]="streetSuggestions"></x-input>
-            <label class="text-xs">City</label>
-            <x-input formControlName="city" placeholder="Detroit" [onSearch]="citySuggestions"></x-input>
-
-            <div class="mt-6"></div>
-            <label class="text-xs">Birth Year</label>
-            <x-input formControlName="birthYear" placeholder="2000" type="number" [convertEmptyToNull]="true"></x-input>
-            <div class="text-l">OR</div>
-            <label class="text-xs">Age</label>
-            <x-input formControlName="age" placeholder="21" type="number" [convertEmptyToNull]="true"></x-input>
-            <label class="text-xs">Astrology Sign</label>
-            <x-dropdown formControlName="astrology" [options]="astrologyOptions"></x-dropdown>
-
-            <x-button class="mt-4" type="submit" [disabled]="!formGroup.valid">Submit</x-button>
-            <x-button class="mt-4" (clicked)="clearAll()">Clear All</x-button>
-        </form>
-    </div>
-    <div class="w-full">
-        <div class="grid grid-cols-[minmax(200px,_1fr)_100px_100px_minmax(150px,_1fr)_minmax(100px,_.5fr)] mx-4">
-            <div class="font-bold flex items-center py-1.5">Name</div>
-            <div class="font-bold flex items-center py-1.5">Birth Year</div>
-            <div class="font-bold flex items-center py-1.5">Gender</div>
-            <div class="font-bold flex items-center py-1.5">Address</div>
-            <div class="font-bold flex items-center py-1.5">Details</div>
-        @for (voter of current().results; track voter.id) {
-        
-        <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
-            @if(voter.middleName) {
-                {{voter.firstName}} {{voter.middleName}} {{voter.lastName}}
-            } @else {
-                {{voter.firstName}} {{voter.lastName}}
-            }
-        </div>
-
-        <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
-            {{voter.birthYear}}
-        </div>
-
-        <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
-            {{voter.gender}}
-        </div>
-
-        <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
-            <div>
-                <div>{{addressColumn(voter)}}</div>
-                <div>{{voter.city}}, {{voter.state}} {{voter.zipCode}}</div>
+<div class="flex h-full">
+    <!-- The search and its results; on wide screens the globe is beside them and follows the picked row. -->
+    <section class="flex flex-col min-h-0 w-full lg:w-1/2 lg:max-w-3xl border-r border-gray-200">
+        <form [formGroup]="formGroup" (ngSubmit)="onSubmit()" class="p-4 bg-gray-50 border-b border-gray-200">
+            <div class="grid grid-cols-2 xl:grid-cols-3 gap-x-3 gap-y-1">
+                <div>
+                    <label class="text-xs">First Name</label>
+                    <x-input formControlName="firstName" placeholder="John" [onSearch]="firstNameSuggestions"></x-input>
+                </div>
+                <div>
+                    <label class="text-xs">Middle Name</label>
+                    <x-input formControlName="middleName" placeholder="Lee" [onSearch]="middleNameSuggestions"></x-input>
+                </div>
+                <div>
+                    <label class="text-xs">Last Name</label>
+                    <x-input formControlName="lastName" placeholder="Doe" [onSearch]="lastNameSuggestions"></x-input>
+                </div>
+                <div>
+                    <label class="text-xs">Street</label>
+                    <x-input formControlName="street" placeholder="123 Main St" [onSearch]="streetSuggestions"></x-input>
+                </div>
+                <div>
+                    <label class="text-xs">City</label>
+                    <x-input formControlName="city" placeholder="Detroit" [onSearch]="citySuggestions"></x-input>
+                </div>
+                <div>
+                    <label class="text-xs">Birth Year</label>
+                    <x-input formControlName="birthYear" placeholder="2000" type="number" [convertEmptyToNull]="true"></x-input>
+                </div>
+                <div>
+                    <label class="text-xs">or Age</label>
+                    <x-input formControlName="age" placeholder="21" type="number" [convertEmptyToNull]="true"></x-input>
+                </div>
+                <div>
+                    <label class="text-xs">Astrology Sign</label>
+                    <x-dropdown formControlName="astrology" [options]="astrologyOptions"></x-dropdown>
+                </div>
             </div>
-        </div>
-        
-        <div [ngClass]="{'bg-purple-300': isEven($index), 'bg-purple-400': !isEven($index)}" class="flex items-center py-1.5 animate-fade-in">
-            <a [routerLink]="['/voter', voter.id]">{{voter.id}}</a>
-        </div>
-        }
-        </div>
-        
-        <x-paginator [paginationResult]="current()" class="mt-2 place-self-center" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize" ></x-paginator>
-    </div>
-    
-</div>
+            <div class="flex gap-2 mt-3">
+                <x-button type="submit" [disabled]="!formGroup.valid">Search</x-button>
+                <x-button (clicked)="clearAll()">Clear All</x-button>
+            </div>
+        </form>
 
+        <div class="flex-1 min-h-0 overflow-auto">
+            @if (x.isLoading() && current().results.length === 0) {
+                <p class="p-6 text-gray-500">Searching…</p>
+            }
+            <ul>
+                @for (voter of current().results; track voter.id) {
+                    <li (click)="select(voter)"
+                        [class.bg-purple-100]="selected()?.id === voter.id"
+                        class="flex items-center gap-3 px-4 py-2 border-b border-gray-100 cursor-pointer hover:bg-purple-50 animate-fade-in">
+                        <div class="flex-1 min-w-0">
+                            <a [routerLink]="['/voter', voter.id]" (click)="$event.stopPropagation()"
+                               class="font-semibold text-gray-900 hover:text-purple-700 hover:underline">{{ fullName(voter) }}</a>
+                            <div class="text-sm text-gray-600 truncate">
+                                {{ addressColumn(voter) }}, {{ voter.city }}, {{ voter.state }} {{ voter.zipCode }}
+                            </div>
+                        </div>
+                        <div class="text-right text-sm text-gray-600 shrink-0">
+                            <div>about {{ approximateAge(voter.birthYear) }}</div>
+                            <div>{{ genderLabel(voter.gender) }}</div>
+                        </div>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        <x-paginator [paginationResult]="current()" class="p-2 place-self-center" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize"></x-paginator>
+    </section>
+
+    <section class="hidden lg:block flex-1 min-w-0 relative">
+        <app-cesium [lat]="selected()?.latitude ?? undefined" [lon]="selected()?.longitude ?? undefined" [address]="selected()?.addressId"></app-cesium>
+        @if (!selected()) {
+            <div class="absolute top-3 left-1/2 -translate-x-1/2 bg-black/60 text-white text-sm px-3 py-1 rounded pointer-events-none">
+                Pick a voter to see where they live
+            </div>
+        }
+    </section>
+</div>

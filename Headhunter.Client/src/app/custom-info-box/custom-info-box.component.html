@@ -5,7 +5,7 @@
   <div class="cesium-infoBox-title">
     {{entity().name}}
   </div>
-  <div class="cesium-infoBox-description" style="padding: 6px" [innerHTML]="entity().description"></div>
+  <div class="cesium-infoBox-description info-links" style="padding: 6px" [innerHTML]="entity().description" (click)="followLink($event)"></div>
   <button
     type="button"
     class="cesium-button cesium-infoBox-camera"

@@ -9,6 +9,8 @@ import { InputComponent } from '../shared/input/input.component';
 import { DropdownComponent } from '../shared/dropdown/dropdown.component';
 import { Observable } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
+import { CesiumComponent } from '../cesium/cesium.component';
+import { approximateAge, fullName, genderLabel } from '../shared/people/people';
 
 @Component({
   selector: 'app-voters',
@@ -20,6 +22,7 @@ import { HttpClient } from '@angular/common/http';
     ReactiveFormsModule,
     InputComponent,
     DropdownComponent,
+    CesiumComponent,
   ],
   templateUrl: './voters.component.html',
   styleUrl: './voters.component.css',
@@ -64,6 +67,17 @@ export class VotersComponent implements OnInit {
         this.current.set(this.x.value());
     });
   }
+
+  // The row picked in the list: the globe beside it flies to that voter's address.
+  selected = signal<VoterDto | undefined>(undefined);
+
+  select(voter: VoterDto): void {
+    this.selected.set(voter);
+  }
+
+  protected readonly approximateAge = approximateAge;
+  protected readonly fullName = fullName;
+  protected readonly genderLabel = genderLabel;
 
   isEven(i: number) {
     return i % 2 == 0;
@@ -170,7 +184,8 @@ export class VotersComponent implements OnInit {
 
 export interface VoterDto
 {
-  id: number,
+  id: string,
+  addressId: string,
   firstName: string,
   middleName: string,
   lastName: string,

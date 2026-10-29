@@ -77,6 +77,7 @@ export function createFakeCesium() {
       Color: { AQUA: 'AQUA', WHITE: 'WHITE', ORANGE: { withAlpha: (a: number) => `ORANGE@${a}` } },
       LabelStyle: { FILL_AND_OUTLINE: 'FILL_AND_OUTLINE' },
       VerticalOrigin: { TOP: 'TOP', CENTER: 'CENTER' },
+      DistanceDisplayCondition: class { constructor(public near: number, public far: number) {} },
       defined: (value: unknown) => value !== undefined && value !== null,
     },
   };

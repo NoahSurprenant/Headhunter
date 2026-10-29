@@ -104,7 +104,8 @@ describe('CesiumComponent', () => {
     expect(entity['position']).toEqual({ lon: -84.5, lat: 43.0, height: 0 });
     expect(entity['label'].text).toBe('123 Fake St');
     expect(entity['description']).toBe(
-      '<div>123 Fake St, Testville MI 49999</div><div>Alex Example</div><div>Jordan Sample</div>');
+      '<div><a href="/address/addr-0001">123 Fake St</a>, Testville MI 49999</div>'
+      + '<div><a href="/voter/voter-0001">Alex Example</a></div><div><a href="/voter/voter-0002">Jordan Sample</a></div>');
     expect(viewer.entities.suspendEvents).toHaveBeenCalled();
     expect(viewer.entities.resumeEvents).toHaveBeenCalled();
   });
@@ -241,5 +242,40 @@ describe('CesiumComponent', () => {
   it('shortens cluster counts', () => {
     expect([7, 999, 1000, 1234, 9950, 45678, 999499, 1250000].map(shortCount))
       .toEqual(['7', '999', '1k', '1.2k', '9.9k', '46k', '999k', '1.3M']);
+  });
+
+  it('starts at the place in its inputs (a /globe?lat&lon&address link) and opens that address once it loads', () => {
+    const fixture = TestBed.createComponent(CesiumComponent);
+    fixture.componentRef.setInput('lat', '42.3');
+    fixture.componentRef.setInput('lon', '-83.1');
+    fixture.componentRef.setInput('address', 'addr-0001');
+    fixture.detectChanges();
+    const viewer = cesium.state.viewer!;
+
+    expect(viewer.camera.flyTo).toHaveBeenCalledTimes(1);
+    expect(viewer.camera.flyTo.mock.calls[0][0].destination).toEqual({ lon: -83.1, lat: 42.3, height: 350 });
+
+    moveCamera(viewer);
+    expectArea().flush(area([areaAddress()]));
+    expect(fixture.componentInstance.selectedEntity()).toBe(viewer.entities.getById('addr-0001'));
+  });
+
+  it('flies to a new place when its inputs change', async () => {
+    const { fixture, viewer } = render();
+    viewer.camera.flyTo.mockClear();
+
+    fixture.componentRef.setInput('lat', 42.5);
+    fixture.componentRef.setInput('lon', -83.5);
+    await fixture.whenStable();
+
+    expect(viewer.camera.flyTo).toHaveBeenCalledWith(expect.objectContaining({ destination: { lon: -83.5, lat: 42.5, height: 350 } }));
+  });
+
+  it('escapes names in the info box description', () => {
+    const { viewer } = render();
+    moveCamera(viewer);
+    expectArea().flush(area([areaAddress({ voters: [{ id: 'v<1', firstName: '<b>Al</b>', lastName: 'O\'Brien' }] })]));
+    const description = (viewer.entities.getById('addr-0001') as Record<string, any>)['description'] as string;
+    expect(description).toContain('<a href="/voter/v%3C1">&lt;b&gt;Al&lt;/b&gt; O&#39;Brien</a>');
   });
 });
