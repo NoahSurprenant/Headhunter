@@ -63,7 +63,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("FullStreetAddress")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("JURISDICTION_CODE")
                         .IsRequired()
@@ -122,7 +123,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("STREET_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("STREET_NUMBER")
                         .IsRequired()
@@ -171,6 +173,12 @@ namespace Headhunter.Database.Migrations
                     b.HasKey("ID");
 
                     b.HasIndex("CITY");
+
+                    b.HasIndex("FullStreetAddress");
+
+                    b.HasIndex("STREET_NAME");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("STREET_NAME"), new[] { "FullStreetAddress" });
 
                     b.HasIndex("Latitude", "Longitude")
                         .HasDatabaseName("IX_Addresses_Latitude_Longitude");

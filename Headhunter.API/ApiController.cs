@@ -66,13 +66,20 @@ public class ApiController : ControllerBase
             .ToArrayAsync(ct);
     }
 
+    // Addresses that start with the query ("2078 W WYN") or whose street name does ("WYNDHAM"): two prefix
+    // searches, each an index seek, rather than LIKE '%query%', which reads all 4M addresses.
     [HttpGet("StreetSuggestions")]
     public async Task<string[]> StreetSuggestions(string query, CancellationToken ct)
     {
-        return await _context.Addresses
-            .Where(x => x.FullStreetAddress.Contains(query))
-            .Select(x => x.FullStreetAddress)
-            .Distinct()
+        var byAddress = _context.Addresses
+            .Where(x => x.FullStreetAddress.StartsWith(query))
+            .Select(x => x.FullStreetAddress);
+        var byStreetName = _context.Addresses
+            .Where(x => x.STREET_NAME.StartsWith(query))
+            .Select(x => x.FullStreetAddress);
+
+        return await byAddress
+            .Union(byStreetName)
             .OrderBy(x => x)
             .Take(50)
             .ToArrayAsync(ct);
