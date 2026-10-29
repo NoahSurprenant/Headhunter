@@ -13,5 +13,10 @@ internal class AddressConfiguration : IEntityTypeConfiguration<Address>
         builder.Property(x => x.Longitude).HasPrecision(15, 12);
 
         builder.HasIndex(x => new { x.Latitude, x.Longitude }).HasDatabaseName("IX_Addresses_Latitude_Longitude");
+
+        // Bounded so CitySuggestions' StartsWith (LIKE 'x%') can seek an index; nvarchar(max) can't be an index key.
+        // The longest city in the data is 20 characters.
+        builder.Property(x => x.CITY).HasMaxLength(100);
+        builder.HasIndex(x => x.CITY);
     }
 }

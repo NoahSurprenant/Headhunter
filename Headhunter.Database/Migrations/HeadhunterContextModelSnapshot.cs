@@ -17,7 +17,7 @@ namespace Headhunter.Database.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.3")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -30,7 +30,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("CITY")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("COUNTY_CODE")
                         .IsRequired()
@@ -168,6 +169,8 @@ namespace Headhunter.Database.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("ID");
+
+                    b.HasIndex("CITY");
 
                     b.HasIndex("Latitude", "Longitude")
                         .HasDatabaseName("IX_Addresses_Latitude_Longitude");
@@ -387,7 +390,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("FIRST_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("GENDER")
                         .IsRequired()
@@ -401,7 +405,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("LAST_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("MAILING_ADDRESS_LINE_FIVE")
                         .IsRequired()
@@ -425,7 +430,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("MIDDLE_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("NAME_SUFFIX")
                         .IsRequired()
@@ -456,6 +462,12 @@ namespace Headhunter.Database.Migrations
                     b.HasKey("ID");
 
                     b.HasIndex("AddressID");
+
+                    b.HasIndex("FIRST_NAME");
+
+                    b.HasIndex("LAST_NAME");
+
+                    b.HasIndex("MIDDLE_NAME");
 
                     b.ToTable("Voters", (string)null);
                 });
