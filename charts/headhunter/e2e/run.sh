@@ -44,7 +44,14 @@ latest_job() {
   kubectl get jobs -n "$NS" -l app.kubernetes.io/component=migrations \
     --sort-by=.metadata.creationTimestamp -o name | tail -1
 }
-job_logs() { kubectl logs -n "$NS" "$(latest_job)" --all-containers --prefix; }
+# Each step's log; a failed Job's later steps never started, and have none.
+job_logs() {
+  local pod
+  pod=$(kubectl get pods -n "$NS" -l "batch.kubernetes.io/job-name=$(latest_job | cut -d/ -f2)" -o name | tail -1)
+  for c in $(kubectl get -n "$NS" "$pod" -o jsonpath="{.spec.initContainers[*].name} {.spec.containers[*].name}"); do
+    kubectl logs -n "$NS" "$pod" -c "$c" 2>/dev/null | sed "s/^/[$c] /" || true
+  done
+}
 upgrade() { helm upgrade "$RELEASE" "$CHART" -n "$NS" -f "$WORK/values.yaml" --wait --wait-for-jobs --timeout 10m "$@"; }
 
 step "Values and secret"
