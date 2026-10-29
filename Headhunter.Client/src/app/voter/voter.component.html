@@ -12,7 +12,11 @@
                 @if (genderLabel(v.gender); as g) {
                     <span class="chip bg-gray-200 text-gray-800">{{ g }}</span>
                 }
-                <span class="chip bg-blue-100 text-blue-800">Registered {{ v.registrationDate | date:'longDate' }}</span>
+                @if (yearsAgoLabel(v.registrationDate); as ago) {
+                    <span class="chip bg-blue-100 text-blue-800">Registered {{ v.registrationDate | date:'longDate' }} ({{ ago }})</span>
+                } @else {
+                    <span class="chip bg-gray-200 text-gray-800">Registration date unknown</span>
+                }
             </div>
         </div>
     </div>

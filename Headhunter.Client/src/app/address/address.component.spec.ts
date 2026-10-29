@@ -129,4 +129,36 @@ describe('AddressComponent', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
     expect(navigate).toHaveBeenCalledWith(['/address', 'addr-0000']);
   });
+
+  it('shows a registration timeline, earliest to latest, when more than one voter is at the address', async () => {
+    stubAddressAndWalk([
+      voterDetail({ id: 'voter-0001', firstName: 'Jordan', middleName: '', lastName: 'Sample', registrationDate: '2022-01-01T00:00:00' }),
+      voterDetail({ id: 'voter-0002', firstName: 'Alex', middleName: '', lastName: 'Example', registrationDate: '2012-01-01T00:00:00' }),
+    ], noWalk);
+    const el = await render('addr-0001');
+
+    expect(el.querySelector('app-registration-timeline')).not.toBeNull();
+    expect(el.textContent).toContain('Registration timeline');
+    expect(el.textContent).toContain('Jordan Sample');
+    expect(el.textContent).toContain('Alex Example');
+  });
+
+  it('skips the timeline card for a single-voter address', async () => {
+    stubAddressAndWalk([voterDetail({ id: 'voter-0001' })], noWalk);
+    const el = await render('addr-0001');
+
+    expect(el.querySelector('app-registration-timeline')).toBeNull();
+  });
+
+  it('shows "registration date unknown" instead of a placeholder date in the voter list', async () => {
+    stubAddressAndWalk([
+      voterDetail({ id: 'voter-0001', registrationDate: '1900-01-01T00:00:00' }),
+      voterDetail({ id: 'voter-0002', firstName: 'Jordan', lastName: 'Sample', registrationDate: '2012-01-01T00:00:00' }),
+    ], noWalk);
+    const el = await render('addr-0001');
+    const text = el.textContent!.replace(/\s+/g, ' ');
+
+    expect(text).toContain('registration date unknown');
+    expect(text).toContain('registered Jan 1, 2012');
+  });
 });
