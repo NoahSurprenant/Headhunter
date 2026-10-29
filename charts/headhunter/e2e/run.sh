@@ -6,8 +6,9 @@
 #   APP_IMAGE=headhunter:e2e charts/headhunter/e2e/run.sh
 #
 # One release, through what a deploy meets:
-#   1. A first install, on no database: the migration Job creates it (no backup: nothing to back up),
-#      and the app waits for it, then serves.
+#   1. A first install, on no database: the migration Job applies the server settings
+#      (mssql.configuration) and creates the database (no backup: nothing to back up), and the app
+#      waits for it, then serves.
 #   2. sql-exporter reads SQL Server, both collectors.
 #   3. NetworkPolicies: a pod that isn't the app can't reach SQL Server; one labelled as the app can.
 #   4. An upgrade with nothing pending: a new Job that neither backs up nor migrates.
@@ -68,6 +69,7 @@ mssql:
   resources: { requests: { cpu: 250m, memory: 1Gi }, limits: { cpu: "2", memory: 3Gi } }
   backup: { size: 2Gi }
   persistence: { size: 2Gi }
+  configuration: { max degree of parallelism: 2, cost threshold for parallelism: 50 }
 sqlExporter:
   enabled: true
 networkPolicy:
@@ -86,6 +88,10 @@ applied=$(sql "SELECT COUNT(*) FROM __EFMigrationsHistory" | tr -d '[:space:]')
 kubectl logs -n "$NS" deploy/headhunter -c wait-for-migrations | grep -q "is up to date" \
   || fail "The app didn't wait for the migrations"
 echo "All $applied migrations applied; the app waited for them."
+grep -q "max degree of parallelism: 0 -> 2" <<<"$logs" || fail "The configure step didn't change max degree of parallelism"
+settings=$(sql "SELECT CONCAT(name, '=', CONVERT(int, value_in_use)) FROM sys.configurations WHERE name IN ('max degree of parallelism', 'cost threshold for parallelism') ORDER BY name" | tr -d '\r' | tr '\n' ' ')
+[ "$settings" = "cost threshold for parallelism=50 max degree of parallelism=2 " ] || fail "Server settings are: $settings"
+echo "Server settings applied: $settings"
 
 kubectl port-forward -n "$NS" svc/headhunter 18080:8080 >"$WORK/pf-app.log" 2>&1 &
 pf_app=$!
@@ -125,6 +131,7 @@ upgrade || fail "helm upgrade failed"
 logs=$(job_logs)
 echo "$logs"
 grep -q "Nothing pending: no backup." <<<"$logs" || fail "It backed up with nothing pending"
+grep -q "max degree of parallelism: 2 already" <<<"$logs" || fail "The configure step changed a setting that was already right"
 grep -q "Nothing to migrate." <<<"$logs" || fail "It ran the bundle with nothing pending"
 
 step "5. Upgrade with a migration pending"

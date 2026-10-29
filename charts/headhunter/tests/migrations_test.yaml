@@ -55,3 +55,27 @@ tests:
       migrations.enabled: false
     asserts:
       - hasDocuments: { count: 0 }
+
+  - it: has no configure step without server settings
+    asserts:
+      - notContains: { path: spec.template.spec.initContainers, content: { name: configure }, any: true }
+
+  - it: applies server settings before checking migrations, only those that differ
+    set:
+      mssql.configuration: { max degree of parallelism: 2, cost threshold for parallelism: 50 }
+    asserts:
+      - equal: { path: "spec.template.spec.initContainers[1].name", value: configure }
+      - equal: { path: "spec.template.spec.initContainers[2].name", value: check-pending }
+      - matchRegex:
+          path: "spec.template.spec.initContainers[1].args[0]"
+          pattern: "WHERE name = N'max degree of parallelism'\\) <> 2\\s+BEGIN"
+      - matchRegex:
+          path: "spec.template.spec.initContainers[1].args[0]"
+          pattern: "EXEC sp_configure N'cost threshold for parallelism', 50;"
+      - matchRegex: { path: "spec.template.spec.initContainers[1].args[0]", pattern: "RECONFIGURE;\"\\s*$" }
+
+  - it: refuses a server setting that isn't a number
+    set:
+      mssql.configuration: { max degree of parallelism: two }
+    asserts:
+      - failedTemplate: { errorMessage: "mssql.configuration: max degree of parallelism must be a number" }

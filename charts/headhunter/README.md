@@ -38,6 +38,8 @@ Every step runs from the app image being deployed. The image carries:
 So the migrations always match the app. The Job's steps:
 
 1. **wait-for-database:** waits until SQL Server accepts a login and the database is `ONLINE`.
+1. **configure** (only with `mssql.configuration`): applies server settings with `sp_configure`, e.g.
+   `max degree of parallelism`. It changes only the ones that differ, and logs each change.
 2. **check-pending:** compares `/app/migrations.txt` with `__EFMigrationsHistory`. It **fails** if the
    database has migrations the image doesn't (an older image on a newer schema).
 3. **backup** (`migrations.backup.enabled`): if anything is pending and the database exists, writes a
