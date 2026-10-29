@@ -1,12 +1,11 @@
-﻿using CsvHelper.Configuration;
-using CsvHelper;
-using CsvHelper.TypeConversion;
+﻿using CsvHelper;
 
 namespace Headhunter.CSVDump;
-public class BooleanConverter : DefaultTypeConverter
+
+/// <summary>The voter file's Y/N flags: "Y" is true, anything else (N, empty) false.</summary>
+public sealed class BooleanConverter : ICsvConverter<bool>
 {
-    public override object ConvertFromString(string? text, IReaderRow row, MemberMapData memberMapData)
-    {
-        return text == "Y";
-    }
+    public bool Read(CsvReader reader, int index) => reader.GetString(index) == "Y";
+
+    public void Write(CsvWriter writer, bool value) => writer.WriteField(value ? "Y" : "N");
 }

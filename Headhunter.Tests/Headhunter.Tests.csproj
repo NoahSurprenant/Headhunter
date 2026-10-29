@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Headhunter.API\Headhunter.API.csproj" />
     <ProjectReference Include="..\Headhunter.Database\Headhunter.Database.csproj" />
+    <ProjectReference Include="..\Headhunter.CSVDump\Headhunter.CSVDump.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,5 +1,4 @@
 using CsvHelper;
-using CsvHelper.Configuration;
 using Headhunter.Database;
 using Microsoft.EntityFrameworkCore;
 using Spectre.Console;
@@ -37,21 +36,11 @@ public class Worker : BackgroundService
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var path = configuration.GetValue<string>("CSVPath") ?? throw new Exception("CSVPath missing in config");
 
-        using var reader = File.OpenRead(path);
-        using var sr = new StreamReader(reader);
-
-        var config = new CsvConfiguration(System.Globalization.CultureInfo.InvariantCulture)
-        {
-            //HeaderValidated = null, // Ignore missing headers
-            //MissingFieldFound = null, // Ignore missing fields
-        };
-        using var csv = new CsvReader(sr, config);
-
-        csv.Context.RegisterClassMap<RecordMap>();
+        using var csv = VoterFile.Open(path);
 
 
         //var count = csv.GetRecords<MichiganVoterRecord>().Count();
-        var records = csv.GetRecords<Raw>();
+        var records = VoterFile.Records(csv);
         var batches = GetBatches(records, 500);
 
         //var progress = AnsiConsole.Progress();
