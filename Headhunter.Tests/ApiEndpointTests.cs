@@ -33,11 +33,28 @@ public class ApiEndpointTests
     }
 
     [Test]
-    public async Task StreetSuggestions_MatchAnywhereInTheAddress()
+    public async Task StreetSuggestions_MatchTheStartOfTheStreetName()
     {
-        var streets = await _client.GetFromJsonAsync<string[]>("/Api/StreetSuggestions?query=Meridian");
+        var streets = await _client.GetFromJsonAsync<string[]>("/Api/StreetSuggestions?query=Meri");
 
         Assert.That(streets, Is.EqualTo(new[] { "1 Meridian Rd", "2 Meridian Rd" }));
+    }
+
+    [Test]
+    public async Task StreetSuggestions_MatchTheStartOfTheAddress()
+    {
+        var streets = await _client.GetFromJsonAsync<string[]>("/Api/StreetSuggestions?query=100%20Ma");
+
+        Assert.That(streets, Is.EqualTo(new[] { "100 Maple St" }));
+    }
+
+    // Prefix searches only, so they can seek an index: a word inside the address doesn't match.
+    [Test]
+    public async Task StreetSuggestions_DontMatchTheMiddleOfTheAddress()
+    {
+        var streets = await _client.GetFromJsonAsync<string[]>("/Api/StreetSuggestions?query=Rd");
+
+        Assert.That(streets, Is.Empty);
     }
 
     [Test]
