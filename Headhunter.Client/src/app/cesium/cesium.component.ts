@@ -1,20 +1,33 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal, viewChild } from '@angular/core';
-import { ArcGisBaseMapType, ArcGisMapServerImageryProvider, buildModuleUrl,
-  Math as CesiumMath, Cartesian3, OpenStreetMapImageryProvider, ProviderViewModel, Viewer, 
+import { buildModuleUrl,
+  Math as CesiumMath, Cartesian3, ProviderViewModel, UrlTemplateImageryProvider, Viewer,
   Cartesian2, ScreenSpaceEventHandler,
   LabelStyle,
   VerticalOrigin,
   Color,
-  DefaultProxy,
-  Resource,
-  ArcGisMapService,
   ScreenSpaceEventType,
   defined,
   Entity
 } from 'cesium';
 import { distinctUntilChanged, Subject, switchMap, takeUntil, tap } from 'rxjs';
 import { CustomInfoBoxComponent } from '../custom-info-box/custom-info-box.component';
+
+// Every base layer comes from this site's /tiles/ (Headhunter.API, Tiles/), which fetches it from the
+// provider: visitors only talk to this site, provider keys stay on the server, and Cloudflare caches the
+// tiles.
+function tiles(layer: string, extension: 'png' | 'jpg', maximumLevel: number, credit: string, retina = false) {
+  return new UrlTemplateImageryProvider({
+    url: `/tiles/${layer}/{z}/{x}/{y}.${extension}${retina ? '?retina=true' : ''}`,
+    maximumLevel,
+    credit,
+  });
+}
+
+const esriCredit = 'Esri';
+const esriImageryCredit = 'Esri, Maxar, Earthstar Geographics, and the GIS User Community';
+const esriOceanCredit = 'Esri, GEBCO, NOAA, National Geographic, Garmin, HERE, Geonames.org, and other contributors';
+const osmCredit = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap contributors</a>';
 
 @Component({
   selector: 'app-cesium',
@@ -37,16 +50,6 @@ export class CesiumComponent implements OnInit {
   customInfoBox = viewChild<CustomInfoBoxComponent>('customInfoBox');
 
   async ngOnInit(): Promise<any> {
-    //Use proxy to hide API key from client
-    // const proxy = new DefaultProxy('/proxy');
-    // const resourceWithProxy = new Resource({
-    //   url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
-    //   proxy: proxy
-    // });
-    // ArcGisMapService.defaultWorldImageryServer = resourceWithProxy;
-
-    ArcGisMapService.defaultAccessToken = "foobar";
-
     // Your access token can be found at: https://ion.cesium.com/tokens.
     // Replace `your_access_token` with your Cesium ion access token.
 
@@ -213,12 +216,7 @@ export class CesiumComponent implements OnInit {
   For more information on this map, including the terms of use, visit us online at \n\
   https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9",
         creationFunction: function () {
-          return ArcGisMapServerImageryProvider.fromBasemapType(
-            ArcGisBaseMapType.SATELLITE,
-            {
-              enablePickFeatures: false,
-            },
-          );
+          return tiles('arcgis-imagery', 'jpg', 19, esriImageryCredit);
         },
       }),
     );
@@ -237,12 +235,7 @@ export class CesiumComponent implements OnInit {
   down to ~1:9k. For more information on this map, including the terms of use, visit us online at \n\
   https://www.arcgis.com/home/item.html?id=1b243539f4514b6ba35e7d995890db1d",
         creationFunction: function () {
-          return ArcGisMapServerImageryProvider.fromBasemapType(
-            ArcGisBaseMapType.HILLSHADE,
-            {
-              enablePickFeatures: false,
-            },
-          );
+          return tiles('arcgis-hillshade', 'jpg', 16, esriCredit);
         },
       }),
     );
@@ -264,12 +257,7 @@ export class CesiumComponent implements OnInit {
   For more information on this map, including our terms of use, visit us online at \n\
   https://www.arcgis.com/home/item.html?id=1e126e7520f9466c9ca28b8f28b5e500",
         creationFunction: function () {
-          return ArcGisMapServerImageryProvider.fromBasemapType(
-            ArcGisBaseMapType.OCEANS,
-            {
-              enablePickFeatures: false,
-            },
-          );
+          return tiles('esri-ocean', 'jpg', 13, esriOceanCredit);
         },
       }),
     );
@@ -284,9 +272,7 @@ export class CesiumComponent implements OnInit {
           "OpenStreetMap (OSM) is a collaborative project to create a free editable map \
   of the world.\nhttp://www.openstreetmap.org",
         creationFunction: function () {
-          return new OpenStreetMapImageryProvider({
-            url: "https://tile.openstreetmap.org/",
-          });
+          return tiles('osm', 'png', 19, osmCredit);
         },
       }),
     );
@@ -300,14 +286,10 @@ export class CesiumComponent implements OnInit {
         tooltip:
           "Based on the original basemaps created for the Knight Foundation and reminiscent of hand drawn maps, the watercolor maps from Stamen Design apply raster effect area washes and organic edges over a paper texture to add warm pop to any map.\nhttps://docs.stadiamaps.com/map-styles/stamen-watercolor/",
         creationFunction: function () {
-          return new OpenStreetMapImageryProvider({
-            url: "https://tiles.stadiamaps.com/tiles/stamen_watercolor/",
-            fileExtension: "jpg",
-            credit: `&copy; <a href="https://stamen.com/" target="_blank">Stamen Design</a>
+          return tiles('stamen-watercolor', 'jpg', 16, `&copy; <a href="https://stamen.com/" target="_blank">Stamen Design</a>
              &copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a>
              &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a>
-             &copy; <a href="https://www.openstreetmap.org/about/" target="_blank">OpenStreetMap contributors</a>`,
-          });
+             &copy; <a href="https://www.openstreetmap.org/about/" target="_blank">OpenStreetMap contributors</a>`);
         },
       }),
     );
@@ -321,14 +303,10 @@ export class CesiumComponent implements OnInit {
         tooltip:
           "Based on the original basemaps created for the Knight Foundation and the most popular of the excellent styles from Stamen Design, these high-contrast B+W (black and white) maps are the perfect backdrop for your colorful and eye-catching overlays.\nhttps://docs.stadiamaps.com/map-styles/stamen-toner/",
         creationFunction: function () {
-          return new OpenStreetMapImageryProvider({
-            url: "https://tiles.stadiamaps.com/tiles/stamen_toner/",
-            retinaTiles: useRetinaTiles,
-            credit: `&copy; <a href="https://stamen.com/" target="_blank">Stamen Design</a>
+          return tiles('stamen-toner', 'png', 20, `&copy; <a href="https://stamen.com/" target="_blank">Stamen Design</a>
               &copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a>
               &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a>
-              &copy; <a href="https://www.openstreetmap.org/about/" target="_blank">OpenStreetMap contributors</a>`,
-          });
+              &copy; <a href="https://www.openstreetmap.org/about/" target="_blank">OpenStreetMap contributors</a>`, useRetinaTiles);
         },
       }),
     );
@@ -342,13 +320,9 @@ export class CesiumComponent implements OnInit {
         tooltip:
           "Stadia's custom Alidade Smooth style is designed for maps that use a lot of markers or overlays. It features a muted color scheme and fewer points of interest to allow your added data to shine.\nhttps://docs.stadiamaps.com/map-styles/alidade-smooth/",
         creationFunction: function () {
-          return new OpenStreetMapImageryProvider({
-            url: "https://tiles.stadiamaps.com/tiles/alidade_smooth/",
-            retinaTiles: useRetinaTiles,
-            credit: `&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a>
+          return tiles('alidade-smooth', 'png', 20, `&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a>
               &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a>
-              &copy; <a href="https://www.openstreetmap.org/about/" target="_blank">OpenStreetMap contributors</a>`,
-          });
+              &copy; <a href="https://www.openstreetmap.org/about/" target="_blank">OpenStreetMap contributors</a>`, useRetinaTiles);
         },
       }),
     );
@@ -362,13 +336,9 @@ export class CesiumComponent implements OnInit {
         tooltip:
           "Stadia Alidade Smooth Dark, like its lighter cousin, is also designed to stay out of the way. It just flips the dark mode switch on the color scheme. With the lights out, your data can now literally shine.\nhttps://docs.stadiamaps.com/map-styles/alidade-smooth-dark/",
         creationFunction: function () {
-          return new OpenStreetMapImageryProvider({
-            url: "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/",
-            retinaTiles: useRetinaTiles,
-            credit: `&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a>
+          return tiles('alidade-smooth-dark', 'png', 20, `&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a>
               &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a>
-              &copy; <a href="https://www.openstreetmap.org/about/" target="_blank">OpenStreetMap contributors</a>`,
-          });
+              &copy; <a href="https://www.openstreetmap.org/about/" target="_blank">OpenStreetMap contributors</a>`, useRetinaTiles);
         },
       }),
     );

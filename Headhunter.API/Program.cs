@@ -30,6 +30,12 @@ public class Program
                 options.UseSqlServer(builder.Configuration.GetConnectionString("Headhunter"));
             });
             builder.Services.AddHttpClient();
+            // Map tiles (Tiles/): OpenStreetMap's tile policy wants an identifying User-Agent.
+            builder.Services.AddHttpClient(Tiles.TilesController.HttpClientName, client =>
+            {
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Headhunter/1.0 (+https://github.com/NoahSurprenant/Headhunter)");
+                client.Timeout = TimeSpan.FromSeconds(20);
+            });
             builder.Services.AddAppHealthChecks(builder.Configuration);
             (await builder.Services.ConfigureAppForwardedHeadersAsync(builder.Configuration)).LogTo(Log.Logger);
 

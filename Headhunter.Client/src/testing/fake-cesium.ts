@@ -60,11 +60,15 @@ export function createFakeCesium() {
         setInputAction(fn: (movement: { position: unknown }) => void) { state.clickHandler = fn; }
       },
       ScreenSpaceEventType: { LEFT_CLICK: 'LEFT_CLICK' },
-      ArcGisMapService: { defaultAccessToken: undefined as string | undefined },
-      ProviderViewModel: class { name: string; constructor(options: { name: string }) { this.name = options.name; } },
-      ArcGisMapServerImageryProvider: { fromBasemapType: vi.fn() },
-      ArcGisBaseMapType: { SATELLITE: 1, HILLSHADE: 2, OCEANS: 3 },
-      OpenStreetMapImageryProvider: class {},
+      ProviderViewModel: class {
+        name: string;
+        creationFunction: () => unknown;
+        constructor(options: { name: string; creationFunction: () => unknown }) {
+          this.name = options.name;
+          this.creationFunction = options.creationFunction;
+        }
+      },
+      UrlTemplateImageryProvider: class { constructor(public options: { url: string; maximumLevel: number; credit: string }) {} },
       buildModuleUrl: (path: string) => `/assets/cesium/${path}`,
       Cartesian2: class { constructor(public x: number, public y: number) {} },
       Cartesian3: { fromDegrees: (lon: number, lat: number, height = 0) => ({ lon, lat, height }) },
