@@ -186,6 +186,14 @@
       "groupName": "CsvHelper major",
       "groupSlug": "csvhelper",
       "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The OpenTelemetry instrumentation packages that only ship prereleases (EntityFrameworkCore -beta, Process -rc) move with each OpenTelemetry release (1.20.1 -> 1.20.1-beta.1). Renovate otherwise only moves a prerelease within the same x.y.z, so they'd stay behind the stable OpenTelemetry packages. Only packages already on a prerelease: the stable ones keep ignoring prereleases",
+      "matchPackageNames": [
+        "OpenTelemetry.**"
+      ],
+      "matchCurrentVersion": "/-/",
+      "ignoreUnstable": false
     }
   ]
 }
