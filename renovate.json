@@ -62,7 +62,7 @@
       "separateMajorMinor": false
     },
     {
-      "description": "Packages tied to the Angular or .NET version: keep minors in the big PR but split majors out",
+      "description": "Packages tied to the .NET version: keep minors in the big PR but split majors out",
       "matchPackageNames": [
         "Microsoft.AspNetCore.**",
         "Microsoft.EntityFrameworkCore.**",
@@ -77,6 +77,21 @@
       "separateMajorMinor": true
     },
     {
+      "description": "Everything tied to the Angular version gets its own PR, never the big one: Angular itself, TypeScript, and Node (the client build image and the CI setup-node version, which Renovate looks up as actions/node-versions). Minors and patches go to an Angular PR (renovate/angular), majors to Angular major (renovate/major-angular, below). As GrifballWebApp's renovate.json",
+      "matchPackageNames": [
+        "@angular/**",
+        "@angular-devkit/**",
+        "@schematics/angular",
+        "zone.js",
+        "typescript",
+        "node",
+        "actions/node-versions"
+      ],
+      "groupName": "Angular",
+      "groupSlug": "angular",
+      "separateMajorMinor": true
+    },
+    {
       "description": "Angular majors get their own PR; they need ng update migrations and careful testing. zone.js versions and the node build image are tied to the Angular version, so they ride along",
       "matchPackageNames": [
         "@angular/**",
@@ -87,7 +102,10 @@
         "major"
       ],
       "groupName": "Angular major",
-      "groupSlug": "angular"
+      "groupSlug": "angular",
+      "prBodyNotes": [
+        "**Angular major:** don't merge this as is. Check out this branch and run `npx ng update @angular/core@{{{newMajor}}} @angular/cli@{{{newMajor}}}` in `Headhunter.Client` (Angular's migrations; it also moves TypeScript), commit the result, then run the client tests and try the app. See https://angular.dev/update-guide."
+      ]
     },
     {
       "description": "zone.js is 0.x and each minor pairs with an Angular major; the slug makes its minor land in the same renovate/major-angular branch as the Angular majors",
@@ -102,12 +120,14 @@
       "groupSlug": "major-angular"
     },
     {
-      "description": "The node build image must be a version the Angular CLI supports",
+      "description": "Node (the client build image and the CI setup-node version, which Renovate looks up as actions/node-versions) must be a version the Angular CLI supports",
       "matchDatasources": [
-        "docker"
+        "docker",
+        "github-releases"
       ],
       "matchPackageNames": [
-        "node"
+        "node",
+        "actions/node-versions"
       ],
       "matchUpdateTypes": [
         "major"
