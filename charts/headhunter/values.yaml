@@ -200,6 +200,15 @@ mssql:
     limits:
       memory: 4Gi
       cpu: "1"
+  # Server settings (sp_configure name: integer value), applied by the migration Job's configure step
+  # with RECONFIGURE: only those that differ are changed, and each change is logged. Settings left out
+  # are left as they are. They live in SQL Server's master database, so they outlast restarts. Ex, for
+  # a server limited to one or two CPUs and 4Gi:
+  #   max degree of parallelism: 2          # SQL Server sees the node's CPUs, not the pod's limit
+  #   cost threshold for parallelism: 50    # the default 5 sends nearly every query parallel
+  #   max server memory (MB): 2560          # the buffer pool; leave room for SQL Server's own memory
+  # Advanced options are shown first ('show advanced options' 1).
+  configuration: {}
   # Creates the folders SQL Server writes outside data and backup on the data volume, owned by its user
   # (10001); with a read-only root filesystem they live there.
   initImage:

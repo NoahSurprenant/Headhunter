@@ -65,6 +65,37 @@ spec:
         {{- toYaml $m.stepResources | nindent 8 }}
       volumeMounts:
         {{- include "headhunter.migrationMounts" . | nindent 8 }}
+    {{- with .Values.mssql.configuration }}
+    # Server settings (mssql.configuration), before the migrations: only those that differ change.
+    - name: configure
+      {{- include "headhunter.stepContainer" $ | nindent 6 }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -eu
+          sqlcmd -S "$DB_HOST,$DB_PORT" -U "$DB_USER" -C -b -h -1 -W -Q "SET NOCOUNT ON;
+            EXEC sp_configure 'show advanced options', 1; RECONFIGURE;
+            DECLARE @current bigint;
+            {{- range $name, $value := . }}
+            {{- if not (or (kindIs "float64" $value) (kindIs "int" $value) (kindIs "int64" $value)) }}{{ fail (printf "mssql.configuration: %s must be a number" $name) }}{{ end }}
+            {{- $n := replace "'" "''" $name }}
+            SET @current = (SELECT CONVERT(bigint, value) FROM sys.configurations WHERE name = N'{{ $n }}');
+            IF @current IS NULL THROW 50000, N'No such server setting: {{ $n }}', 1;
+            IF @current <> {{ int64 $value }}
+            BEGIN
+              PRINT N'{{ $n }}: ' + CONVERT(nvarchar(20), @current) + N' -> {{ int64 $value }}';
+              EXEC sp_configure N'{{ $n }}', {{ int64 $value }};
+            END
+            ELSE PRINT N'{{ $n }}: {{ int64 $value }} already';
+            {{- end }}
+            RECONFIGURE;"
+      env:
+        {{- include "headhunter.migrationStepEnv" $ | nindent 8 }}
+      resources:
+        {{- toYaml $m.stepResources | nindent 8 }}
+      volumeMounts:
+        {{- include "headhunter.migrationMounts" $ | nindent 8 }}
+    {{- end }}
     # The image's migrations the database lacks, into /work/pending.txt. Fails if the database has
     # migrations the image doesn't: an older image on a newer schema.
     - name: check-pending
