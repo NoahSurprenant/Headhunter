@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using System.Net;
 using System.Net.Http.Json;
 using Headhunter.API;
@@ -60,11 +62,12 @@ public class ApiEndpointTests
     [Test]
     public async Task Area_ReturnsAddressesInsideTheBoxWithTheirVoters()
     {
-        var addresses = await _client.GetFromJsonAsync<AddressDto[]>(
+        var area = await _client.GetFromJsonAsync<AreaDto>(
             "/Api/Area?west=-84.5&east=-83&north=43.5&south=42");
 
-        Assert.That(addresses, Is.Not.Null);
-        Assert.That(addresses!.Select(a => a.Id), Is.EquivalentTo(new[] { TestData.MapleAddressId, TestData.OakAddressId }));
+        Assert.That(area!.Clusters, Is.Empty);
+        var addresses = area.Addresses;
+        Assert.That(addresses.Select(a => a.Id), Is.EquivalentTo(new[] { TestData.MapleAddressId, TestData.OakAddressId }));
         var maple = addresses.Single(a => a.Id == TestData.MapleAddressId);
         Assert.Multiple(() =>
         {
@@ -77,11 +80,64 @@ public class ApiEndpointTests
     [Test]
     public async Task Area_HandlesBoxesThatCrossTheDateLine()
     {
-        var addresses = await _client.GetFromJsonAsync<AddressDto[]>(
+        var area = await _client.GetFromJsonAsync<AreaDto>(
             "/Api/Area?west=179&east=-179&north=11&south=9");
 
-        Assert.That(addresses!.Select(a => a.Id),
+        Assert.That(area!.Addresses.Select(a => a.Id),
             Is.EquivalentTo(new[] { TestData.DatelineEastAddressId, TestData.DatelineWestAddressId }));
+    }
+
+    // Over Area:MaxAddresses, the box comes back as a grid of counts instead of addresses.
+    private static HttpClient ClusteringClient(int gridCells) => new HeadhunterApiFactory("Production")
+        .WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Area:MaxAddresses", "1");
+            b.UseSetting("Area:GridCells", gridCells.ToString());
+        })
+        .CreateClient();
+
+    [Test]
+    public async Task Area_OverTheLimit_ReturnsClustersWithCountsAndCentres()
+    {
+        using var client = ClusteringClient(gridCells: 1);
+
+        var area = await client.GetFromJsonAsync<AreaDto>("/Api/Area?west=-84.5&east=-83&north=43.5&south=42");
+
+        Assert.That(area!.Addresses, Is.Empty);
+        var cluster = area.Clusters.Single();
+        Assert.Multiple(() =>
+        {
+            // Maple (42.5, -83.5) and Oak (43, -84).
+            Assert.That(cluster.Count, Is.EqualTo(2));
+            Assert.That(cluster.Latitude, Is.EqualTo(42.75).Within(1e-9));
+            Assert.That(cluster.Longitude, Is.EqualTo(-83.75).Within(1e-9));
+        });
+    }
+
+    [Test]
+    public async Task Area_Clusters_SplitTheBoxIntoAGrid()
+    {
+        using var client = ClusteringClient(gridCells: 40);
+
+        var area = await client.GetFromJsonAsync<AreaDto>("/Api/Area?west=-84.5&east=-83&north=43.5&south=42");
+
+        Assert.That(area!.Clusters.Select(c => c.Count), Is.EquivalentTo(new[] { 1, 1 }));
+    }
+
+    // Eastedge at 179.5 and Westedge at -179.5 are one degree apart across the date line: their centre is on it, not at 0.
+    [Test]
+    public async Task Area_Clusters_AverageAcrossTheDateLine()
+    {
+        using var client = ClusteringClient(gridCells: 1);
+
+        var area = await client.GetFromJsonAsync<AreaDto>("/Api/Area?west=179&east=-179&north=11&south=9");
+
+        var cluster = area!.Clusters.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(cluster.Count, Is.EqualTo(2));
+            Assert.That(Math.Abs(cluster.Longitude), Is.EqualTo(180).Within(1e-9));
+        });
     }
 
     [Test]

@@ -2,6 +2,8 @@ using Headhunter.API.Pagination;
 using Headhunter.Database;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace Headhunter.API;
 
@@ -85,44 +87,94 @@ public class ApiController : ControllerBase
             .ToArrayAsync(ct);
     }
 
+    // The globe's view: every address inside the box when there are few enough to draw (AreaOptions.MaxAddresses),
+    // else the box split into a grid with each cell's address count and centre, so a zoomed-out view shows where
+    // people are instead of an arbitrary sample. Unsorted on purpose: sorting the matches (it used to be by ID) made
+    // SQL Server walk all 4M addresses in that order instead of seeking IX_Addresses_Latitude_Longitude.
     [HttpGet("Area")]
-    public async Task<IActionResult> Area(decimal west, decimal east, decimal north, decimal south, CancellationToken ct)
+    public async Task<AreaDto> Area(decimal west, decimal east, decimal north, decimal south,
+        [FromServices] IOptions<AreaOptions> options, [FromServices] IMemoryCache cache, CancellationToken ct)
     {
-        var query = _context.Addresses
-            .Where(x => x.Latitude <= north && x.Latitude >= south);
+        var o = options.Value;
+        var inBox = _context.Addresses.Where(x => x.Latitude <= north && x.Latitude >= south);
+        inBox = west > east // The box crosses the date line.
+            ? inBox.Where(x => x.Longitude <= east || x.Longitude >= west)
+            : inBox.Where(x => x.Longitude <= east && x.Longitude >= west);
 
-        if (west > east) // If we cross International Date Line, adjust logic
+        // Over the limit? One more than it, unsorted, stops as soon as it has them.
+        var overLimit = await inBox.Take(o.MaxAddresses + 1).CountAsync(ct) > o.MaxAddresses;
+        if (!overLimit)
         {
-            query = query.Where(x => x.Longitude <= east || x.Longitude >= west);
-        }
-        else
-        {
-            query = query.Where(x => x.Longitude <= east && x.Longitude >= west);
-        }
-
-        var address = await query
-            .Select(x => new AddressDto()
-            {
-                Id = x.ID,
-                StreetNumber = x.STREET_NUMBER,
-                StreetName = x.STREET_NAME,
-                City = x.CITY,
-                State = x.STATE,
-                ZipCode = x.ZIP_CODE,
-                Latitude = (decimal)x.Latitude!,
-                Longitude = (decimal)x.Longitude!,
-                Voters = x.Voters.Select(v => new VoterDto()
+            var addresses = await inBox
+                .Select(x => new AddressDto()
                 {
-                    FirstName = v.FIRST_NAME,
-                    LastName = v.LAST_NAME
-                }).ToArray(),
+                    Id = x.ID,
+                    StreetNumber = x.STREET_NUMBER,
+                    StreetName = x.STREET_NAME,
+                    City = x.CITY,
+                    State = x.STATE,
+                    ZipCode = x.ZIP_CODE,
+                    Latitude = (decimal)x.Latitude!,
+                    Longitude = (decimal)x.Longitude!,
+                    Voters = x.Voters.Select(v => new VoterDto()
+                    {
+                        FirstName = v.FIRST_NAME,
+                        LastName = v.LAST_NAME
+                    }).ToArray(),
+                })
+                .AsSplitQuery()
+                .ToArrayAsync(ct);
+            return new AreaDto { Addresses = addresses, Clusters = [] };
+        }
+
+        // The same view asks again on every pan back to it, and the data only changes on import: the whole state
+        // takes seconds to group (every address), so grids are kept for a while.
+        var key = (west, east, north, south, o.GridCells);
+        var clusters = await cache.GetOrCreateAsync(key, entry =>
+        {
+            entry.Size = 1;
+            entry.AbsoluteExpirationRelativeToNow = o.ClusterCacheDuration;
+            return Clusters(inBox, (double)west, (double)east, (double)north, (double)south, o.GridCells, ct);
+        });
+        return new AreaDto { Addresses = [], Clusters = clusters! };
+    }
+
+    private static async Task<ClusterDto[]> Clusters(IQueryable<Address> inBox, double west, double east, double north, double south,
+        int gridCells, CancellationToken ct)
+    {
+        // Across the date line the box's width wraps: longitudes west of its west edge are counted past 180.
+        var width = west > east ? east - west + 360 : east - west;
+        var cellWidth = width / gridCells;
+        var cellHeight = (north - south) / gridCells;
+
+        var cells = await inBox
+            .Select(x => new
+            {
+                Latitude = (double)x.Latitude!,
+                // Degrees east of the box's west edge, so a cell's centre averages correctly across the date line.
+                X = (double)x.Longitude! >= west ? (double)x.Longitude! - west : (double)x.Longitude! + 360 - west,
             })
-            .OrderBy(a => a.Id)
-            .Take(1000)
-            .AsSplitQuery()
+            .GroupBy(x => new
+            {
+                Column = Math.Floor(x.X / cellWidth),
+                Row = Math.Floor((x.Latitude - south) / cellHeight),
+            })
+            .Select(g => new
+            {
+                Latitude = g.Average(x => x.Latitude),
+                X = g.Average(x => x.X),
+                Count = g.Count(),
+            })
             .ToArrayAsync(ct);
 
-        return Ok(address);
+        return cells
+            .Select(c => new ClusterDto
+            {
+                Latitude = c.Latitude,
+                Longitude = west + c.X > 180 ? west + c.X - 360 : west + c.X,
+                Count = c.Count,
+            })
+            .ToArray();
     }
 
     [ProducesResponseType(typeof(VoterDetailDto), StatusCodes.Status200OK)]
@@ -348,6 +400,31 @@ public class VoterGridDto
     public required string ZipCode { get; set; }
     public required decimal? Latitude { get; set; }
     public required decimal? Longitude { get; set; }
+}
+
+/// <summary>What the globe draws for a box: its addresses, or, when there are too many, clusters. One is empty.</summary>
+public class AreaDto
+{
+    public required AddressDto[] Addresses { get; set; }
+    public required ClusterDto[] Clusters { get; set; }
+}
+
+/// <summary>One grid cell of a zoomed-out view: how many addresses, and their average position.</summary>
+public class ClusterDto
+{
+    public required double Latitude { get; set; }
+    public required double Longitude { get; set; }
+    public required int Count { get; set; }
+}
+
+/// <summary>The globe's area queries (configuration section "Area").</summary>
+public class AreaOptions
+{
+    /// <summary>Above this many addresses in the box, clusters instead.</summary>
+    public int MaxAddresses { get; set; } = 1000;
+    /// <summary>The cluster grid: this many cells across and down the box. 20 leaves the globe's bubbles room.</summary>
+    public int GridCells { get; set; } = 20;
+    public TimeSpan ClusterCacheDuration { get; set; } = TimeSpan.FromHours(1);
 }
 
 public class AddressDto

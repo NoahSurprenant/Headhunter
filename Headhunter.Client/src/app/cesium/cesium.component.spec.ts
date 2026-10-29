@@ -3,6 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { fakeCesium, resetFakeCesium } from '../../testing/fake-cesium';
 import { areaAddress } from '../../testing/synthetic-data';
+import type { AddressDto } from './cesium.component';
+import { ClusterDto, clusterId, shortCount, clusterSize } from './clusters';
 import type { CesiumComponent as CesiumComponentType } from './cesium.component';
 
 // The real Viewer needs WebGL, which jsdom does not have, so the cesium module is
@@ -14,6 +16,7 @@ vi.doMock('cesium', () => cesium.module);
 let CesiumComponent: typeof CesiumComponentType;
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
+const area = (addresses: AddressDto[] = [], clusters: ClusterDto[] = []) => ({ addresses, clusters });
 
 describe('CesiumComponent', () => {
   let http: HttpTestingController;
@@ -81,7 +84,7 @@ describe('CesiumComponent', () => {
     expect(Number(params.get('east'))).toBeCloseTo(-84);
     expect(Number(params.get('south'))).toBeCloseTo(42);
     expect(Number(params.get('north'))).toBeCloseTo(43);
-    req.flush([]);
+    req.flush(area([]));
   });
 
   it('does not query when the camera cannot see the globe', () => {
@@ -94,7 +97,7 @@ describe('CesiumComponent', () => {
   it('adds one labelled point per address, listing its voters in the description', () => {
     const { viewer } = render();
     moveCamera(viewer);
-    expectArea().flush([areaAddress()]);
+    expectArea().flush(area([areaAddress()]));
 
     const entity = viewer.entities.getById('addr-0001') as Record<string, any>;
     expect(entity['name']).toBe('123 Fake St');
@@ -109,12 +112,12 @@ describe('CesiumComponent', () => {
   it('keeps entities that are still visible and removes the ones that are not', () => {
     const { viewer } = render();
     moveCamera(viewer);
-    expectArea().flush([areaAddress({ id: 'a1' }), areaAddress({ id: 'a2' })]);
+    expectArea().flush(area([areaAddress({ id: 'a1' }), areaAddress({ id: 'a2' })]));
     const first = viewer.entities.getById('a1');
 
     cesium.state.rectangle = { west: rad(-84.9), south: rad(42), east: rad(-84), north: rad(43) };
     moveCamera(viewer);
-    expectArea().flush([areaAddress({ id: 'a1' }), areaAddress({ id: 'a3' })]);
+    expectArea().flush(area([areaAddress({ id: 'a1' }), areaAddress({ id: 'a3' })]));
 
     expect(viewer.entities.values.map(e => e['id']).sort()).toEqual(['a1', 'a3']);
     expect(viewer.entities.getById('a1')).toBe(first);
@@ -124,7 +127,7 @@ describe('CesiumComponent', () => {
   it('ignores a camera stop with the same bounds as the last one', () => {
     const { viewer } = render();
     moveCamera(viewer);
-    expectArea().flush([]);
+    expectArea().flush(area([]));
     moveCamera(viewer);
     http.expectNone(req => req.url === 'api/area');
   });
@@ -139,7 +142,7 @@ describe('CesiumComponent', () => {
     const current = expectArea();
 
     expect(stale.cancelled).toBe(true);
-    current.flush([areaAddress()]);
+    current.flush(area([areaAddress()]));
     expect(viewer.entities.values.length).toBe(1);
   });
 
@@ -177,5 +180,66 @@ describe('CesiumComponent', () => {
     viewer.trackedEntity = entity;
     viewer.trackedEntityChanged.raise();
     expect(component.trackedEntity()).toBe(entity);
+  });
+
+  it('draws clusters when zoomed out, sized and labelled by their count', () => {
+    const { viewer } = render();
+    moveCamera(viewer);
+    const c = { latitude: 42.33, longitude: -83.05, count: 45678 };
+    expectArea().flush(area([], [c]));
+
+    const entity = viewer.entities.getById(clusterId(c)) as Record<string, any>;
+    expect(entity['name']).toBe((45678).toLocaleString() + ' addresses');
+    expect(entity['position']).toEqual({ lon: -83.05, lat: 42.33, height: 0 });
+    expect(entity['label'].text).toBe('46k');
+    expect(entity['point'].pixelSize).toBe(clusterSize(45678, 45678));
+  });
+
+  it('sizes clusters against the busiest in view, and draws a lone address without a number', () => {
+    const { viewer } = render();
+    moveCamera(viewer);
+    const big = { latitude: 42.3, longitude: -83.0, count: 10000 };
+    const small = { latitude: 42.4, longitude: -83.2, count: 100 };
+    const lone = { latitude: 42.5, longitude: -83.4, count: 1 };
+    expectArea().flush(area([], [big, small, lone]));
+
+    const size = (c: ClusterDto) => (viewer.entities.getById(clusterId(c)) as Record<string, any>)['point'].pixelSize;
+    expect(size(big)).toBe(40);
+    expect(size(small)).toBe(17);
+    expect(size(lone)).toBe(8);
+    expect((viewer.entities.getById(clusterId(lone)) as Record<string, any>)['label']).toBeUndefined();
+  });
+
+  it('zooms in on a clicked cluster instead of opening the info box', async () => {
+    const { fixture, viewer } = render();
+    moveCamera(viewer);
+    const c = { latitude: 42.33, longitude: -83.05, count: 5000 };
+    expectArea().flush(area([], [c]));
+    viewer.camera.flyTo.mockClear();
+
+    cesium.state.picked = { id: viewer.entities.getById(clusterId(c)) };
+    cesium.state.clickHandler!({ position: {} });
+    await fixture.whenStable();
+
+    expect(viewer.camera.flyTo).toHaveBeenCalledWith({ destination: { lon: -83.05, lat: 42.33, height: 100000 } });
+    expect(fixture.componentInstance.selectedEntity()).toBeUndefined();
+  });
+
+  it('replaces clusters with addresses when zoomed in far enough', () => {
+    const { viewer } = render();
+    moveCamera(viewer);
+    const c = { latitude: 42.33, longitude: -83.05, count: 5000 };
+    expectArea().flush(area([], [c]));
+
+    cesium.state.rectangle = { west: rad(-84.6), south: rad(42.9), east: rad(-84.4), north: rad(43.1) };
+    moveCamera(viewer);
+    expectArea().flush(area([areaAddress()]));
+
+    expect(viewer.entities.values.map(e => e['id'])).toEqual(['addr-0001']);
+  });
+
+  it('shortens cluster counts', () => {
+    expect([7, 999, 1000, 1234, 9950, 45678, 999499, 1250000].map(shortCount))
+      .toEqual(['7', '999', '1k', '1.2k', '9.9k', '46k', '999k', '1.3M']);
   });
 });

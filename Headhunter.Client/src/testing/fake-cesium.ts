@@ -40,6 +40,7 @@ export function createFakeCesium() {
     trackedEntityChanged = new FakeEvent();
     camera = {
       flyTo: vi.fn(),
+      positionCartographic: { height: 400000 },
       moveEnd: new FakeEvent(),
       computeViewRectangle: vi.fn(() => state.rectangle),
     };
@@ -73,9 +74,9 @@ export function createFakeCesium() {
       Cartesian2: class { constructor(public x: number, public y: number) {} },
       Cartesian3: { fromDegrees: (lon: number, lat: number, height = 0) => ({ lon, lat, height }) },
       Math: { toRadians: (deg: number) => (deg * Math.PI) / 180, toDegrees: degrees },
-      Color: { AQUA: 'AQUA', WHITE: 'WHITE' },
+      Color: { AQUA: 'AQUA', WHITE: 'WHITE', ORANGE: { withAlpha: (a: number) => `ORANGE@${a}` } },
       LabelStyle: { FILL_AND_OUTLINE: 'FILL_AND_OUTLINE' },
-      VerticalOrigin: { TOP: 'TOP' },
+      VerticalOrigin: { TOP: 'TOP', CENTER: 'CENTER' },
       defined: (value: unknown) => value !== undefined && value !== null,
     },
   };
