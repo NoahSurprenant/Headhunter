@@ -45,7 +45,8 @@ So the migrations always match the app. The Job's steps:
 3. **backup** (`migrations.backup.enabled`): if anything is pending and the database exists, writes a
    `COPY_ONLY, COMPRESSION, CHECKSUM` backup to `<migrations.backup.directory>/<prefix>-<UTC time>.bak`.
    SQL Server writes it, to its backup volume. Old backups are not pruned.
-4. **migrate:** runs the bundle, or does nothing when nothing is pending.
+4. **migrate:** runs the bundle, or does nothing when nothing is pending. Then, with
+   `database.recoveryModel`, it sets the database's recovery model if it differs.
 
 The Job doesn't retry (`backoffLimit: 0`). Its name carries a hash of its pod spec and the release
 revision, so a new image or new settings make a new Job.

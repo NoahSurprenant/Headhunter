@@ -155,11 +155,27 @@ spec:
       args:
         - |
           set -eu
-          if [ ! -s /work/pending.txt ]; then echo "Nothing to migrate."; exit 0; fi
-          exec /app/efbundle
+          if [ -s /work/pending.txt ]; then
+            /app/efbundle
+          else
+            echo "Nothing to migrate."
+          fi
+          {{- with .Values.database.recoveryModel }}
+          {{- if not (has . (list "SIMPLE" "FULL" "BULK_LOGGED")) }}{{ fail "database.recoveryModel must be SIMPLE, FULL or BULK_LOGGED" }}{{ end }}
+          # database.recoveryModel, once the database exists: only if it differs.
+          sqlcmd -S "$DB_HOST,$DB_PORT" -U "$DB_USER" -C -b -h -1 -W -v DB_NAME="$DB_NAME" -Q "SET NOCOUNT ON;
+            DECLARE @current nvarchar(60) = (SELECT recovery_model_desc FROM sys.databases WHERE name = N'\$$(DB_NAME)');
+            IF @current <> N'{{ . }}'
+            BEGIN
+              PRINT N'Recovery model: ' + @current + N' -> {{ . }}';
+              ALTER DATABASE [\$$(DB_NAME)] SET RECOVERY {{ . }};
+            END
+            ELSE PRINT N'Recovery model: {{ . }} already';"
+          {{- end }}
       env:
         # Read by the bundle's design-time context (Headhunter.Database, DesignTimeContextFactory).
         {{- include "headhunter.migrationConnectionEnv" . | nindent 8 }}
+        {{- include "headhunter.dbEnv" . | nindent 8 }}
         - name: HOME
           value: /tmp
       {{- with $m.resources }}
