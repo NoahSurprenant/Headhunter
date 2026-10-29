@@ -69,6 +69,7 @@ public class DatabaseTests
     [TestCase("IX_Voters_LAST_NAME")]
     [TestCase("IX_Addresses_FullStreetAddress")]
     [TestCase("IX_Addresses_STREET_NAME")]
+    [TestCase("IX_Voters_YEAR_OF_BIRTH")]
     public async Task SuggestionQuery_SeeksItsIndex(string index)
     {
         await using var context = SqlServerFixture.CreateContext();
@@ -82,6 +83,8 @@ public class DatabaseTests
             "IX_Addresses_FullStreetAddress" => context.Addresses.Where(a => a.FullStreetAddress.StartsWith("100 Ma")).Select(a => a.FullStreetAddress),
             // The street name itself: with four test rows SQL Server would rather scan the small
             // FullStreetAddress index for the full addresses than seek this one.
+            // The voter search by birth year, age or star sign.
+            "IX_Voters_YEAR_OF_BIRTH" => context.Voters.Where(v => v.YEAR_OF_BIRTH == 1990).Select(v => v.YEAR_OF_BIRTH.ToString()),
             "IX_Addresses_STREET_NAME" => context.Addresses.Where(a => a.STREET_NAME.StartsWith("Meri")).Select(a => a.STREET_NAME),
             _ => throw new ArgumentOutOfRangeException(nameof(index)),
         };
