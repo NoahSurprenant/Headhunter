@@ -1,0 +1,172 @@
+{{- $m := .Values.migrations -}}
+{{- if $m.enabled }}
+{{- $pod := include "headhunter.migrationJobPod" . }}
+# The one place the schema changes (values.yaml, migrations). A Job can't be changed once created, so
+# its name carries a hash of its pod and the release revision: any change - a new image, new settings,
+# a helm upgrade - makes a new Job, and the old one goes with the release's previous manifest. Under
+# Argo CD (revision always 1) the same spec keeps the same Job; delete it to run it again.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "headhunter-migrate-%s" (printf "%s-%d" $pod .Release.Revision | sha256sum | trunc 10) }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrations
+  annotations:
+    # After SQL Server (-2), before the app: a sync stops here if the migration fails, leaving the
+    # running app as it was.
+    argocd.argoproj.io/sync-wave: "-1"
+    {{- with $m.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  backoffLimit: {{ $m.backoffLimit }}
+  activeDeadlineSeconds: {{ $m.activeDeadlineSeconds }}
+  template:
+    {{- $pod | nindent 4 }}
+{{- end }}
+
+{{- define "headhunter.migrationJobPod" -}}
+{{- $m := .Values.migrations -}}
+metadata:
+  labels:
+    app: headhunter-migrate
+    {{- include "headhunter.podLabels" . | nindent 4 }}
+    app.kubernetes.io/component: migrations
+    {{- with $m.podLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $m.podAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $m.podSecurityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  initContainers:
+    - name: wait-for-database
+      {{- include "headhunter.stepContainer" . | nindent 6 }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -u
+          {{- include "headhunter.waitForDatabaseScript" . | nindent 10 }}
+      env:
+        {{- include "headhunter.migrationStepEnv" . | nindent 8 }}
+      resources:
+        {{- toYaml $m.stepResources | nindent 8 }}
+      volumeMounts:
+        {{- include "headhunter.migrationMounts" . | nindent 8 }}
+    # The image's migrations the database lacks, into /work/pending.txt. Fails if the database has
+    # migrations the image doesn't: an older image on a newer schema.
+    - name: check-pending
+      {{- include "headhunter.stepContainer" . | nindent 6 }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -eu
+          {{- include "headhunter.appliedMigrationsQuery" . | nindent 10 }}
+          {{ include "headhunter.pendingMigrations" . }} > /work/pending.txt
+          awk 'FILENAME == ARGV[1] { if ($0 != "") have[$0]; next } $0 != "" && !($0 in have)' /app/migrations.txt /work/applied.txt > /work/unknown.txt
+          if [ -s /work/unknown.txt ]; then
+            echo "Database $DB_NAME has migrations this image doesn't: $(tr '\n' ' ' < /work/unknown.txt)"
+            echo "Deploy an image that has them (or roll the database back by hand)."
+            exit 1
+          fi
+          if [ -s /work/pending.txt ]; then
+            echo "Pending: $(tr '\n' ' ' < /work/pending.txt)"
+          else
+            echo "Database $DB_NAME is up to date."
+          fi
+      env:
+        {{- include "headhunter.migrationStepEnv" . | nindent 8 }}
+      resources:
+        {{- toYaml $m.stepResources | nindent 8 }}
+      volumeMounts:
+        {{- include "headhunter.migrationMounts" . | nindent 8 }}
+    {{- if $m.backup.enabled }}
+    # Before changing an existing database: a backup, written by SQL Server to its backup volume.
+    - name: backup
+      {{- include "headhunter.stepContainer" . | nindent 6 }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -eu
+          if [ ! -s /work/pending.txt ]; then echo "Nothing pending: no backup."; exit 0; fi
+          if [ ! -s /work/applied.txt ]; then echo "New database: nothing to back up."; exit 0; fi
+          file="$BACKUP_DIR/$BACKUP_PREFIX-$(date -u +%Y%m%dT%H%M%SZ).bak"
+          echo "Backing up $DB_NAME to $file (on SQL Server's side)."
+          sqlcmd -S "$DB_HOST,$DB_PORT" -U "$DB_USER" -C -b -v DB_NAME="$DB_NAME" BACKUP_FILE="$file" -Q "BACKUP DATABASE [\$$(DB_NAME)]
+            TO DISK = N'\$$(BACKUP_FILE)' WITH COPY_ONLY, COMPRESSION, CHECKSUM, STATS = 10"
+      env:
+        {{- include "headhunter.migrationStepEnv" . | nindent 8 }}
+        - name: BACKUP_DIR
+          value: {{ $m.backup.directory | quote }}
+        - name: BACKUP_PREFIX
+          value: {{ $m.backup.prefix | quote }}
+      resources:
+        {{- toYaml $m.stepResources | nindent 8 }}
+      volumeMounts:
+        {{- include "headhunter.migrationMounts" . | nindent 8 }}
+    {{- end }}
+  containers:
+    - name: migrate
+      {{- include "headhunter.stepContainer" . | nindent 6 }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -eu
+          if [ ! -s /work/pending.txt ]; then echo "Nothing to migrate."; exit 0; fi
+          exec /app/efbundle
+      env:
+        # Read by the bundle's design-time context (Headhunter.Database, DesignTimeContextFactory).
+        {{- include "headhunter.migrationConnectionEnv" . | nindent 8 }}
+        - name: HOME
+          value: /tmp
+      {{- with $m.resources }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumeMounts:
+        {{- include "headhunter.migrationMounts" . | nindent 8 }}
+  volumes:
+    - name: work
+      emptyDir: {}
+    - name: tmp
+      emptyDir: {}
+  {{- with $m.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $m.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $m.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+
+{{- define "headhunter.migrationStepEnv" -}}
+{{ include "headhunter.dbEnv" . }}
+- name: WAIT_SECONDS
+  value: {{ .Values.migrations.waitSeconds | quote }}
+- name: HOME
+  value: /tmp
+{{- end }}
+
+{{- define "headhunter.migrationMounts" -}}
+- name: work
+  mountPath: /work
+- name: tmp
+  mountPath: /tmp
+{{- end }}

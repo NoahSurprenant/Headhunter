@@ -1,0 +1,26 @@
+suite: ingress
+templates:
+  - templates/ingress.yaml
+release:
+  namespace: hh
+tests:
+  - it: is off by default
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: routes an Ingress to the app's Service
+    set:
+      ingress: { enabled: true, className: nginx, hosts: [hh.example.com] }
+    asserts:
+      - isKind: { of: Ingress }
+      - equal: { path: "spec.rules[0].host", value: hh.example.com }
+      - equal: { path: "spec.rules[0].http.paths[0].backend.service", value: { name: headhunter, port: { name: http } } }
+
+  - it: routes a Traefik IngressRoute with its middlewares
+    set:
+      ingressRoute: { enabled: true, host: hh.example.com, middlewares: [{ name: security-headers, namespace: traefik }] }
+    asserts:
+      - isKind: { of: IngressRoute }
+      - equal: { path: metadata.name, value: headhunter-ingressroute }
+      - equal: { path: "spec.routes[0].match", value: "Host(`hh.example.com`)" }
+      - equal: { path: "spec.routes[0].services[0]", value: { name: headhunter, port: 8080 } }

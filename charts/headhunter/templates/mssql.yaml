@@ -1,0 +1,280 @@
+{{- $m := .Values.mssql -}}
+{{- if $m.enabled }}
+{{- if not $m.acceptEula }}{{ fail "mssql.acceptEula must be true to run the chart's SQL Server (the SQL Server EULA)" }}{{ end }}
+{{- $p := $m.persistence }}
+{{- if not $p.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $p.claimName }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mssql
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+    # The database: never pruned by Argo CD, never deleted by helm uninstall.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    helm.sh/resource-policy: keep
+    {{- with $p.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    {{- toYaml $p.accessModes | nindent 4 }}
+  {{- with $p.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $p.size }}
+---
+{{- end }}
+{{- $b := $m.backup }}
+{{- if and $b.enabled (not $b.existingClaim) }}
+{{- $pvName := $b.nfs.pvName | default (printf "%s-mssql-backup" .Release.Namespace) }}
+{{- if $b.nfs.server }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ $pvName }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mssql
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: {{ $b.size }}
+  accessModes:
+    {{- toYaml $b.accessModes | nindent 4 }}
+  storageClassName: ""
+  persistentVolumeReclaimPolicy: {{ $b.nfs.reclaimPolicy }}
+  nfs:
+    server: {{ $b.nfs.server }}
+    path: {{ required "mssql.backup.nfs.path is required with mssql.backup.nfs.server" $b.nfs.path }}
+---
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $b.claimName }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mssql
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    helm.sh/resource-policy: keep
+    {{- with $b.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    {{- toYaml $b.accessModes | nindent 4 }}
+  {{- if $b.nfs.server }}
+  storageClassName: ""
+  volumeName: {{ $pvName }}
+  {{- else if $b.storageClass }}
+  storageClassName: {{ $b.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $b.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $m.service.name }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mssql
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $m.name }}
+  ports:
+    - name: sql
+      port: {{ $m.service.port }}
+      targetPort: 1433
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $m.headlessServiceName }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mssql
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  clusterIP: None
+  selector:
+    app: {{ $m.name }}
+  ports:
+    - name: sql
+      port: 1433
+---
+{{- with $m.loadBalancer }}
+{{- if .enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "headhunter.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: mssql
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+    {{- with .annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: {{ .externalTrafficPolicy }}
+  selector:
+    app: {{ $m.name }}
+  ports:
+    - name: sql
+      port: {{ .port }}
+      targetPort: 1433
+---
+{{- end }}
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $m.name }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mssql
+  annotations:
+    # Before the migration Job (-1) and the app.
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  serviceName: {{ $m.headlessServiceName }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $m.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $m.name }}
+        {{- include "headhunter.podLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mssql
+        {{- with $m.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $m.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $m.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: fix-permissions-data
+          image: {{ include "headhunter.image" $m.initImage }}
+          imagePullPolicy: {{ $m.initImage.pullPolicy }}
+          # Also creates mssql-state/, where SQL Server keeps what it writes outside data and backup
+          # (mounted below) - kubelet would create those subPath folders root-owned, and SQL Server
+          # runs as 10001.
+          command: ["sh", "-c", "mkdir -p /var/opt/mssql/data/mssql-state/.system /var/opt/mssql/data/mssql-state/secrets /var/opt/mssql/data/mssql-state/log && chown -R 10001:0 /var/opt/mssql/data"]
+          securityContext:
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+          volumeMounts:
+            - name: mssql-data
+              mountPath: /var/opt/mssql/data
+      containers:
+        - name: mssql
+          image: {{ include "headhunter.image" $m.image }}
+          imagePullPolicy: {{ $m.image.pullPolicy }}
+          ports:
+            - name: sql
+              containerPort: 1433
+          env:
+            - name: ACCEPT_EULA
+              value: "Y"
+            {{- with $m.edition }}
+            - name: MSSQL_PID
+              value: {{ . | quote }}
+            {{- end }}
+            - name: SA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "headhunter.secretName" (dict "secretName" $m.saPassword.secretName "root" .) }}
+                  key: {{ $m.saPassword.key }}
+            {{- with $m.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $m.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $m.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: mssql-data
+              mountPath: /var/opt/mssql/data
+            {{- if $b.enabled }}
+            - name: mssql-backup
+              mountPath: /var/opt/mssql/backup
+            {{- end }}
+            # Read-only root filesystem. SQL Server's other writes live on the data volume too:
+            # its system files, its machine key (kept across restarts) and its error log.
+            - name: mssql-data
+              mountPath: /var/opt/mssql/.system
+              subPath: mssql-state/.system
+            - name: mssql-data
+              mountPath: /var/opt/mssql/secrets
+              subPath: mssql-state/secrets
+            - name: mssql-data
+              mountPath: /var/opt/mssql/log
+              subPath: mssql-state/log
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: mssql-data
+          persistentVolumeClaim:
+            claimName: {{ $p.existingClaim | default $p.claimName }}
+        {{- if $b.enabled }}
+        - name: mssql-backup
+          persistentVolumeClaim:
+            claimName: {{ $b.existingClaim | default $b.claimName }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with $m.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $m.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $m.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,350 @@
+# Headhunter chart. One release per namespace: object names are fixed (each can be overridden where
+# it matters), not prefixed with the release name, so an install that started as plain manifests keeps
+# its objects - and its data - when it moves to the chart.
+
+# The Secret secrets are read from by default: the SQL Server password (mssql.saPassword,
+# database.password) and database.connectionString.
+secret:
+  name: headhunter-secrets
+  # Create it from stringData below. For trying the chart out: real secrets belong outside the
+  # values (SealedSecrets, External Secrets, kubectl create secret).
+  create: false
+  stringData: {}
+
+# Manage the namespace's default ServiceAccount with automountServiceAccountToken: false. The chart's
+# pods never mount a token either way; this covers anything else in the namespace that uses it.
+defaultServiceAccount:
+  manage: false
+
+imagePullSecrets: []
+
+# The database the app and its migrations use: the chart's SQL Server (mssql.enabled) or any other.
+database:
+  # Empty: the chart's SQL Server's Service (mssql.service.name). Required with mssql.enabled false.
+  host: ""
+  # Empty: mssql.service.port with the chart's SQL Server, else 1433.
+  port: ""
+  name: Headhunter
+  # The administrator the migration Job connects as (and the app, and sql-exporter, unless told otherwise).
+  user: sa
+  # Its password. secretName empty: mssql.saPassword's, then secret.name. key empty: mssql.saPassword.key.
+  password:
+    secretName: ""
+    key: ""
+  # Appended to the connection string the chart builds:
+  #   Server=<host>,<port>;Database=<name>;User Id=<user>;Password="<password>";<options>
+  # The password is quoted, so it must not contain '"'.
+  options: "Encrypt=True;TrustServerCertificate=True"
+  # Give the app this whole connection string instead (ConnectionStrings:Headhunter). The migrations
+  # still connect as the administrator above. secretName empty: secret.name.
+  connectionString:
+    secretName: ""
+    key: ""
+
+# The API (ASP.NET Core), which also serves the Angular client.
+app:
+  # Its Deployment, its pods' app label (the Deployment's selector) and its Service.
+  name: headhunter
+  replicas: 1
+  image:
+    repository: ghcr.io/noahsurprenant/headhunter
+    tag: master
+    # Replaces any digest in tag.
+    digest: ""
+    pullPolicy: IfNotPresent
+  service:
+    name: headhunter
+    port: 8080
+  # appsettings, as nested values: each leaf becomes an environment variable (ForwardedHeaders:
+  # { KnownIPNetworks: [10.42.0.0/16] } -> ForwardedHeaders__KnownIPNetworks__0). Ex:
+  #   ForwardedHeaders: { KnownIPNetworks: [10.42.0.0/16], ForwardedForHeaderName: X-Real-IP, FetchCloudflare: false }
+  #   HealthChecks: { MaxAllocatedMegabytes: 384 }
+  config: {}
+  # OpenTelemetry: logs, metrics and traces pushed over OTLP. Off: the app exports nothing.
+  telemetry:
+    enabled: false
+    # Ex: http://otel-collector.example:4317
+    endpoint: ""
+    # grpc or http/protobuf.
+    protocol: grpc
+    # OTEL_SERVICE_NAME. Empty: app.name.
+    serviceName: ""
+    # deployment.environment.name. Empty: not set.
+    environment: ""
+    # More OTEL_RESOURCE_ATTRIBUTES.
+    resourceAttributes: {}
+  # Wait in an init container until the database has every migration in the image (the migration Job's
+  # work), so the app starts on the schema it expects rather than crashing and backing off. It connects
+  # as the administrator.
+  waitForMigrations: true
+  extraEnv: []
+  # Liveness runs no checks, so a database outage takes the pod out of the Service instead of
+  # restarting it.
+  startupProbe:
+    httpGet: { path: /health/live, port: http }
+    periodSeconds: 5
+    failureThreshold: 24
+  livenessProbe:
+    httpGet: { path: /health/live, port: http }
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet: { path: /health/ready, port: http }
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# A Kubernetes Ingress to the app.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+# Or a Traefik IngressRoute (traefik.io/v1alpha1).
+ingressRoute:
+  enabled: false
+  name: headhunter-ingressroute
+  annotations: {}
+  entryPoints: [websecure]
+  host: ""
+  # Ex: [{ name: security-headers, namespace: traefik }]
+  middlewares: []
+  tls:
+    secretName: ""
+
+mssql:
+  enabled: true
+  # Required with enabled: you accept the SQL Server EULA (ACCEPT_EULA=Y).
+  acceptEula: false
+  # The StatefulSet, its pods' app label (its selector) and its headless Service.
+  name: mssql
+  headlessServiceName: mssql-headless
+  image:
+    repository: mcr.microsoft.com/mssql/server
+    # Pinned by digest so a restart can't upgrade SQL Server: databases are upgraded in place on a newer
+    # version's first start and can't go back.
+    tag: 2025-CU8-ubuntu-24.04@sha256:4bab24f36c1ecd48e85f7d37df26e6bf301641d84c3fe652f9a0dcc947d512e1
+    digest: ""
+    pullPolicy: IfNotPresent
+  # MSSQL_PID: the edition (Developer, Express, Standard, ... or a product key). Empty: Developer.
+  edition: ""
+  # The sa password. secretName empty: secret.name.
+  saPassword:
+    secretName: ""
+    key: SA_PASSWORD
+  # The ClusterIP Service the app connects to.
+  service:
+    name: mssql
+    port: 1433
+  # Also expose SQL Server outside the cluster.
+  loadBalancer:
+    enabled: false
+    name: mssql-lb
+    port: 1433
+    # Local keeps client addresses, so NetworkPolicies can allow LAN ranges.
+    externalTrafficPolicy: Cluster
+    annotations: {}
+  persistence:
+    # Use this claim instead of creating one.
+    existingClaim: ""
+    claimName: mssql-data-pvc
+    size: 10Gi
+    storageClass: ""
+    accessModes: [ReadWriteOnce]
+    annotations: {}
+  # The backup volume, mounted at /var/opt/mssql/backup; the migration Job writes its backups here.
+  backup:
+    enabled: true
+    existingClaim: ""
+    claimName: mssql-backup-pvc
+    size: 30Gi
+    accessModes: [ReadWriteOnce]
+    # With nfs.server: a PersistentVolume for this NFS export, bound to the claim. Otherwise the claim
+    # is provisioned from storageClass.
+    nfs:
+      server: ""
+      path: ""
+      # Empty: <namespace>-mssql-backup.
+      pvName: ""
+      reclaimPolicy: Retain
+    storageClass: ""
+    annotations: {}
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 500m
+    limits:
+      memory: 4Gi
+      cpu: "1"
+  # Creates the folders SQL Server writes outside data and backup on the data volume, owned by its user
+  # (10001); with a read-only root filesystem they live there.
+  initImage:
+    repository: docker.io/library/busybox
+    tag: 1.38@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
+    pullPolicy: IfNotPresent
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  # SQL Server's own container (its init container runs as root, to chown the data volume).
+  securityContext:
+    readOnlyRootFilesystem: true
+  extraEnv: []
+  podAnnotations: {}
+  podLabels: {}
+  # SQL Server's image is amd64 only.
+  nodeSelector:
+    kubernetes.io/arch: amd64
+  tolerations: []
+  affinity: {}
+
+# Prometheus metrics for SQL Server (burningalchemist/sql_exporter).
+sqlExporter:
+  enabled: false
+  image:
+    repository: docker.io/burningalchemist/sql_exporter
+    tag: 0.24.12@sha256:528d46d6f6ce3a6f13aaebee39c71220446547c0671218635f42e11d8bce33e3
+    digest: ""
+    pullPolicy: IfNotPresent
+  # The login. Empty: database.user and its password. It needs VIEW SERVER STATE and VIEW ANY
+  # DEFINITION, nothing more. The password is percent-encoded into the connection URL at start.
+  user: ""
+  password:
+    secretName: ""
+    key: ""
+  dsnOptions: "encrypt=true&TrustServerCertificate=true"
+  # mssql_standard: server-wide (memory, I/O, connections...). mssql_query_stats: the plan cache's top
+  # 20 statements per database and the top wait types.
+  collectors: [mssql_standard, mssql_query_stats]
+  # More collector files (name.collector.yml: content), beside the chart's.
+  extraCollectorFiles: {}
+  port: 9399
+  # A Prometheus Operator ServiceMonitor.
+  serviceMonitor:
+    enabled: false
+    interval: 60s
+    labels: {}
+    # The default instance label is the exporter pod's address; one exporter per release, so the
+    # namespace names the database better.
+    relabelings:
+      - sourceLabels: [__meta_kubernetes_namespace]
+        targetLabel: instance
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+
+# The one place the schema changes: a Job, run from the app's image (its migrations bundle
+# /app/efbundle, their list /app/migrations.txt, and sqlcmd), that waits for SQL Server, works out
+# which migrations are pending, backs the database up if any are, and applies them. The app waits for
+# it (app.waitForMigrations). Under Argo CD it runs after SQL Server and before the app (sync waves),
+# so a failure stops the sync with the running app untouched.
+migrations:
+  enabled: true
+  # A COPY_ONLY compressed backup before applying pending migrations to an existing database, to
+  # mssql.backup's volume (on SQL Server's side) as <prefix>-<UTC time>.bak. Not pruned.
+  backup:
+    enabled: true
+    directory: /var/opt/mssql/backup
+    prefix: headhunter-premigrate
+  # How long the steps wait for SQL Server, in seconds.
+  waitSeconds: 600
+  # A failed migration waits for a person, not a retry.
+  backoffLimit: 0
+  # Also the migrations' command timeout.
+  activeDeadlineSeconds: 3600
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # The other steps (waits, checks, backup: they mostly wait on SQL Server).
+  stepResources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  annotations: {}
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+networkPolicy:
+  enabled: false
+  # DNS (port 53, UDP and TCP) out of every pod. Empty: to anywhere. Ex: to kube-dns only
+  # - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+  #   podSelector: { matchLabels: { k8s-app: kube-dns } }
+  dns:
+    to: []
+  # An external database (mssql.enabled false): where it is, ex. an ipBlock. Empty: anywhere, on
+  # database.port.
+  database:
+    to: []
+  app:
+    # Who may reach the app (its port). Empty: anyone - the ingress controller, wherever it runs.
+    from: []
+    # OpenTelemetry (app.telemetry): the collector, on the endpoint's port. Empty: anywhere.
+    telemetryTo: []
+    # HTTP(S) out (80, 443). Default: the internet, not private networks.
+    httpTo:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16]
+    extraIngress: []
+    extraEgress: []
+  mssql:
+    # Who may reach the LoadBalancer (mssql.loadBalancer). Empty: anyone.
+    loadBalancerFrom: []
+    extraIngress: []
+  migrations:
+    extraEgress: []
+  sqlExporter:
+    # Who may scrape it (its port). Empty: anyone.
+    from: []
+
+# Any other objects to deploy with the release, as they are (templates allowed).
+extraObjects: []

@@ -1,0 +1,26 @@
+{{- if .Values.secret.create }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.secret.name }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+  annotations:
+    # Before SQL Server and the migration Job, which read it (Argo CD).
+    argocd.argoproj.io/sync-wave: "-3"
+type: Opaque
+stringData:
+  {{- toYaml .Values.secret.stringData | nindent 2 }}
+---
+{{- end }}
+{{- if .Values.defaultServiceAccount.manage }}
+# The namespace's default ServiceAccount, without an API token mounted into pods that use it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+{{- end }}

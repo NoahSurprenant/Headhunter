@@ -1,0 +1,158 @@
+{{- $np := .Values.networkPolicy -}}
+{{- if $np.enabled }}
+{{- $app := .Values.app }}
+{{- /* Egress to the database: the chart's SQL Server pods, or networkPolicy.database.to (anywhere if empty). */}}
+{{- $dbRule := "" }}
+{{- if and .Values.mssql.enabled (not .Values.database.host) }}
+{{- $dbRule = printf "- to:\n    - podSelector:\n        matchLabels:\n          app: %s\n  ports:\n    - protocol: TCP\n      port: 1433" .Values.mssql.name }}
+{{- else }}
+{{- $dbRule = printf "- %sports:\n    - protocol: TCP\n      port: %s" (ternary "" (printf "to:\n    %s\n  " (toYaml $np.database.to | indent 4 | trim)) (empty $np.database.to)) (include "headhunter.dbPort" .) }}
+{{- end }}
+{{- $dnsRule := printf "- %sports:\n    - protocol: UDP\n      port: 53\n    - protocol: TCP\n      port: 53" (ternary "" (printf "to:\n    %s\n  " (toYaml $np.dns.to | indent 4 | trim)) (empty $np.dns.to)) }}
+# The app: in from networkPolicy.app.from on its port; out to DNS, the database, the OTLP collector and HTTP(S).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $app.name }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ $app.name }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - {{- with $np.app.from }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- with $np.app.extraIngress }}
+    {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}
+  egress:
+    {{- $dnsRule | nindent 4 }}
+    {{- $dbRule | nindent 4 }}
+    {{- if $app.telemetry.enabled }}
+    - {{- with $np.app.telemetryTo }}
+      to:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    {{- end }}
+    {{- with $np.app.httpTo }}
+    - to:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+    {{- end }}
+    {{- with $np.app.extraEgress }}
+    {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}
+---
+{{- if .Values.migrations.enabled }}
+# The migration Job: DNS and the database out, nothing in.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: headhunter-migrate
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: headhunter-migrate
+  policyTypes: [Ingress, Egress]
+  egress:
+    {{- $dnsRule | nindent 4 }}
+    {{- $dbRule | nindent 4 }}
+    {{- with $np.migrations.extraEgress }}
+    {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}
+---
+{{- end }}
+{{- if .Values.mssql.enabled }}
+{{- $m := .Values.mssql }}
+# SQL Server: in from the app, the migration Job and sql-exporter (and the LoadBalancer's clients);
+# out to DNS only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $m.name }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ $m.name }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: {{ $app.name }}
+        {{- if .Values.migrations.enabled }}
+        - podSelector:
+            matchLabels:
+              app: headhunter-migrate
+        {{- end }}
+        {{- if .Values.sqlExporter.enabled }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sql-exporter
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 1433
+    {{- if $m.loadBalancer.enabled }}
+    - {{- with $np.mssql.loadBalancerFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: 1433
+    {{- end }}
+    {{- with $np.mssql.extraIngress }}
+    {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}
+  egress:
+    {{- $dnsRule | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.sqlExporter.enabled }}
+# sql-exporter: in from its scrapers on its port; out to DNS and the database.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sql-exporter
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sql-exporter
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - {{- with $np.sqlExporter.from }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.sqlExporter.port }}
+  egress:
+    {{- $dnsRule | nindent 4 }}
+    {{- $dbRule | nindent 4 }}
+---
+{{- end }}
+{{- end }}

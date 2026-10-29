@@ -1,0 +1,94 @@
+suite: mssql
+templates:
+  - templates/mssql.yaml
+release:
+  namespace: hh
+set:
+  mssql.acceptEula: true
+tests:
+  - it: refuses to run SQL Server without the EULA accepted
+    set:
+      mssql.acceptEula: false
+    asserts:
+      - failedTemplate: { errorMessage: "mssql.acceptEula must be true to run the chart's SQL Server (the SQL Server EULA)" }
+
+  - it: renders nothing with mssql.enabled false
+    set:
+      mssql.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  # An install that started as plain manifests keeps its objects (and its data) only if these match.
+  - it: keeps the StatefulSet's name, selector and headless Service
+    asserts:
+      - isKind: { of: StatefulSet }
+        documentSelector: { path: kind, value: StatefulSet }
+      - equal: { path: metadata.name, value: mssql }
+        documentSelector: { path: kind, value: StatefulSet }
+      - equal: { path: spec.selector.matchLabels, value: { app: mssql } }
+        documentSelector: { path: kind, value: StatefulSet }
+      - equal: { path: spec.serviceName, value: mssql-headless }
+        documentSelector: { path: kind, value: StatefulSet }
+      - equal: { path: "metadata.annotations['argocd.argoproj.io/sync-wave']", value: "-2" }
+        documentSelector: { path: kind, value: StatefulSet }
+
+  - it: never prunes or deletes the data volume
+    asserts:
+      - equal:
+          path: metadata.annotations
+          value:
+            argocd.argoproj.io/sync-wave: "-2"
+            argocd.argoproj.io/sync-options: Prune=false,Delete=false
+            helm.sh/resource-policy: keep
+        documentSelector: { path: metadata.name, value: mssql-data-pvc }
+
+  - it: uses an existing claim instead of making one
+    set:
+      mssql.persistence.existingClaim: old-data
+      mssql.backup.enabled: false
+    asserts:
+      - notExists: { path: spec }
+        documentSelector: { path: kind, value: PersistentVolumeClaim, skipEmptyTemplates: true }
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: mssql-data, persistentVolumeClaim: { claimName: old-data } }
+        documentSelector: { path: kind, value: StatefulSet }
+
+  - it: makes an NFS PersistentVolume for the backup claim, kept on delete
+    set:
+      mssql.backup.claimName: nfs-pvc
+      mssql.backup.accessModes: [ReadWriteMany]
+      mssql.backup.nfs: { server: 192.0.2.10, path: /sqlbackups, pvName: nfs-sqlbackups-headhunter }
+    asserts:
+      - equal: { path: spec.nfs, value: { server: 192.0.2.10, path: /sqlbackups } }
+        documentSelector: { path: kind, value: PersistentVolume }
+      - equal: { path: spec.persistentVolumeReclaimPolicy, value: Retain }
+        documentSelector: { path: kind, value: PersistentVolume }
+      - equal: { path: spec.volumeName, value: nfs-sqlbackups-headhunter }
+        documentSelector: { path: metadata.name, value: nfs-pvc }
+      - equal: { path: spec.storageClassName, value: "" }
+        documentSelector: { path: metadata.name, value: nfs-pvc }
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: { name: mssql-backup, mountPath: /var/opt/mssql/backup }
+        documentSelector: { path: kind, value: StatefulSet }
+
+  - it: exposes a LoadBalancer only when asked
+    set:
+      mssql.loadBalancer: { enabled: true, port: 5555, externalTrafficPolicy: Local }
+    asserts:
+      - equal: { path: spec.type, value: LoadBalancer }
+        documentSelector: { path: metadata.name, value: mssql-lb }
+      - equal: { path: "spec.ports[0]", value: { name: sql, port: 5555, targetPort: 1433 } }
+        documentSelector: { path: metadata.name, value: mssql-lb }
+      - equal: { path: spec.externalTrafficPolicy, value: Local }
+        documentSelector: { path: metadata.name, value: mssql-lb }
+
+  - it: reads the sa password from the Secret
+    set:
+      mssql.saPassword.key: Password
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: SA_PASSWORD, valueFrom: { secretKeyRef: { name: headhunter-secrets, key: Password } } }
+        documentSelector: { path: kind, value: StatefulSet }

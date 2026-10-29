@@ -1,0 +1,17 @@
+apiVersion: v2
+name: headhunter
+description: >-
+  Headhunter: the ASP.NET Core API serving the Angular client, and optionally SQL Server, with a
+  migration Job that backs up the database before applying EF Core migrations, and sql-exporter.
+type: application
+# The major and minor: the Helm chart workflow publishes each change as <major>.<minor>.<run number>
+# (oci://ghcr.io/noahsurprenant/charts, signed with cosign), so only a major or minor bump is an edit here.
+version: 0.1.0
+# The Kubernetes versions the Helm chart workflow tests, as the Grif chart. Raise it as old minors
+# reach end of life.
+kubeVersion: ">=1.34.0-0"
+# Informational only: which image runs is set by app.image.
+appVersion: "latest"
+home: https://github.com/NoahSurprenant/Headhunter
+sources:
+  - https://github.com/NoahSurprenant/Headhunter

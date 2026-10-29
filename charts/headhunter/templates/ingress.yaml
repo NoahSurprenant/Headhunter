@@ -1,0 +1,70 @@
+{{- $svc := .Values.app.service -}}
+{{- with .Values.ingress }}
+{{- if .enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $.Values.app.name }}
+  labels:
+    {{- include "headhunter.labels" $ | nindent 4 }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range required "ingress.hosts is required when ingress.enabled" .hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $svc.name }}
+                port:
+                  name: http
+    {{- end }}
+---
+{{- end }}
+{{- end }}
+{{- with .Values.ingressRoute }}
+{{- if .enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "headhunter.labels" $ | nindent 4 }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .entryPoints }}
+  entryPoints:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  routes:
+    - match: Host(`{{ required "ingressRoute.host is required when ingressRoute.enabled" .host }}`)
+      kind: Rule
+      {{- with .middlewares }}
+      middlewares:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      services:
+        - name: {{ $svc.name }}
+          port: {{ $svc.port }}
+  {{- with .tls.secretName }}
+  tls:
+    secretName: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}

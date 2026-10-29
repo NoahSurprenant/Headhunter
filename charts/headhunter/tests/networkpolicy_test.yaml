@@ -1,0 +1,77 @@
+suite: networkpolicy
+templates:
+  - templates/networkpolicy.yaml
+release:
+  namespace: hh
+set:
+  mssql.acceptEula: true
+tests:
+  - it: is off by default
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: gives each pod its own policy
+    set:
+      networkPolicy.enabled: true
+      sqlExporter.enabled: true
+    asserts:
+      - hasDocuments: { count: 4 }
+      - equal: { path: spec.podSelector.matchLabels, value: { app: headhunter } }
+        documentIndex: 0
+      - equal: { path: spec.podSelector.matchLabels, value: { app: headhunter-migrate } }
+        documentIndex: 1
+      - equal: { path: spec.podSelector.matchLabels, value: { app: mssql } }
+        documentIndex: 2
+      - equal: { path: spec.podSelector.matchLabels, value: { app.kubernetes.io/name: sql-exporter } }
+        documentIndex: 3
+
+  - it: lets the app, the migrations and the exporter into SQL Server
+    set:
+      networkPolicy.enabled: true
+      sqlExporter.enabled: true
+    asserts:
+      - equal:
+          path: "spec.ingress[0].from"
+          value:
+            - podSelector: { matchLabels: { app: headhunter } }
+            - podSelector: { matchLabels: { app: headhunter-migrate } }
+            - podSelector: { matchLabels: { app.kubernetes.io/name: sql-exporter } }
+        documentIndex: 2
+      - notExists: { path: "spec.ingress[1]" }
+        documentIndex: 2
+
+  - it: lets the LoadBalancer's clients in from the given ranges
+    set:
+      networkPolicy.enabled: true
+      mssql.loadBalancer.enabled: true
+      networkPolicy.mssql.loadBalancerFrom: [{ ipBlock: { cidr: 10.0.0.0/8 } }]
+    asserts:
+      - equal: { path: "spec.ingress[1].from", value: [{ ipBlock: { cidr: 10.0.0.0/8 } }] }
+        documentIndex: 2
+
+  - it: sends DNS where told, and the migrations nowhere but DNS and SQL Server
+    set:
+      networkPolicy.enabled: true
+      networkPolicy.dns.to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } } }]
+    asserts:
+      - equal:
+          path: spec.egress
+          value:
+            - to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } } }]
+              ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+            - to: [{ podSelector: { matchLabels: { app: mssql } } }]
+              ports: [{ protocol: TCP, port: 1433 }]
+        documentIndex: 1
+
+  - it: reaches an external database on its port
+    set:
+      networkPolicy.enabled: true
+      mssql.enabled: false
+      database: { host: sql.example, port: "14330" }
+      networkPolicy.database.to: [{ ipBlock: { cidr: 192.0.2.0/24 } }]
+    asserts:
+      - hasDocuments: { count: 2 }
+      - contains:
+          path: spec.egress
+          content: { to: [{ ipBlock: { cidr: 192.0.2.0/24 } }], ports: [{ protocol: TCP, port: 14330 }] }
+        documentIndex: 1
