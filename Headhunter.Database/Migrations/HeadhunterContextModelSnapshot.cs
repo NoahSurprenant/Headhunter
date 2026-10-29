@@ -17,7 +17,7 @@ namespace Headhunter.Database.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -476,6 +476,8 @@ namespace Headhunter.Database.Migrations
                     b.HasIndex("LAST_NAME");
 
                     b.HasIndex("MIDDLE_NAME");
+
+                    b.HasIndex("YEAR_OF_BIRTH");
 
                     b.ToTable("Voters", (string)null);
                 });
