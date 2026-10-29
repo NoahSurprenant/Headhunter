@@ -77,23 +77,6 @@ public class TilesTests
     }
 
     [Test]
-    public async Task StadiaTiles_WithoutAKey_PassTheRefererOn_AndAskForRetinaWhenTold()
-    {
-        using var client = Client();
-        var request = new HttpRequestMessage(HttpMethod.Get, "/tiles/stamen-toner/5/8/11.png?retina=true");
-        request.Headers.Referrer = new Uri("https://headhunter.example/");
-
-        await client.SendAsync(request);
-
-        var upstream = _upstream.Requests.Single();
-        Assert.Multiple(() =>
-        {
-            Assert.That(upstream.RequestUri, Is.EqualTo(new Uri("https://tiles.stadiamaps.com/tiles/stamen_toner/5/8/11@2x.png")));
-            Assert.That(upstream.Headers.Referrer, Is.EqualTo(new Uri("https://headhunter.example/")));
-        });
-    }
-
-    [Test]
     public async Task KeepsTheProvidersCacheHeaders_ElseAWeek()
     {
         using var client = Client();
