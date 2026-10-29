@@ -65,7 +65,7 @@ RUN wget -q -O /tmp/sqlcmd.tar.bz2 \
  && tar -xjf /tmp/sqlcmd.tar.bz2 -C /usr/local/bin sqlcmd
 
 # This stage is used to build the client project
-FROM node:24.21.0-alpine AS angular
+FROM node:24.22.2-alpine AS angular
 WORKDIR /usr/angular
 COPY Headhunter.Client/package.json ./
 COPY Headhunter.Client/package-lock.json ./
