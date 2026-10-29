@@ -37,7 +37,7 @@ RUN dotnet publish "./Headhunter.API.csproj" -c $BUILD_CONFIGURATION -o /app/pub
 # ConnectionStrings__Headhunter set. Framework-dependent: it uses the .NET runtime in the base image.
 # Building it creates the design-time context, which wants a connection string: a dummy.
 FROM build AS migrations
-RUN dotnet tool install --global dotnet-ef --version 10.0.12
+RUN dotnet tool install --global dotnet-ef --version 10.0.14
 ENV PATH="$PATH:/root/.dotnet/tools"
 ENV ConnectionStrings__Headhunter="Server=unused;Database=unused"
 WORKDIR /src

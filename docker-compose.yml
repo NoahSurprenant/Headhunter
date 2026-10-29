@@ -20,7 +20,7 @@ services:
       - "traefik.http.routers.headhunter.middlewares=headers@file"
 
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server:2025-latest
     restart: unless-stopped
     container_name: sqlserver
     ports:
