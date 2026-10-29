@@ -56,6 +56,25 @@ describe('CesiumComponent', () => {
     }));
   });
 
+  it('loads every base layer from this site\'s /tiles/, with its credit', () => {
+    const { viewer } = render();
+    const models = viewer.options['imageryProviderViewModels'] as { name: string; creationFunction: () => unknown }[];
+    const providers = models.map(m => (m.creationFunction() as { options: { url: string; credit: string } }).options);
+    expect(providers.map(p => p.url)).toEqual([
+      '/tiles/arcgis-imagery/{z}/{x}/{y}.jpg',
+      '/tiles/arcgis-hillshade/{z}/{x}/{y}.jpg',
+      '/tiles/esri-ocean/{z}/{x}/{y}.jpg',
+      '/tiles/osm/{z}/{x}/{y}.png',
+      '/tiles/stamen-watercolor/{z}/{x}/{y}.jpg',
+      expect.stringMatching(/^\/tiles\/stamen-toner\/\{z\}\/\{x\}\/\{y\}\.png(\?retina=true)?$/),
+      expect.stringMatching(/^\/tiles\/alidade-smooth\/\{z\}\/\{x\}\/\{y\}\.png(\?retina=true)?$/),
+      expect.stringMatching(/^\/tiles\/alidade-smooth-dark\/\{z\}\/\{x\}\/\{y\}\.png(\?retina=true)?$/),
+    ]);
+    for (const p of providers) {
+      expect(p.credit).toBeTruthy();
+    }
+  });
+
   it('requests the addresses inside the visible rectangle when the camera stops', () => {
     const { viewer } = render();
     moveCamera(viewer);
