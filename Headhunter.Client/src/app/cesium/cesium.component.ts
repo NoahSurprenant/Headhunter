@@ -12,6 +12,7 @@ import { buildModuleUrl,
 } from 'cesium';
 import { distinctUntilChanged, Subject, switchMap, takeUntil, tap } from 'rxjs';
 import { CustomInfoBoxComponent } from '../custom-info-box/custom-info-box.component';
+import { AreaDto, ClusterDto, clusterId, clusterSize, shortCount } from './clusters';
 
 // Every base layer comes from this site's /tiles/ (Headhunter.API, Tiles/), which fetches it from the
 // provider: visitors only talk to this site, provider keys stay on the server, and Cloudflare caches the
@@ -47,6 +48,8 @@ export class CesiumComponent implements OnInit {
   // (zoneless) does not see; writing the signal schedules change detection.
   selectedEntity = signal<Entity | undefined>(undefined);
   trackedEntity = signal<Entity | undefined>(undefined);
+  // The clusters on the globe now, by entity id, so a click on one can zoom to it.
+  private clusters = new Map<string, ClusterDto>();
   customInfoBox = viewChild<CustomInfoBoxComponent>('customInfoBox');
 
   async ngOnInit(): Promise<any> {
@@ -95,23 +98,52 @@ export class CesiumComponent implements OnInit {
           .append('north', params.north)
           .append('south', params.south);
 
-        return this.http.get<AddressDto[]>('api/area', { params: httpParams })
+        return this.http.get<AreaDto>('api/area', { params: httpParams })
           .pipe(takeUntil(this.cancelRequest$));
       })
     )
     .subscribe({
-      next: (result) => {
+      next: (area) => {
         this.viewer.entities.suspendEvents();
+
+        // Zoomed out, the API sends clusters (a count per grid cell) instead of addresses.
+        this.clusters = new Map(area.clusters.map(c => [clusterId(c), c]));
 
         // Only remove entities that are not in the new result set
         const all = this.viewer.entities.values.map(x => x.id);
-        const current = result.map(x => x.id);
+        const current = [...area.addresses.map(x => x.id), ...this.clusters.keys()];
         const remove = all.filter(x => !current.includes(x));
         remove.forEach(x => {
           this.viewer.entities.removeById(x);
         });
 
-        result.forEach(x => {
+        const busiest = Math.max(0, ...area.clusters.map(c => c.count));
+        this.clusters.forEach((c, id) => {
+          if (this.viewer.entities.getById(id)) {
+            return;
+          }
+          this.viewer.entities.add({
+            id,
+            name: c.count.toLocaleString() + ' addresses',
+            position: Cartesian3.fromDegrees(c.longitude, c.latitude),
+            point: {
+              pixelSize: clusterSize(c.count, busiest),
+              color: Color.ORANGE.withAlpha(0.75),
+              outlineColor: Color.WHITE,
+              outlineWidth: 1,
+            },
+            // A lone address needs no number on it.
+            label: c.count <= 1 ? undefined : {
+              text: shortCount(c.count),
+              font: "bold 10pt sans-serif",
+              style: LabelStyle.FILL_AND_OUTLINE,
+              outlineWidth: 3,
+              verticalOrigin: VerticalOrigin.CENTER,
+            },
+          });
+        });
+
+        area.addresses.forEach(x => {
           const existing = this.viewer.entities.getById(x.id);
           if (existing) {
             // Do any updates here, not really needed for now
@@ -157,7 +189,13 @@ export class CesiumComponent implements OnInit {
     const handler = new ScreenSpaceEventHandler(this.viewer.scene.canvas);
     handler.setInputAction((movement: { position: Cartesian2 }) => {
       const pickedObject = this.viewer.scene.pick(movement.position);
-      if (defined(pickedObject) && pickedObject.id) {
+      const cluster = defined(pickedObject) && pickedObject.id ? this.clusters.get((pickedObject.id as Entity).id) : undefined;
+      if (cluster) {
+        // A cluster: zoom in on it, a quarter of the way down, until its addresses are few enough to draw.
+        this.viewer.camera.flyTo({
+          destination: Cartesian3.fromDegrees(cluster.longitude, cluster.latitude, this.viewer.camera.positionCartographic.height / 4),
+        });
+      } else if (defined(pickedObject) && pickedObject.id) {
         this.selectedEntity.set(pickedObject.id as Entity);
       } else {
         const cib = this.customInfoBox();

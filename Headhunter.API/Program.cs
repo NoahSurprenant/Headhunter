@@ -22,6 +22,9 @@ public class Program
             // Add services to the container.
 
             builder.Services.AddControllers();
+            builder.Services.Configure<AreaOptions>(builder.Configuration.GetSection("Area"));
+            // The globe's cluster grids (ApiController.Area), counted in entries.
+            builder.Services.AddMemoryCache(o => o.SizeLimit = 500);
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi();
 
