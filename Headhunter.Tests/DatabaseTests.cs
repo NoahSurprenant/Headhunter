@@ -60,4 +60,75 @@ public class DatabaseTests
 
         Assert.That(voter.MichiganVoterRecord.FIRST_NAME, Is.EqualTo("Cleo"));
     }
+
+    // Without these indexes the suggestion queries scan the whole table: ~20 s for CitySuggestions on the
+    // 4M-row production Addresses table (issue #5).
+    [TestCase("IX_Addresses_CITY")]
+    [TestCase("IX_Voters_FIRST_NAME")]
+    [TestCase("IX_Voters_MIDDLE_NAME")]
+    [TestCase("IX_Voters_LAST_NAME")]
+    public async Task SuggestionQuery_SeeksItsIndex(string index)
+    {
+        await using var context = SqlServerFixture.CreateContext();
+
+        IQueryable<string> query = index switch
+        {
+            "IX_Addresses_CITY" => context.Addresses.Where(a => a.CITY.StartsWith("Oa")).Select(a => a.CITY),
+            "IX_Voters_FIRST_NAME" => context.Voters.Where(v => v.FIRST_NAME.StartsWith("Ada")).Select(v => v.FIRST_NAME),
+            "IX_Voters_MIDDLE_NAME" => context.Voters.Where(v => v.MIDDLE_NAME.StartsWith("A")).Select(v => v.MIDDLE_NAME),
+            "IX_Voters_LAST_NAME" => context.Voters.Where(v => v.LAST_NAME.StartsWith("B")).Select(v => v.LAST_NAME),
+            _ => throw new ArgumentOutOfRangeException(nameof(index)),
+        };
+        // Same shape as the API's suggestion endpoints.
+        var sql = query.Distinct().OrderBy(x => x).Take(50).ToQueryString();
+
+        var plan = await GetEstimatedPlanXml(context, sql);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(plan, Does.Contain($"Index=\"[{index}]\""), $"Plan does not use {index}:\n{plan}");
+            Assert.That(plan, Does.Contain("<SeekPredicates>"), $"Plan has no index seek:\n{plan}");
+        });
+    }
+
+    private static async Task<string> GetEstimatedPlanXml(HeadhunterContext context, string sql)
+    {
+        var connection = context.Database.GetDbConnection();
+        await connection.OpenAsync();
+        try
+        {
+            await using (var on = connection.CreateCommand())
+            {
+                on.CommandText = "SET SHOWPLAN_XML ON";
+                await on.ExecuteNonQueryAsync();
+            }
+
+            var plans = new System.Text.StringBuilder();
+            await using (var command = connection.CreateCommand())
+            {
+                // ToQueryString() emits DECLAREs for the parameters followed by the query, so it runs as one batch.
+                command.CommandText = sql;
+                await using var reader = await command.ExecuteReaderAsync();
+                do
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        plans.AppendLine(reader.GetString(0));
+                    }
+                } while (await reader.NextResultAsync());
+            }
+
+            await using (var off = connection.CreateCommand())
+            {
+                off.CommandText = "SET SHOWPLAN_XML OFF";
+                await off.ExecuteNonQueryAsync();
+            }
+
+            return plans.ToString();
+        }
+        finally
+        {
+            await connection.CloseAsync();
+        }
+    }
 }
