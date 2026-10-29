@@ -49,7 +49,7 @@ describe('CesiumComponent', () => {
     expect(viewer.options['infoBox']).toBe(false);
     expect(viewer.options['geocoder']).toBe(false);
     const models = viewer.options['imageryProviderViewModels'] as { name: string }[];
-    expect(models.length).toBe(8);
+    expect(models.length).toBe(4);
     expect((viewer.options['selectedImageryProviderViewModel'] as { name: string }).name).toBe('ArcGIS World Imagery');
     expect(viewer.camera.flyTo).toHaveBeenCalledWith(expect.objectContaining({
       destination: { lon: -84.557916, lat: 43.333202, height: 1000000 },
@@ -65,10 +65,6 @@ describe('CesiumComponent', () => {
       '/tiles/arcgis-hillshade/{z}/{x}/{y}.jpg',
       '/tiles/esri-ocean/{z}/{x}/{y}.jpg',
       '/tiles/osm/{z}/{x}/{y}.png',
-      '/tiles/stamen-watercolor/{z}/{x}/{y}.jpg',
-      expect.stringMatching(/^\/tiles\/stamen-toner\/\{z\}\/\{x\}\/\{y\}\.png(\?retina=true)?$/),
-      expect.stringMatching(/^\/tiles\/alidade-smooth\/\{z\}\/\{x\}\/\{y\}\.png(\?retina=true)?$/),
-      expect.stringMatching(/^\/tiles\/alidade-smooth-dark\/\{z\}\/\{x\}\/\{y\}\.png(\?retina=true)?$/),
     ]);
     for (const p of providers) {
       expect(p.credit).toBeTruthy();

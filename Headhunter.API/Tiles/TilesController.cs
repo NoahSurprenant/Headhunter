@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Net.Http.Headers;
 
 namespace Headhunter.API.Tiles;
 
@@ -14,7 +13,7 @@ public class TilesController(IHttpClientFactory httpClientFactory, IConfiguratio
     private const string DefaultCacheControl = "public, max-age=604800";
 
     [HttpGet("{layer}/{z:int}/{x:int}/{y:int}.{extension}")]
-    public async Task<IActionResult> Tile(string layer, int z, int x, int y, string extension, [FromQuery] bool retina, CancellationToken ct)
+    public async Task<IActionResult> Tile(string layer, int z, int x, int y, string extension, CancellationToken ct)
     {
         if (!TileLayers.All.TryGetValue(layer, out var l) || extension != l.Extension)
         {
@@ -26,12 +25,7 @@ public class TilesController(IHttpClientFactory httpClientFactory, IConfiguratio
         }
 
         var key = l.KeySetting is null ? null : configuration[l.KeySetting];
-        using var request = new HttpRequestMessage(HttpMethod.Get, l.TileUri(z, x, y, retina, key));
-        // Stadia's domain authentication, when there is no key: the page the tile is for.
-        if (string.IsNullOrEmpty(key) && Request.Headers.Referer is { Count: > 0 } referer)
-        {
-            request.Headers.TryAddWithoutValidation(HeaderNames.Referer, referer.ToString());
-        }
+        using var request = new HttpRequestMessage(HttpMethod.Get, l.TileUri(z, x, y, key));
 
         using var response = await httpClientFactory.CreateClient(HttpClientName)
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
