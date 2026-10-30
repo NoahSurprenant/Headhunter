@@ -1,3 +1,6 @@
 :host {
   display: block;
+  /* The whole content area under the nav: the list scrolls in its own column and the globe stays put,
+     rather than the page growing to the list's height and <main> scrolling both. */
+  height: 100%;
 }
