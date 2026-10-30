@@ -56,7 +56,10 @@ export class VoterComponent {
       return response.json() as Promise<RelativeDto[]>;
     },
   });
-  relativesList = computed(() => (this.relatives.hasValue() ? this.relatives.value() : []));
+  relativesList = computed(() => {
+    const all = this.relatives.hasValue() ? this.relatives.value() : [];
+    return Array.isArray(all) ? all : [];
+  });
 
   globe = computed(() => {
     if (!this.x.hasValue()) return null;
