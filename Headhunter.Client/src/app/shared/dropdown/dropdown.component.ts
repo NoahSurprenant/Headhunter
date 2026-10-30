@@ -22,6 +22,8 @@ export class DropdownComponent<T extends string | number | boolean | null> imple
   displayErrors = input<boolean>(true);
   addNullOption = input<boolean>(false);
   options = input.required<T[]>();
+  /** Names the select for screen readers where no <label> is tied to it. */
+  label = input<string>();
 
   private subscription?: Subscription;
   public control!: FormControl<T>;

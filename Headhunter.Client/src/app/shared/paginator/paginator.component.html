@@ -1,9 +1,13 @@
-
-<div class="flex items-center space-x-4">
-    <x-dropdown [options]="[2, 5, 10, 20, 30]" class="w-50" [formControl]="formControl">
+<!-- One row on any screen: the page size, where you are (whole numbers, never wrapped), and the buttons. -->
+<nav aria-label="Pages" class="flex items-center justify-center gap-2 sm:gap-4 text-sm">
+    <x-dropdown [options]="[2, 5, 10, 20, 30]" label="Voters per page" class="w-18 shrink-0" [formControl]="formControl">
     </x-dropdown>
-    <p class="inline-block">{{text()}}</p>
-    <p class="inline-block">{{textAlt()}}</p>
-    <x-button (clicked)="previous()" [disabled]="!hasPreviousPage()"><</x-button>
-    <x-button (clicked)="next()" [disabled]="!hasNextPage()">></x-button>
-</div>
+    <div class="min-w-0 text-center leading-tight">
+        <p class="truncate font-medium text-gray-900">{{textAlt()}}</p>
+        <p class="truncate text-gray-600">{{text()}}</p>
+    </div>
+    <div class="flex shrink-0 gap-2">
+        <x-button (clicked)="previous()" [disabled]="!hasPreviousPage()" label="Previous page">&lt;</x-button>
+        <x-button (clicked)="next()" [disabled]="!hasNextPage()" label="Next page">&gt;</x-button>
+    </div>
+</nav>

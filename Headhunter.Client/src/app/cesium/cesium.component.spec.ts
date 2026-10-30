@@ -549,4 +549,13 @@ describe('CesiumComponent', () => {
       expect(component.selectedEntity()).toBeUndefined();
     });
   });
+
+  it('gives Cesium\'s widget icons an empty alt, and keeps an alt that is there', async () => {
+    const { markDecorative } = await import('./cesium.component');
+    const root = document.createElement('div');
+    root.innerHTML = '<img src="a.svg"><img src="b.png" alt="Imagery">';
+    markDecorative(root);
+    expect(Array.from(root.querySelectorAll('img')).map(i => i.getAttribute('alt'))).toEqual(['', 'Imagery']);
+    markDecorative(null); // no container: nothing to do
+  });
 });

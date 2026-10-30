@@ -33,7 +33,7 @@
                 </div>
                 <div>
                     <label class="text-xs">Astrology Sign</label>
-                    <x-dropdown formControlName="astrology" [options]="astrologyOptions"></x-dropdown>
+                    <x-dropdown formControlName="astrology" [options]="astrologyOptions" label="Astrology Sign"></x-dropdown>
                 </div>
             </div>
             <div class="flex gap-2 mt-3">
@@ -84,7 +84,7 @@
             </ul>
         </div>
 
-        <x-paginator [paginationResult]="current()" class="p-2 place-self-center" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize"></x-paginator>
+        <x-paginator [paginationResult]="current()" class="p-2 border-t border-gray-200" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize"></x-paginator>
     </section>
 
     <section class="hidden lg:block flex-1 min-w-0 relative">

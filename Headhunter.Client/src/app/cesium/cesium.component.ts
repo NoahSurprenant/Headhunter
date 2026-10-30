@@ -137,6 +137,7 @@ export class CesiumComponent implements OnInit {
       imageryProviderViewModels: vms,
       terrainProviderViewModels: [],
     });
+    markDecorative(document.getElementById('cesiumContainer'));
 
     // Fly the camera to the place asked for, restore a bookmarked view, else to the selected area, or else start
     // over Michigan.
@@ -618,6 +619,14 @@ function round(value: number, decimals: number): number {
  * (persistViewToUrl) moves. */
 function viewKey(latitude: number, longitude: number, height: number, headingDegrees: number, pitchDegrees: number): string {
   return `view:${latitude},${longitude},${height},${headingDegrees},${pitchDegrees}`;
+}
+
+/**
+ * Cesium's widgets (the layer picker, the navigation help) draw icons with <img> and no alt; their buttons carry the
+ * names. alt="" tells screen readers to skip them (Lighthouse: "Image elements do not have [alt] attributes").
+ */
+export function markDecorative(root: ParentNode | null): void {
+  root?.querySelectorAll('img:not([alt])').forEach(img => img.setAttribute('alt', ''));
 }
 
 export function escapeHtml(text: string): string {

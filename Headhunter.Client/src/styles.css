@@ -27,7 +27,7 @@ html, body
         @apply bg-gray-100 rounded-xl shadow p-5 border border-gray-200;
     }
     .card-title {
-        @apply text-sm font-bold uppercase tracking-wide text-gray-500 mb-2;
+        @apply text-sm font-bold uppercase tracking-wide text-gray-600 mb-2;
     }
     .chip {
         @apply inline-block text-xs px-3 py-1 rounded-full font-semibold;

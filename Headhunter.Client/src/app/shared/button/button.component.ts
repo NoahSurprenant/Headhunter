@@ -14,6 +14,8 @@ export class ButtonComponent {
   clicked = output();
   disabled = input<boolean>(false);
   type = input<'submit' | 'reset' | 'button'>('button');
+  /** Names the button for screen readers where its content is only a symbol. */
+  label = input<string>();
 
   handleClick() {
     this.clicked.emit();

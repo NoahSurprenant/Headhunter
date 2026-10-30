@@ -1,6 +1,9 @@
 @if (points().length > 0) {
-    <div class="relative px-16" style="height: 11rem;">
-        <div class="absolute left-16 right-16 top-1/2 -translate-y-1/2 h-px bg-gray-300"></div>
+    <!-- The track sits inside the padding, so the labels on its first and last points (w-32, centred) stay inside
+         the card: 0% and 100% are the track's ends, not the padding's. -->
+    <div class="px-16" style="height: 11rem;">
+      <div class="relative h-full">
+        <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-px bg-gray-300"></div>
         @for (pt of points(); track pt.id; let i = $index) {
             <div class="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" [style.left.%]="pt.position">
                 <div class="relative flex justify-center">
@@ -19,6 +22,7 @@
                 </div>
             </div>
         }
+      </div>
     </div>
 } @else {
     <p class="text-gray-500 text-sm">No usable registration dates to plot.</p>
