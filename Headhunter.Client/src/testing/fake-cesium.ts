@@ -27,11 +27,17 @@ export function createFakeCesium() {
     });
   }
 
+  const degrees = (radians: number) => (radians * 180) / Math.PI;
+  const radians = (deg: number) => (deg * Math.PI) / 180;
+
   const state = {
     viewer: undefined as FakeViewer | undefined,
     clickHandler: undefined as ((movement: { position: unknown }) => void) | undefined,
     rectangle: { west: 0, south: 0, east: 0, north: 0 } as { west: number; south: number; east: number; north: number } | undefined,
     picked: undefined as { id?: unknown } | undefined,
+    // Where the (fake) camera currently sits, read by persistViewToUrl; tests move it by assignment,
+    // like state.rectangle, before raising moveEnd.
+    view: { latitude: radians(43.333202), longitude: radians(-84.557916), height: 400000, heading: 0, pitch: radians(-90) },
   };
 
   class FakeViewer {
@@ -40,7 +46,10 @@ export function createFakeCesium() {
     trackedEntityChanged = new FakeEvent();
     camera = {
       flyTo: vi.fn(),
-      positionCartographic: { height: 400000 },
+      setView: vi.fn(),
+      get positionCartographic() { return { height: state.view.height, latitude: state.view.latitude, longitude: state.view.longitude }; },
+      get heading() { return state.view.heading; },
+      get pitch() { return state.view.pitch; },
       moveEnd: new FakeEvent(),
       computeViewRectangle: vi.fn(() => state.rectangle),
     };
@@ -49,8 +58,6 @@ export function createFakeCesium() {
       state.viewer = this;
     }
   }
-
-  const degrees = (radians: number) => (radians * 180) / Math.PI;
 
   return {
     state,
@@ -73,7 +80,7 @@ export function createFakeCesium() {
       buildModuleUrl: (path: string) => `/assets/cesium/${path}`,
       Cartesian2: class { constructor(public x: number, public y: number) {} },
       Cartesian3: { fromDegrees: (lon: number, lat: number, height = 0) => ({ lon, lat, height }) },
-      Math: { toRadians: (deg: number) => (deg * Math.PI) / 180, toDegrees: degrees },
+      Math: { toRadians: radians, toDegrees: degrees },
       Color: { AQUA: 'AQUA', WHITE: 'WHITE', ORANGE: { withAlpha: (a: number) => `ORANGE@${a}` } },
       LabelStyle: { FILL_AND_OUTLINE: 'FILL_AND_OUTLINE' },
       VerticalOrigin: { TOP: 'TOP', CENTER: 'CENTER' },
@@ -101,4 +108,5 @@ export function resetFakeCesium(fake: FakeCesium) {
   fake.state.clickHandler = undefined;
   fake.state.picked = undefined;
   fake.state.rectangle = undefined;
+  fake.state.view = { latitude: (43.333202 * Math.PI) / 180, longitude: (-84.557916 * Math.PI) / 180, height: 400000, heading: 0, pitch: (-90 * Math.PI) / 180 };
 }

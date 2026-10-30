@@ -1,5 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, effect, inject, input, OnInit, signal, untracked, viewChild } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { buildModuleUrl,
   Math as CesiumMath, Cartesian3, ProviderViewModel, UrlTemplateImageryProvider, Viewer,
   Cartesian2, ScreenSpaceEventHandler,
@@ -43,6 +44,8 @@ const osmCredit = '&copy; <a href="https://www.openstreetmap.org/copyright" targ
 export class CesiumComponent implements OnInit {
   viewer!: Viewer;
   private http = inject(HttpClient);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
   private searchParams$ = new Subject<{ west: number, east: number, north: number, south: number }>();
   private cancelRequest$ = new Subject<void>();
   // A signal because it is set from Cesium's own DOM callbacks, which Angular
@@ -54,17 +57,35 @@ export class CesiumComponent implements OnInit {
   lat = input(undefined, { transform: optionalNumber });
   lon = input(undefined, { transform: optionalNumber });
   address = input<string | undefined>(undefined);
+  // The bookmarked camera view (/globe?lat=..&lon=..&h=..&heading=..&pitch=.., written by persistViewToUrl below).
+  // Only set when there is no address: a bare position+height is a saved view, restored instantly (setView), not
+  // flown to like an address focus is.
+  h = input(undefined, { transform: optionalNumber });
+  heading = input(undefined, { transform: optionalNumber });
+  pitch = input(undefined, { transform: optionalNumber });
   private pendingAddress: string | undefined;
+  // Dedupes both directions: an input-driven focus()/restoreView() that is already where the camera sits, and a
+  // camera move that only re-states where an input-driven move just put it (persistViewToUrl below), so the two
+  // don't bounce off each other forever.
   private lastFocus: string | undefined;
+  copied = signal(false);
+  private copiedTimeout?: ReturnType<typeof setTimeout>;
 
   constructor() {
     effect(() => {
       const lat = this.lat();
       const lon = this.lon();
       const address = this.address();
+      const h = this.h();
       // Before ngOnInit has made the viewer, it starts there instead.
       if (lat !== undefined && lon !== undefined && this.viewer) {
-        untracked(() => this.focus(lat, lon, address));
+        untracked(() => {
+          if (h !== undefined && address === undefined) {
+            this.restoreView(lat, lon, h, this.heading(), this.pitch());
+          } else {
+            this.focus(lat, lon, address);
+          }
+        });
       }
     });
   }
@@ -94,11 +115,15 @@ export class CesiumComponent implements OnInit {
       terrainProviderViewModels: [],
     });
 
-    // Fly the camera to the place asked for, else to Michigan at the given longitude, latitude, and height.
+    // Fly the camera to the place asked for, restore a bookmarked view, or else start over Michigan.
     const lat = this.lat();
     const lon = this.lon();
-    if (lat !== undefined && lon !== undefined) {
-      this.focus(lat, lon, this.address());
+    const h = this.h();
+    const address = this.address();
+    if (lat !== undefined && lon !== undefined && h !== undefined && address === undefined) {
+      this.restoreView(lat, lon, h, this.heading(), this.pitch());
+    } else if (lat !== undefined && lon !== undefined) {
+      this.focus(lat, lon, address);
     } else {
       this.viewer.camera.flyTo({
         destination: Cartesian3.fromDegrees(-84.557916, 43.333202, 1000000),
@@ -223,6 +248,7 @@ export class CesiumComponent implements OnInit {
     });
     
     this.viewer.camera.moveEnd.addEventListener(this.computeBounds, this);
+    this.viewer.camera.moveEnd.addEventListener(this.persistViewToUrl, this);
 
     const handler = new ScreenSpaceEventHandler(this.viewer.scene.canvas);
     handler.setInputAction((movement: { position: Cartesian2 }) => {
@@ -271,6 +297,61 @@ export class CesiumComponent implements OnInit {
         heading: CesiumMath.toRadians(0.0),
         pitch: CesiumMath.toRadians(-90),
       },
+    });
+  }
+
+  /** Puts the camera exactly where a bookmarked link says, instantly: no flight, just there. */
+  restoreView(latitude: number, longitude: number, height: number, headingDegrees = 0, pitchDegrees = -90): void {
+    const key = viewKey(latitude, longitude, height, headingDegrees, pitchDegrees);
+    if (key === this.lastFocus) {
+      return;
+    }
+    this.lastFocus = key;
+    this.pendingAddress = undefined;
+    this.selectedEntity.set(undefined);
+    this.viewer.camera.setView({
+      destination: Cartesian3.fromDegrees(longitude, latitude, height),
+      orientation: {
+        heading: CesiumMath.toRadians(headingDegrees),
+        pitch: CesiumMath.toRadians(pitchDegrees),
+      },
+    });
+  }
+
+  /** Copies the current URL (camera view included, see persistViewToUrl) and shows a brief "Copied" toast. */
+  copyLink(): void {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      clearTimeout(this.copiedTimeout);
+      this.copied.set(true);
+      this.copiedTimeout = setTimeout(() => this.copied.set(false), 1500);
+    }).catch(error => console.error('Could not copy the link', error));
+  }
+
+  /** After the camera settles, save the view in the URL so it can be bookmarked or shared. Rounded to keep
+   * the URL short, and merged so it doesn't clobber other query params the page may have (e.g. the voters
+   * split view, which keeps the globe beside its own search/paging params). */
+  persistViewToUrl() {
+    const camera = this.viewer.camera;
+    const carto = camera.positionCartographic;
+    const latitude = round(CesiumMath.toDegrees(carto.latitude), 5);
+    const longitude = round(CesiumMath.toDegrees(carto.longitude), 5);
+    const height = Math.round(carto.height);
+    const headingDegrees = Math.round(CesiumMath.toDegrees(camera.heading));
+    const pitchDegrees = Math.round(CesiumMath.toDegrees(camera.pitch));
+
+    const key = viewKey(latitude, longitude, height, headingDegrees, pitchDegrees);
+    if (key === this.lastFocus) {
+      // Either the camera just settled where focus()/restoreView() put it, or this is the move that
+      // follows our own navigate below settling back into the (now rounded) query params: nothing changed.
+      return;
+    }
+    this.lastFocus = key;
+
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { lat: latitude, lon: longitude, h: height, heading: headingDegrees, pitch: pitchDegrees, address: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
     });
   }
 
@@ -399,6 +480,17 @@ export function optionalNumber(value: unknown): number | undefined {
   if (value === undefined || value === null || value === '') return undefined;
   const n = Number(value);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function round(value: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+/** Identifies a camera pose for the lastFocus dedupe, shared by inbound (focus/restoreView) and outbound
+ * (persistViewToUrl) moves. */
+function viewKey(latitude: number, longitude: number, height: number, headingDegrees: number, pitchDegrees: number): string {
+  return `view:${latitude},${longitude},${height},${headingDegrees},${pitchDegrees}`;
 }
 
 export function escapeHtml(text: string): string {
