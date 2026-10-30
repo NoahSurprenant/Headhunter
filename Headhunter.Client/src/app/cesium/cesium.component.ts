@@ -13,7 +13,6 @@ import { buildModuleUrl,
   defined,
   Entity,
   Cartographic,
-  Rectangle,
   BoundingSphere,
   HeadingPitchRange,
 } from 'cesium';
