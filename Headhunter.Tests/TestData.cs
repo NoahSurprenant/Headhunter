@@ -64,6 +64,15 @@ public static class TestData
     public static readonly Guid CommonStreetId = Guid.Parse("00000000-0000-0000-0000-00000000b013");
     public const int NoiseCount = 100;
 
+    // A county of its own, with two households, for the district stats' grouped-query path: mixed genders
+    // (F, M, X), ages spanning four of the age bands, and a mix of permanent-absentee voters.
+    public static readonly Guid MixAddressAId = Guid.Parse("00000000-0000-0000-0000-00000000a040");
+    public static readonly Guid MixAddressBId = Guid.Parse("00000000-0000-0000-0000-00000000a041");
+    public static readonly Guid MixVoterF1Id = Guid.Parse("00000000-0000-0000-0000-00000000b040");
+    public static readonly Guid MixVoterM1Id = Guid.Parse("00000000-0000-0000-0000-00000000b041");
+    public static readonly Guid MixVoterX1Id = Guid.Parse("00000000-0000-0000-0000-00000000b042");
+    public static readonly Guid MixVoterF2Id = Guid.Parse("00000000-0000-0000-0000-00000000b043");
+
     public static async Task SeedAsync(HeadhunterContext context)
     {
         var maple = NewAddress(MapleAddressId, "100", "Maple", "St", "Testville", 42.500000000001m, -83.500000000001m);
@@ -91,9 +100,16 @@ public static class TestData
 
         var pine = NewAddress(PineAddressId, "300", "Pine", "Ln", "Farview", 20.0m, -90.0m);
 
+        // Its own county: two households, so District stats sees both multiple genders/ages per household
+        // and more than one household in the group-by.
+        var mixAddressA = NewAddress(MixAddressAId, "10", "Mix", "Ct", "Mixtown", 50.0m, -95.0m);
+        var mixAddressB = NewAddress(MixAddressBId, "20", "Mix", "Ct", "Mixtown", 50.01m, -95.01m);
+        mixAddressA.COUNTY_NAME = "MIXCOUNTY";
+        mixAddressB.COUNTY_NAME = "MIXCOUNTY";
+
         context.Addresses.AddRange(maple, oak, datelineEast, datelineWest,
             relativeRef, relativeNear, relativeStreet, relativeFar, common, commonNear, commonStreet, pine,
-            pineFailed, birchNeverTried, elmFailed);
+            pineFailed, birchNeverTried, elmFailed, mixAddressA, mixAddressB);
 
         AddVoter(context, AdaId, maple, "Ada", "Q", "Fakename", ThisYear - 30, "F", new DateTime(2020, 1, 15), permanentAbsentee: true);
         AddVoter(context, AdalineId, maple, "Adaline", "R", "Fakename", ThisYear - 31, "F", new DateTime(2022, 6, 1));
@@ -113,6 +129,13 @@ public static class TestData
         AddVoter(context, CommonRefId, common, "CommonRef", "", "Commonname", ThisYear - 35);
         AddVoter(context, CommonNearId, commonNear, "CommonNear", "", "Commonname", ThisYear - 36);
         AddVoter(context, CommonStreetId, commonStreet, "CommonStreet", "", "Commonname", ThisYear - 37);
+
+        // Mixed genders (F, M, X), ages in four different bands (20, 45, 70, 85) and a mix of permanent-absentee
+        // voters (true for the Under-25 F and the 65-74 X, false for the others), across two households.
+        AddVoter(context, MixVoterF1Id, mixAddressA, "Mix", "F1", "Blend", ThisYear - 20, "F", new DateTime(2023, 5, 1), permanentAbsentee: true);
+        AddVoter(context, MixVoterM1Id, mixAddressA, "Mix", "M1", "Blend", ThisYear - 45, "M", new DateTime(2021, 2, 10));
+        AddVoter(context, MixVoterX1Id, mixAddressB, "Mix", "X1", "Blend", ThisYear - 70, "X", new DateTime(2019, 7, 20), permanentAbsentee: true);
+        AddVoter(context, MixVoterF2Id, mixAddressB, "Mix", "F2", "Blend", ThisYear - 85, "F", new DateTime(2017, 11, 30));
 
         // Scattered noise, nowhere near Common/CommonNear/CommonStreet and on none of their streets: proves
         // the query's cost comes from geography, not from how many voters share the surname.
