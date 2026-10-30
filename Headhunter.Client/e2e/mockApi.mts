@@ -93,10 +93,33 @@ export function mockResponse(method: string, url: string): MockResponse {
     return json({ totalCount: TOTAL_VOTERS, results });
   }
 
-  let match = /^voter\/([^/]+)$/.exec(path);
+  // Others with the same last name, somewhere else
+  let match = /^voter\/([^/]+)\/relatives$/.exec(path);
+  if (match) {
+    const n = numberOf(match[1]);
+    return n < 0 ? notFound() : json([1, 2].map(i => {
+      const { registrationDate, ...relative } = voterDetail(n + 30 * i);
+      return { ...relative, lastName: voterDetail(n).lastName };
+    }));
+  }
+
+  match = /^voter\/([^/]+)$/.exec(path);
   if (match) {
     const n = numberOf(match[1]);
     return n < 0 ? notFound() : json(voterDetail(n));
+  }
+
+  // The houses either side and the closest households
+  match = /^address\/([^/]+)\/walk$/.exec(path);
+  if (match) {
+    const n = numberOf(match[1]);
+    if (n < 0) return notFound();
+    const house = (a: number) => ({ id: id('address', a), fullStreetAddress: voterDetail(a * 3).fullStreetAddress });
+    return json({
+      previous: n > 0 ? house(n - 1) : null,
+      next: house(n + 1),
+      nearby: [1, 2, 3, 4].map(i => ({ ...house(n + i * 6), voterCount: 1 + i % 3, distanceMeters: 40 * i * i })),
+    });
   }
 
   match = /^address\/([^/]+)$/.exec(path);
