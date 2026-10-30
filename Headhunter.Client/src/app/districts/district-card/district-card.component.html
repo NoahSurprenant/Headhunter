@@ -1,0 +1,75 @@
+<div class="card !p-4 animate-fade-in">
+    <div class="flex items-start justify-between gap-2">
+        <div class="min-w-0">
+            <h2 class="card-title !mb-0">District</h2>
+            <p class="font-bold text-gray-900 truncate" [title]="title()">{{ title() }}</p>
+        </div>
+        <a routerLink="/globe" [queryParams]="globe()" class="btn-secondary !py-1 !px-3 shrink-0">Open on globe</a>
+    </div>
+
+    @if (stats.isLoading() && !stats.hasValue()) {
+        <p class="text-gray-500 mt-3">Counting…</p>
+    } @else if (stats.error()) {
+        <p class="text-gray-500 mt-3">Couldn't load this district.</p>
+    } @else if (stats.hasValue() && stats.value() === null) {
+        <p class="text-gray-500 mt-3">Nobody is registered in this district.</p>
+    } @else if (stats.hasValue()) {
+        @let s = stats.value()!;
+        <div class="grid grid-cols-3 gap-2 mt-3 text-center">
+            <div class="bg-white rounded-lg py-2">
+                <div class="text-xl font-extrabold text-gray-900">{{ s.voters | number }}</div>
+                <div class="text-xs text-gray-600">voters</div>
+            </div>
+            <div class="bg-white rounded-lg py-2">
+                <div class="text-xl font-extrabold text-gray-900">{{ s.households | number }}</div>
+                <div class="text-xs text-gray-600">households</div>
+            </div>
+            <div class="bg-white rounded-lg py-2">
+                <div class="text-xl font-extrabold text-gray-900">{{ s.permanentAbsenteePercent | number:'1.0-1' }}%</div>
+                <div class="text-xs text-gray-600">permanent absentee</div>
+            </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4 mt-4">
+            <div>
+                <h3 class="text-xs font-semibold text-gray-600 mb-1">Ages</h3>
+                <!-- One bar per age band, one hue; the count is in each bar's tooltip and under the tallest. -->
+                <div class="flex items-end gap-0.5 h-20 border-b border-gray-300" role="img" aria-label="Voters by age">
+                    @for (a of ages(); track a.label) {
+                        <div class="flex-1 h-full flex items-end" [title]="a.label + ': ' + (a.count | number)">
+                            <div class="age-bar w-full bg-purple-500 rounded-t" [style.height.%]="a.height"></div>
+                        </div>
+                    }
+                </div>
+                <div class="flex gap-0.5 mt-1">
+                    @for (a of ages(); track a.label) {
+                        <div class="flex-1 text-center text-[10px] leading-tight text-gray-600">{{ a.label }}</div>
+                    }
+                </div>
+            </div>
+            <div>
+                <h3 class="text-xs font-semibold text-gray-600 mb-1">Gender</h3>
+                <ul class="space-y-1">
+                    @for (g of genders(); track g.label) {
+                        <li class="text-sm">
+                            <div class="flex justify-between text-gray-800"><span>{{ g.label }}</span><span>{{ g.percent }}%</span></div>
+                            <div class="h-1.5 bg-white rounded-full"><div class="h-full bg-purple-500 rounded-full" [style.width.%]="g.percent"></div></div>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+
+        @if (s.newestRegistrations.length) {
+            <h3 class="text-xs font-semibold text-gray-600 mt-4 mb-1">Newest registrations</h3>
+            <ul class="text-sm divide-y divide-gray-200">
+                @for (r of s.newestRegistrations; track r.id) {
+                    <li class="flex justify-between py-1">
+                        <a [routerLink]="['/voter', r.id]" class="text-gray-900 hover:text-purple-700 hover:underline truncate">{{ fullName(r) }}</a>
+                        <span class="text-gray-600 shrink-0 ml-2">{{ r.registrationDate | date:'mediumDate' }}</span>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</div>

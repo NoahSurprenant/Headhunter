@@ -419,9 +419,9 @@ public class ApiEndpointTests
             Assert.That(lines, Is.EqualTo(new[]
             {
                 "Name,Birth Year,Gender,Address,City,Zip,Registration Date",
-                $"Ada Q Fakename,{TestData.ThisYear - 30},X,100 Maple St,Testville,00000,2020-01-15",
-                $"Adaline R Fakename,{TestData.ThisYear - 31},X,100 Maple St,Testville,00000,2020-01-15",
-                $"Bruno T Fakename,{TestData.ThisYear - 50},X,200 Oak Ave,Testburg,00000,2020-01-15",
+                $"Ada Q Fakename,{TestData.ThisYear - 30},F,100 Maple St,Testville,00000,2020-01-15",
+                $"Adaline R Fakename,{TestData.ThisYear - 31},F,100 Maple St,Testville,00000,2022-06-01",
+                $"Bruno T Fakename,{TestData.ThisYear - 50},M,200 Oak Ave,Testburg,00000,2024-10-02",
             }));
         });
     }

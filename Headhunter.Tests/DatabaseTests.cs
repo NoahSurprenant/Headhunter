@@ -100,6 +100,35 @@ public class DatabaseTests
         });
     }
 
+    // The district suggestions (and the filters, on the same columns) seek the district indexes. The jurisdiction
+    // leads two composite indexes, so either may be picked for it.
+    [TestCase(API.DistrictType.County, "", "IX_Addresses_COUNTY_NAME_COUNTY_COMMISSIONER_DISTRICT_NAME")]
+    [TestCase(API.DistrictType.Jurisdiction, "", "IX_Addresses_JURISDICTION_NAME_")]
+    [TestCase(API.DistrictType.Precinct, "CITY OF TESTVILLE", "IX_Addresses_JURISDICTION_NAME_PRECINCT")]
+    [TestCase(API.DistrictType.Ward, "CITY OF TESTVILLE", "IX_Addresses_JURISDICTION_NAME_WARD")]
+    [TestCase(API.DistrictType.SchoolDistrict, "", "IX_Addresses_SCHOOL_DISTRICT_NAME")]
+    [TestCase(API.DistrictType.StateHouse, "", "IX_Addresses_STATE_HOUSE_DISTRICT_NAME")]
+    [TestCase(API.DistrictType.StateSenate, "", "IX_Addresses_STATE_SENATE_DISTRICT_NAME")]
+    [TestCase(API.DistrictType.UsCongress, "", "IX_Addresses_US_CONGRESS_DISTRICT_NAME")]
+    [TestCase(API.DistrictType.CountyCommissioner, "TESTSHIRE", "IX_Addresses_COUNTY_NAME_COUNTY_COMMISSIONER_DISTRICT_NAME")]
+    public async Task DistrictSuggestionQuery_SeeksItsIndex(API.DistrictType type, string within, string index)
+    {
+        await using var context = SqlServerFixture.CreateContext();
+
+        // Same shape as DistrictController.DistrictSuggestions.
+        var sql = API.Districts.Names(context.Addresses, type, within)
+            .Where(x => x != "" && x.StartsWith("1"))
+            .Distinct().OrderBy(x => x).Take(50).ToQueryString();
+
+        var plan = await GetEstimatedPlanXml(context, sql);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(plan, Does.Contain($"Index=\"[{index}"), $"Plan does not use {index}:\n{plan}");
+            Assert.That(plan, Does.Contain("<SeekPredicates>"), $"Plan has no index seek:\n{plan}");
+        });
+    }
+
     private static async Task<string> GetEstimatedPlanXml(HeadhunterContext context, string sql)
     {
         var connection = context.Database.GetDbConnection();

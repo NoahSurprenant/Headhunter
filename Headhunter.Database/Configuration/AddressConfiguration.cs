@@ -25,5 +25,28 @@ internal class AddressConfiguration : IEntityTypeConfiguration<Address>
         builder.Property(x => x.STREET_NAME).HasMaxLength(100);
         builder.HasIndex(x => x.FullStreetAddress);
         builder.HasIndex(x => x.STREET_NAME).IncludeProperties(x => x.FullStreetAddress);
+
+        // The districts (Headhunter.API/Districts.cs): their suggestions' prefix searches, and the voter search, the
+        // globe and the district stats filtering on one. Precincts and wards are numbered within a jurisdiction and
+        // commissioner districts within a county, so those indexes lead with the jurisdiction or county, which also
+        // serves a search on that alone. Latitude and longitude are included so a district's extent and the globe's
+        // view of it come from the index alone (a whole county can be hundreds of thousands of addresses). The
+        // values are names and numbers like the city's, so the same 100-character cap.
+        builder.Property(x => x.COUNTY_NAME).HasMaxLength(100);
+        builder.Property(x => x.COUNTY_COMMISSIONER_DISTRICT_NAME).HasMaxLength(100);
+        builder.Property(x => x.JURISDICTION_NAME).HasMaxLength(100);
+        builder.Property(x => x.PRECINCT).HasMaxLength(100);
+        builder.Property(x => x.WARD).HasMaxLength(100);
+        builder.Property(x => x.SCHOOL_DISTRICT_NAME).HasMaxLength(100);
+        builder.Property(x => x.STATE_HOUSE_DISTRICT_NAME).HasMaxLength(100);
+        builder.Property(x => x.STATE_SENATE_DISTRICT_NAME).HasMaxLength(100);
+        builder.Property(x => x.US_CONGRESS_DISTRICT_NAME).HasMaxLength(100);
+        builder.HasIndex(x => new { x.COUNTY_NAME, x.COUNTY_COMMISSIONER_DISTRICT_NAME }).IncludeProperties(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => new { x.JURISDICTION_NAME, x.PRECINCT }).IncludeProperties(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => new { x.JURISDICTION_NAME, x.WARD }).IncludeProperties(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.SCHOOL_DISTRICT_NAME).IncludeProperties(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.STATE_HOUSE_DISTRICT_NAME).IncludeProperties(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.STATE_SENATE_DISTRICT_NAME).IncludeProperties(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.US_CONGRESS_DISTRICT_NAME).IncludeProperties(x => new { x.Latitude, x.Longitude });
     }
 }

@@ -1,9 +1,10 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, effect, inject, input, OnInit, output, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, OnInit, output, signal, untracked, viewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { buildModuleUrl,
   Math as CesiumMath, Cartesian3, ProviderViewModel, UrlTemplateImageryProvider, Viewer,
   Cartesian2, ScreenSpaceEventHandler,
+  Rectangle,
   LabelStyle,
   VerticalOrigin,
   Color,
@@ -12,7 +13,6 @@ import { buildModuleUrl,
   defined,
   Entity,
   Cartographic,
-  Rectangle,
   BoundingSphere,
   HeadingPitchRange,
 } from 'cesium';
@@ -20,6 +20,7 @@ import { distinctUntilChanged, Subject, switchMap, takeUntil, tap } from 'rxjs';
 import { CustomInfoBoxComponent } from '../custom-info-box/custom-info-box.component';
 import { AreaDto, ClusterDto, clusterId, clusterSize, shortCount } from './clusters';
 import { AreaBox, boxFromCorners, Corner, isEmptyBox, SELECTED_AREA_ID } from './area-selection';
+import { DistrictExtentDto, DistrictRef, districtQuery, districtRef } from '../districts/districts';
 
 // Every base layer comes from this site's /tiles/ (Headhunter.API, Tiles/), which fetches it from the
 // provider: visitors only talk to this site, provider keys stay on the server, and Cloudflare caches the
@@ -51,7 +52,7 @@ export class CesiumComponent implements OnInit {
   private http = inject(HttpClient);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
-  private searchParams$ = new Subject<{ west: number, east: number, north: number, south: number }>();
+  private searchParams$ = new Subject<{ west: number, east: number, north: number, south: number, district?: DistrictRef }>();
   private cancelRequest$ = new Subject<void>();
   // A signal because it is set from Cesium's own DOM callbacks, which Angular
   // (zoneless) does not see; writing the signal schedules change detection.
@@ -87,6 +88,15 @@ export class CesiumComponent implements OnInit {
   // must not open or close an info box.
   private ignoreClick = false;
 
+  // A district to show: /globe?districtType=..&district=..&districtWithin=.. (the district card links here), or the
+  // voters page's district search. The camera flies to its extent and only its addresses and clusters are drawn, in gold.
+  districtType = input<string | undefined>(undefined);
+  district = input<string | undefined>(undefined);
+  districtWithin = input<string | undefined>(undefined);
+  private shownDistrict = computed(() => districtRef(this.districtType(), this.district(), this.districtWithin()),
+    { equal: (a, b) => JSON.stringify(a) === JSON.stringify(b) });
+  private currentDistrict: DistrictRef | undefined;
+
   constructor() {
     effect(() => {
       const lat = this.lat();
@@ -109,6 +119,12 @@ export class CesiumComponent implements OnInit {
       // Before ngOnInit has made the viewer, ngOnInit shows it.
       if (this.viewer) {
         untracked(() => this.showArea(box));
+      }
+    });
+    effect(() => {
+      const district = this.shownDistrict();
+      if (this.viewer) {
+        untracked(() => this.showDistrict(district));
       }
     });
   }
@@ -139,18 +155,23 @@ export class CesiumComponent implements OnInit {
     });
     markDecorative(document.getElementById('cesiumContainer'));
 
-    // Fly the camera to the place asked for, restore a bookmarked view, else to the selected area, or else start
-    // over Michigan.
+    // Fly the camera to the place asked for, restore a bookmarked view, else the district asked for, else to the
+    // selected area, or else start over Michigan.
     const lat = this.lat();
     const lon = this.lon();
     const h = this.h();
     const address = this.address();
     const area = this.selectedArea();
+    const district = this.shownDistrict();
     this.showArea(area);
     if (lat !== undefined && lon !== undefined && h !== undefined && address === undefined) {
+      this.currentDistrict = district;
       this.restoreView(lat, lon, h, this.heading(), this.pitch());
     } else if (lat !== undefined && lon !== undefined) {
+      this.currentDistrict = district;
       this.focus(lat, lon, address);
+    } else if (district) {
+      this.showDistrict(district);
     } else if (area) {
       // The whole box, looking straight down; a range of 0 lets Cesium fit it to the panel either way round.
       this.viewer.camera.flyToBoundingSphere(
@@ -172,7 +193,8 @@ export class CesiumComponent implements OnInit {
         prev.west === curr.west && // it likes to do this on load before user adjusts camera for some reason
         prev.east === curr.east &&
         prev.north === curr.north &&
-        prev.south === curr.south
+        prev.south === curr.south &&
+        JSON.stringify(prev.district) === JSON.stringify(curr.district)
       ),
       tap(() => this.cancelRequest$.next()), // Cancel existing request
       switchMap((params) => {
@@ -181,6 +203,12 @@ export class CesiumComponent implements OnInit {
           .append('east', params.east)
           .append('north', params.north)
           .append('south', params.south);
+        if (params.district) {
+          httpParams = httpParams
+            .append('districtType', params.district.type)
+            .append('district', params.district.name)
+            .append('districtWithin', params.district.within);
+        }
 
         return this.http.get<AreaDto>('api/area', { params: httpParams })
           .pipe(takeUntil(this.cancelRequest$));
@@ -202,6 +230,8 @@ export class CesiumComponent implements OnInit {
         });
 
         const busiest = Math.max(0, ...area.clusters.map(c => c.count));
+        // A district's are gold, so it reads as picked out rather than as the whole map.
+        const inDistrict = !!this.currentDistrict;
         this.clusters.forEach((c, id) => {
           if (this.viewer.entities.getById(id)) {
             return;
@@ -212,7 +242,7 @@ export class CesiumComponent implements OnInit {
             position: Cartesian3.fromDegrees(c.longitude, c.latitude),
             point: {
               pixelSize: clusterSize(c.count, busiest),
-              color: Color.ORANGE.withAlpha(0.75),
+              color: (inDistrict ? Color.GOLD : Color.ORANGE).withAlpha(0.75),
               outlineColor: Color.WHITE,
               outlineWidth: 1,
             },
@@ -249,7 +279,7 @@ export class CesiumComponent implements OnInit {
             position: Cartesian3.fromDegrees(x.longitude, x.latitude),
             point: {
               pixelSize: 5,
-              color: Color.AQUA,
+              color: inDistrict ? Color.GOLD : Color.AQUA,
               outlineColor: Color.WHITE,
               outlineWidth: 2,
             },
@@ -483,6 +513,35 @@ export class CesiumComponent implements OnInit {
     });
   }
 
+  /** Only a district's addresses (or everyone's again, with none), and the camera over the district. */
+  showDistrict(district: DistrictRef | undefined): void {
+    if (JSON.stringify(district) === JSON.stringify(this.currentDistrict)) {
+      return;
+    }
+    this.currentDistrict = district;
+    // Drawn for another district (or none): different addresses, different colour.
+    this.viewer.entities.removeAll();
+    this.clusters.clear();
+    // ...but not the selected area, which outlives a change of district.
+    this.showArea(this.selectedArea());
+    this.selectedEntity.set(undefined);
+    if (!district) {
+      this.computeBounds();
+      return;
+    }
+    this.http.get<DistrictExtentDto>('api/districtExtent', { params: districtQuery(district) }).subscribe({
+      next: e => {
+        // A district of one address is a point: a margin keeps the camera a few streets up.
+        const margin = Math.max(0.005, (e.north - e.south) * 0.1, (e.east - e.west) * 0.1);
+        this.viewer.camera.flyTo({
+          destination: Rectangle.fromDegrees(e.west - margin, e.south - margin, e.east + margin, e.north + margin),
+        });
+      },
+      // Not on the map (no placed addresses): stay put, showing what there is.
+      error: () => this.computeBounds(),
+    });
+  }
+
   computeBounds() {
     const camera = this.viewer.camera;
     const scene = this.viewer.scene;
@@ -496,7 +555,7 @@ export class CesiumComponent implements OnInit {
     const east = CesiumMath.toDegrees(rectangle.east);
     const north = CesiumMath.toDegrees(rectangle.north);
 
-    this.searchParams$.next({ west, east, north, south });
+    this.searchParams$.next({ west, east, north, south, district: this.currentDistrict });
   }
 
   createDefaultImageryProviderViewModels() {

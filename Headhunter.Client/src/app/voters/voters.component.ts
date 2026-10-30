@@ -12,6 +12,8 @@ import { HttpClient } from '@angular/common/http';
 import { CesiumComponent } from '../cesium/cesium.component';
 import { AreaBox, boxFromParams, boxParams } from '../cesium/area-selection';
 import { approximateAge, fullName, genderLabel } from '../shared/people/people';
+import { DistrictCardComponent } from '../districts/district-card/district-card.component';
+import { DISTRICT_TYPES, districtRef, districtTypeOption } from '../districts/districts';
 
 @Component({
   selector: 'app-voters',
@@ -24,6 +26,7 @@ import { approximateAge, fullName, genderLabel } from '../shared/people/people';
     InputComponent,
     DropdownComponent,
     CesiumComponent,
+    DistrictCardComponent,
   ],
   templateUrl: './voters.component.html',
   styleUrl: './voters.component.css',
@@ -50,17 +53,10 @@ export class VotersComponent implements OnInit {
     'Pisces',
   ];
 
+  readonly districtTypes = DISTRICT_TYPES;
+
   constructor(private builder: FormBuilder, private http: HttpClient) {
-    this.formGroup = builder.nonNullable.group<SearchFilterForm>({
-      firstName: builder.nonNullable.control<string>(''),
-      middleName: builder.nonNullable.control<string>(''),
-      lastName: builder.nonNullable.control<string>(''),
-      street: builder.nonNullable.control<string>(''),
-      city: builder.nonNullable.control<string>(''),
-      birthYear: builder.control<number | null>(null),
-      age: builder.control<number | null>(null),
-      astrology: builder.nonNullable.control<string>(''),
-    });
+    this.formGroup = this.newForm();
 
     effect(() => {
       // value() throws while the resource is in an error state (Angular 20+), so guard with hasValue().
@@ -85,6 +81,7 @@ export class VotersComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    this.restoreFromUrl();
     this.x.reload();
   }
 
@@ -168,20 +165,39 @@ export class VotersComponent implements OnInit {
       return;
     }
 
+    const searchFilter = this.filterFromForm();
+    this.searchFilter.set(searchFilter);
+    this.keepInUrl(searchFilter);
+    this.x.reload();
+  }
+
+  private filterFromForm(): SearchFilterDto {
     const rawValues = this.formGroup.getRawValue();
-    const searchFilter: SearchFilterDto = {
+    return {
       ...rawValues,
       birthYear: rawValues.birthYear !== null ? Number(rawValues.birthYear) : null,
       age: rawValues.age !== null ? Number(rawValues.age) : null,
+      // The API reads the type by name; none is null, not "".
+      districtType: rawValues.districtType || null,
+      // Only precincts, wards and commissioner districts are within something.
+      districtWithin: districtTypeOption(rawValues.districtType)?.within ? rawValues.districtWithin : '',
     };
-    this.searchFilter.set(searchFilter);
-    this.x.reload();
   }
 
   clearAll() {
     // Not sure why reset is not respecting nonNullable.
     //this.formGroup.reset();
-    this.formGroup = this.builder.nonNullable.group<SearchFilterForm>({
+    this.formGroup = this.newForm();
+    this.searchFilter.set(undefined);
+    // The area too, in the same navigation: two in a row would each merge into the URL as it was.
+    this.area.set(undefined);
+    this.pageNumber.set(1);
+    this.keepInUrl(undefined, boxParams(undefined));
+    this.x.reload();
+  }
+
+  private newForm(): FormGroup<SearchFilterForm> {
+    return this.builder.nonNullable.group<SearchFilterForm>({
       firstName: this.builder.nonNullable.control<string>(''),
       middleName: this.builder.nonNullable.control<string>(''),
       lastName: this.builder.nonNullable.control<string>(''),
@@ -190,12 +206,10 @@ export class VotersComponent implements OnInit {
       birthYear: this.builder.control<number | null>(null),
       age: this.builder.control<number | null>(null),
       astrology: this.builder.nonNullable.control<string>(''),
+      districtType: this.builder.nonNullable.control<string>(''),
+      district: this.builder.nonNullable.control<string>(''),
+      districtWithin: this.builder.nonNullable.control<string>(''),
     });
-    this.searchFilter.set(undefined);
-    if (this.area()) {
-      this.clearArea();
-    }
-    this.x.reload();
   }
 
   addressColumn(voter: VoterDto): string {
@@ -224,6 +238,53 @@ export class VotersComponent implements OnInit {
   lastNameSuggestions = (query: string) => this.http.get<string[]>(`/api/lastNameSuggestions?query=${query}`);
   streetSuggestions = (query: string) => this.http.get<string[]>(`/api/streetSuggestions?query=${query}`);
   citySuggestions = (query: string) => this.http.get<string[]>(`/api/citySuggestions?query=${query}`);
+  // The district's names, of the type picked (and in the jurisdiction or county, for precincts, wards and commissioner
+  // districts), and the jurisdictions or counties those are in.
+  districtSuggestions = (query: string) => {
+    const { districtType, districtWithin } = this.formGroup.getRawValue();
+    return this.http.get<string[]>('/api/districtSuggestions', { params: { type: districtType, query, within: districtWithin } });
+  };
+  districtWithinSuggestions = (query: string) => {
+    const within = districtTypeOption(this.formGroup.getRawValue().districtType)?.within ?? 'Jurisdiction';
+    return this.http.get<string[]>('/api/districtSuggestions', { params: { type: within, query } });
+  };
+
+  /** What the district needs to be in (Jurisdiction or County), if anything. */
+  districtWithin(): string | undefined {
+    return districtTypeOption(this.formGroup.controls.districtType.value)?.within;
+  }
+
+  // Another type's names mean nothing: picking a type starts the district over.
+  districtTypeChanged(): void {
+    this.formGroup.patchValue({ district: '', districtWithin: '' });
+  }
+
+  // The district searched for: its card beside the results, and the globe flies to it and shows only its addresses.
+  activeDistrict = computed(() => {
+    const f = this.searchFilter();
+    return f ? districtRef(f.districtType, f.district, f.districtWithin) : undefined;
+  });
+
+  // The search lives in the URL (?lastName=..&districtType=..), so it can be shared, bookmarked and come back to.
+  // Merged, so the globe's own params (the selected area, the camera view) stay; empty fields are removed.
+  private keepInUrl(filter: SearchFilterDto | undefined, extra: Record<string, number | null> = {}): void {
+    const queryParams: Record<string, string | number | null> = { ...extra };
+    for (const key of Object.keys(this.formGroup.controls)) {
+      const value = (filter as Record<string, unknown> | undefined)?.[key];
+      queryParams[key] = value !== null && value !== undefined && value !== '' ? String(value) : null;
+    }
+    this.router.navigate([], { relativeTo: this.route, queryParams, queryParamsHandling: 'merge' });
+  }
+
+  private restoreFromUrl(): void {
+    const params = this.route.snapshot.queryParamMap;
+    const keys = Object.keys(this.formGroup.controls).filter(k => params.has(k));
+    if (keys.length === 0) return;
+    for (const key of keys) {
+      this.formGroup.get(key)!.setValue(params.get(key));
+    }
+    this.searchFilter.set(this.filterFromForm());
+  }
 
 }
 
@@ -261,6 +322,9 @@ export interface SearchFilterForm
   birthYear: FormControl<number | null>,
   age: FormControl<number | null>,
   astrology: FormControl<string>,
+  districtType: FormControl<string>,
+  district: FormControl<string>,
+  districtWithin: FormControl<string>,
 }
 
 export interface SearchFilterDto
@@ -273,4 +337,7 @@ export interface SearchFilterDto
   birthYear: number | null,
   age: number | null,
   astrology: string,
+  districtType: string | null,
+  district: string,
+  districtWithin: string,
 }

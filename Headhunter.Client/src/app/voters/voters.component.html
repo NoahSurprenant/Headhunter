@@ -35,6 +35,28 @@
                     <label class="text-xs">Astrology Sign</label>
                     <x-dropdown formControlName="astrology" [options]="astrologyOptions" label="Astrology Sign"></x-dropdown>
                 </div>
+                <div>
+                    <label class="text-xs" for="districtType">District</label>
+                    <select id="districtType" formControlName="districtType" (change)="districtTypeChanged()"
+                            class="border border-gray-300 bg-white text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                        <option value="">Any</option>
+                        @for (t of districtTypes; track t.value) {
+                            <option [value]="t.value">{{ t.label }}</option>
+                        }
+                    </select>
+                </div>
+                @if (districtWithin(); as within) {
+                    <div>
+                        <label class="text-xs">in {{ within }}</label>
+                        <x-input formControlName="districtWithin" [placeholder]="within === 'County' ? 'KENT' : 'CITY OF LANSING'" [onSearch]="districtWithinSuggestions"></x-input>
+                    </div>
+                }
+                @if (formGroup.controls.districtType.value) {
+                    <div>
+                        <label class="text-xs">Which</label>
+                        <x-input formControlName="district" placeholder="Start typing" [onSearch]="districtSuggestions"></x-input>
+                    </div>
+                }
             </div>
             <div class="flex gap-2 mt-3">
                 <x-button type="submit" [disabled]="!formGroup.valid">Search</x-button>
@@ -60,6 +82,9 @@
         </form>
 
         <div class="flex-1 min-h-0 overflow-auto">
+            @if (activeDistrict(); as d) {
+                <app-district-card [district]="d" class="block m-3"></app-district-card>
+            }
             @if (x.isLoading() && current().results.length === 0) {
                 <p class="p-6 text-gray-500">Searching…</p>
             }
@@ -89,7 +114,8 @@
 
     <section class="hidden lg:block flex-1 min-w-0 relative">
         <app-cesium [lat]="selected()?.latitude ?? undefined" [lon]="selected()?.longitude ?? undefined" [address]="selected()?.addressId"
-                     [selectable]="true" [selectedArea]="area()" (areaSelected)="selectArea($event)"></app-cesium>
+                     [selectable]="true" [selectedArea]="area()" (areaSelected)="selectArea($event)"
+                     [districtType]="activeDistrict()?.type" [district]="activeDistrict()?.name" [districtWithin]="activeDistrict()?.within"></app-cesium>
         @if (!selected() && !area()) {
             <div class="absolute top-14 left-3 max-w-xs bg-black/60 text-white text-sm px-3 py-1 rounded pointer-events-none">
                 Pick a voter to see where they live, or select an area

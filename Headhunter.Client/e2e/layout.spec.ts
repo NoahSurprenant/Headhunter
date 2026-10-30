@@ -26,6 +26,9 @@ const PAGES: PageCase[] = [
   { name: 'globe', path: '/globe', ready: '.cesium-widget canvas', controls: [...NAV] },
   { name: 'voters', path: '/voters', ready: 'ul li a[href^="/voter/"]',
     controls: [...NAV, 'form x-button button', 'x-paginator select', 'x-paginator button', 'x-paginator p'] },
+  // A district searched for: its card above the results
+  { name: 'voters-district', path: '/voters?districtType=Precinct&district=00012&districtWithin=MOCKINGHAM%20TOWNSHIP',
+    ready: 'app-district-card .grid', controls: [...NAV, 'app-district-card .card', 'app-district-card a', 'x-paginator button'] },
   { name: 'voter', path: `/voter/${id('voter', 12)}`, ready: 'h1', controls: [...NAV, 'h1', '.btn-secondary', '.btn-primary'] },
   { name: 'address', path: `/address/${id('address', 4)}`, ready: 'h1', controls: [...NAV, 'h1', '.btn-primary'] },
 ];

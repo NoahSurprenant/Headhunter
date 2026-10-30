@@ -558,4 +558,116 @@ describe('CesiumComponent', () => {
     expect(Array.from(root.querySelectorAll('img')).map(i => i.getAttribute('alt'))).toEqual(['', 'Imagery']);
     markDecorative(null); // no container: nothing to do
   });
+
+  describe('with a district', () => {
+    const expectExtent = () => http.expectOne(req => req.url === 'api/districtExtent');
+    const precinct = { districtType: 'Precinct', district: '00012', districtWithin: 'CITY OF TESTVILLE' };
+
+    function renderDistrict(inputs: Record<string, string>) {
+      const fixture = TestBed.createComponent(CesiumComponent);
+      for (const [name, value] of Object.entries(inputs)) fixture.componentRef.setInput(name, value);
+      fixture.detectChanges();
+      return { fixture, viewer: cesium.state.viewer! };
+    }
+
+    it('starts over the district (a /globe?districtType&district link), with a margin around its extent', () => {
+      const { viewer } = renderDistrict(precinct);
+
+      // Not Michigan first: straight to the district once its extent arrives.
+      expect(viewer.camera.flyTo).not.toHaveBeenCalled();
+      const req = expectExtent();
+      expect(req.request.params.get('type')).toBe('Precinct');
+      expect(req.request.params.get('name')).toBe('00012');
+      expect(req.request.params.get('within')).toBe('CITY OF TESTVILLE');
+      req.flush({ west: -84, east: -83, south: 42, north: 43 });
+
+      const destination = viewer.camera.flyTo.mock.calls[0][0].destination;
+      expect(destination.west).toBeCloseTo(-84.1);
+      expect(destination.east).toBeCloseTo(-82.9);
+      expect(destination.south).toBeCloseTo(41.9);
+      expect(destination.north).toBeCloseTo(43.1);
+    });
+
+    it('keeps a district of one address a few streets across', () => {
+      const { viewer } = renderDistrict({ districtType: 'County', district: 'TESTSHIRE' });
+      expectExtent().flush({ west: -84, east: -84, south: 42, north: 42 });
+
+      const destination = viewer.camera.flyTo.mock.calls[0][0].destination;
+      expect(destination.east - destination.west).toBeCloseTo(0.01);
+    });
+
+    it('asks only for the district\'s addresses and draws them and its clusters in gold', () => {
+      const { viewer } = renderDistrict(precinct);
+      expectExtent().flush({ west: -84, east: -83, south: 42, north: 43 });
+
+      moveCamera(viewer);
+      const req = expectArea();
+      expect(req.request.params.get('districtType')).toBe('Precinct');
+      expect(req.request.params.get('district')).toBe('00012');
+      expect(req.request.params.get('districtWithin')).toBe('CITY OF TESTVILLE');
+      req.flush(area([areaAddress()], [{ latitude: 42.5, longitude: -83.5, count: 12 }]));
+
+      expect((viewer.entities.getById('addr-0001') as Record<string, any>)['point'].color).toBe(cesium.module.Color.GOLD);
+      const cluster = viewer.entities.values.find(e => String(e['id']).startsWith('cluster:')) as Record<string, any>;
+      expect(cluster['point'].color).toBe('GOLD@0.75');
+    });
+
+    it('clears the district\'s points and asks for everyone\'s again when the district is cleared', async () => {
+      const { fixture, viewer } = renderDistrict(precinct);
+      expectExtent().flush({ west: -84, east: -83, south: 42, north: 43 });
+      cesium.state.rectangle = { west: rad(-85), south: rad(42), east: rad(-84), north: rad(43) };
+      moveCamera(viewer);
+      expectArea().flush(area([areaAddress()]));
+
+      fixture.componentRef.setInput('district', undefined);
+      await fixture.whenStable();
+
+      expect(viewer.entities.getById('addr-0001')).toBeUndefined();
+      // Same view, no district: asked again, unfiltered.
+      const req = expectArea();
+      expect(req.request.params.has('districtType')).toBe(false);
+      req.flush(area([areaAddress()]));
+      expect((viewer.entities.getById('addr-0001') as Record<string, any>)['point'].color).toBe('AQUA');
+    });
+
+    it('flies to a district picked after it started', async () => {
+      const { fixture, viewer } = render();
+      viewer.camera.flyTo.mockClear();
+
+      fixture.componentRef.setInput('districtType', 'County');
+      fixture.componentRef.setInput('district', 'TESTSHIRE');
+      await fixture.whenStable();
+      expectExtent().flush({ west: -85, east: -84, south: 42, north: 43 });
+
+      expect(viewer.camera.flyTo).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays put and shows what it can when the district is not on the map', () => {
+      cesium.state.rectangle = { west: rad(-85), south: rad(42), east: rad(-84), north: rad(43) };
+      const { viewer } = renderDistrict({ districtType: 'County', district: 'NOWHERE' });
+      expectExtent().flush('Not found', { status: 404, statusText: 'Not Found' });
+
+      expect(viewer.camera.flyTo).not.toHaveBeenCalled();
+      expect(expectArea().request.params.get('district')).toBe('NOWHERE');
+    });
+
+    it('keeps the selected area outlined when the district changes', async () => {
+      const { fixture, viewer } = renderDistrict(precinct);
+      fixture.componentRef.setInput('selectedArea', { west: -84, east: -83, north: 43, south: 42 });
+      await fixture.whenStable();
+      expectExtent().flush({ west: -84, east: -83, south: 42, north: 43 });
+
+      fixture.componentRef.setInput('district', undefined);
+      await fixture.whenStable();
+      expectArea().flush(area([]));
+
+      expect(viewer.entities.getById('selected-area')).toBeDefined();
+    });
+
+    it('ignores a precinct without its jurisdiction', () => {
+      const { viewer } = renderDistrict({ districtType: 'Precinct', district: '00012' });
+      http.expectNone(req => req.url === 'api/districtExtent');
+      expect(viewer.camera.flyTo).toHaveBeenCalledTimes(1); // Michigan
+    });
+  });
 });

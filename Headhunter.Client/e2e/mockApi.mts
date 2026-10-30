@@ -138,6 +138,28 @@ export function mockResponse(method: string, url: string): MockResponse {
     return json({ addresses: [], clusters });
   }
 
+  // A district searched for on the voters page: its card's numbers, and where the globe flies
+  if (path === 'district' || path === 'districtextent') {
+    const extent = { west: -83.75, east: -83.55, south: 42.45, north: 42.6 };
+    if (path === 'districtextent') return json(extent);
+    return json({
+      type: searchParams.get('type') ?? 'Precinct',
+      name: searchParams.get('name') ?? '00012',
+      within: searchParams.get('within') ?? '',
+      voters: 12_480,
+      households: 6_115,
+      ages: ['Under 25', '25–34', '35–44', '45–54', '55–64', '65–74', '75+']
+        .map((label, i) => ({ label, count: 900 + (i * 7919) % 2400 })),
+      genders: [{ gender: 'F', count: 6_402 }, { gender: 'M', count: 5_911 }, { gender: 'X', count: 167 }],
+      permanentAbsenteePercent: 37.5,
+      newestRegistrations: [0, 1, 2].map(i => {
+        const v = voterDetail(400 + i);
+        return { id: v.id, firstName: v.firstName, middleName: v.middleName, lastName: v.lastName, registrationDate: v.registrationDate };
+      }),
+      extent,
+    });
+  }
+
   if (path.endsWith('suggestions')) {
     return json(['Alex', 'Alexander', 'Alexandra']);
   }
