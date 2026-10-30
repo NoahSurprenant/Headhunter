@@ -190,6 +190,11 @@ export function mockResponse(method: string, url: string): MockResponse {
     return json({ totalCount: 276_642, results });
   }
 
+  // The advanced search's voter status choices
+  if (path === 'voterstatuses') {
+    return json(['A', 'C', 'V']);
+  }
+
   if (path.endsWith('suggestions')) {
     return json(['Alex', 'Alexander', 'Alexandra']);
   }

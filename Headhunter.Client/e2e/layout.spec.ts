@@ -29,6 +29,12 @@ const PAGES: PageCase[] = [
   // A district searched for: its card above the results
   { name: 'voters-district', path: '/voters?districtType=Precinct&district=00012&districtWithin=MOCKINGHAM%20TOWNSHIP',
     ready: 'app-district-card .grid', controls: [...NAV, 'app-district-card .card', 'app-district-card a', 'x-paginator button'] },
+  // The advanced search open with a few conditions: a "between" (two inputs), a slow one with its hint, a choice
+  { name: 'voters-advanced',
+    path: '/voters?lastName=SAMPLE&cond=birthYear.between.1960.1999~city.contains.LAN~registrationDate.ge.2020-01-01~gender.isNot.M',
+    ready: 'ul li a[href^="/voter/"]',
+    controls: [...NAV, '.cond-row select', '.cond-row input', '.cond-remove', '.slow-hint', '.add-condition',
+      'form x-button button', 'x-paginator button'] },
   { name: 'not-on-the-map', path: '/not-on-the-map', ready: 'ul li a[href^="/address/"]',
     controls: [...NAV, 'h1', 'app-not-on-map ul li button', 'x-paginator select', 'x-paginator button', 'x-paginator p'] },
   { name: 'voter', path: `/voter/${id('voter', 12)}`, ready: 'h1', controls: [...NAV, 'h1', '.btn-secondary', '.btn-primary'] },

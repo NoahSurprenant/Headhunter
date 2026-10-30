@@ -685,8 +685,9 @@ public class ApiController : ControllerBase
     // The voters list's filters, shared by the page (Voters) and its download (VotersCsv). mailingAddressDiffers is
     // a separate query parameter (not part of the SearchFilterDto body) so it combines with whatever's already in
     // the search form; it seeks IX_Voters_HAS_MAILING_ADDRESS rather than scanning MAILING_ADDRESS_LINE_ONE (see
-    // VoterConfiguration.HAS_MAILING_ADDRESS).
-    private IQueryable<Voter> Search(SearchFilterDto? dto, bool? mailingAddressDiffers)
+    // VoterConfiguration.HAS_MAILING_ADDRESS). The advanced conditions (SearchConditions) are ANDed on; a bad one
+    // throws SearchConditionException here, before anything is queried.
+    private IQueryable<Voter> Search(SearchFilterDto? dto, bool? mailingAddressDiffers, SearchOptions options)
     {
         var x = _context.Voters.AsQueryable();
 
@@ -763,16 +764,45 @@ public class ApiController : ControllerBase
                     x = x.Where(x => x.YEAR_OF_BIRTH == minBirthYear || x.YEAR_OF_BIRTH == maxBirthYear);
                 }
             }
+
+            if (dto.Conditions is { Count: > 0 } conditions)
+                x = SearchConditions.Apply(x, conditions, options.MaxConditions, DateTime.Now);
         }
 
         return x;
     }
 
+    // What the client shows for a search that ran out of Search:CommandTimeout (a 422).
+    public const string TooBroadMessage = "This search is too broad to finish; add a narrower condition (e.g. a city or birth year)";
+
+    // SqlClient's "Execution Timeout Expired".
+    private static bool IsTimeout(Exception ex) => ex is SqlException { Number: -2 };
+
+    private ObjectResult TooBroad() => Problem(title: "Search too broad", detail: TooBroadMessage,
+        statusCode: StatusCodes.Status422UnprocessableEntity);
+
+    private ObjectResult BadCondition(SearchConditionException ex) => Problem(title: "Invalid search condition", detail: ex.Message,
+        statusCode: StatusCodes.Status400BadRequest);
+
     [HttpPost("Voters")]
-    public async Task<PaginationResult<VoterGridDto>> Voters([FromQuery] PaginationFilter filter,
-        [FromQuery] bool? mailingAddressDiffers, [FromBody] SearchFilterDto? dto, CancellationToken ct)
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<PaginationResult<VoterGridDto>>> Voters([FromQuery] PaginationFilter filter,
+        [FromQuery] bool? mailingAddressDiffers, [FromBody] SearchFilterDto? dto, [FromServices] IOptions<SearchOptions> options,
+        CancellationToken ct)
     {
-        var final = Search(dto, mailingAddressDiffers).OrderBy(x => x.ID).Select(x => new VoterGridRow()
+        IQueryable<Voter> search;
+        try
+        {
+            search = Search(dto, mailingAddressDiffers, options.Value);
+        }
+        catch (SearchConditionException ex)
+        {
+            return BadCondition(ex);
+        }
+        _context.Database.SetCommandTimeout(options.Value.CommandTimeout);
+
+        var final = search.OrderBy(x => x.ID).Select(x => new VoterGridRow()
         {
             ID = x.ID,
             FirstName = x.FIRST_NAME,
@@ -801,7 +831,15 @@ public class ApiController : ControllerBase
             MailingAddressLineFive = x.MAILING_ADDRESS_LINE_FIVE,
         });
 
-        var page = await final.PaginationResult(filter, ct);
+        PaginationResult<VoterGridRow> page;
+        try
+        {
+            page = await final.PaginationResult(filter, ct);
+        }
+        catch (Exception ex) when (IsTimeout(ex))
+        {
+            return TooBroad();
+        }
         return new PaginationResult<VoterGridDto>
         {
             TotalCount = page.TotalCount,
@@ -811,11 +849,25 @@ public class ApiController : ControllerBase
 
     // The voters list as a file: every page of the current search, written row by row as SQL Server reads them,
     // so a big area never sits in memory. A GET, so the browser downloads it itself. At most Export:MaxRows rows.
+    // The advanced conditions come as conditions[0].field=..&conditions[0].operator=..&conditions[0].value=..
     [HttpGet("VotersCsv")]
-    public async Task VotersCsv([FromQuery] SearchFilterDto dto, [FromQuery] bool? mailingAddressDiffers,
-        [FromServices] IOptions<ExportOptions> options, CancellationToken ct)
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> VotersCsv([FromQuery] SearchFilterDto dto, [FromQuery] bool? mailingAddressDiffers,
+        [FromServices] IOptions<ExportOptions> options, [FromServices] IOptions<SearchOptions> searchOptions, CancellationToken ct)
     {
-        var rows = Search(dto, mailingAddressDiffers)
+        IQueryable<Voter> search;
+        try
+        {
+            search = Search(dto, mailingAddressDiffers, searchOptions.Value);
+        }
+        catch (SearchConditionException ex)
+        {
+            return BadCondition(ex);
+        }
+        _context.Database.SetCommandTimeout(searchOptions.Value.CommandTimeout);
+
+        var rows = search
             .OrderBy(x => x.ID)
             .Take(options.Value.MaxRows)
             .Select(x => new
@@ -832,16 +884,50 @@ public class ApiController : ControllerBase
             })
             .AsAsyncEnumerable();
 
+        // The first row runs the query: a search that times out does so here, before anything is written, so it
+        // can still answer 422 rather than a file cut short.
+        await using var rowEnumerator = rows.GetAsyncEnumerator(ct);
+        bool more;
+        try
+        {
+            more = await rowEnumerator.MoveNextAsync();
+        }
+        catch (Exception ex) when (IsTimeout(ex))
+        {
+            return TooBroad();
+        }
+
         Response.ContentType = "text/csv; charset=utf-8";
         Response.Headers.ContentDisposition = "attachment; filename=\"voters.csv\"";
         await using var writer = new StreamWriter(Response.Body, new UTF8Encoding(false), bufferSize: 64 * 1024);
         await writer.WriteLineAsync(Csv.Row("Name", "Birth Year", "Gender", "Address", "City", "Zip", "Registration Date"));
-        await foreach (var v in rows.WithCancellation(ct))
+        for (; more; more = await rowEnumerator.MoveNextAsync())
         {
+            var v = rowEnumerator.Current;
             var name = string.Join(' ', new[] { v.FIRST_NAME, v.MIDDLE_NAME, v.LAST_NAME }.Where(n => !string.IsNullOrEmpty(n)));
             await writer.WriteLineAsync(Csv.Row(name, v.YEAR_OF_BIRTH.ToString(CultureInfo.InvariantCulture), v.GENDER,
                 v.FullStreetAddress, v.CITY, v.ZIP_CODE, v.REGISTRATION_DATE.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
         }
+        return new EmptyResult();
+    }
+
+    // The advanced search's voter status choices (VOTER_STATUS_TYPE_CODE): whatever codes the voter file has (the
+    // import copies them as they are). Distinct over every voter is a scan, so the list is kept for a day.
+    [HttpGet("VoterStatuses")]
+    public async Task<string[]> VoterStatuses([FromServices] IMemoryCache cache, CancellationToken ct)
+    {
+        var statuses = await cache.GetOrCreateAsync("VoterStatuses", entry =>
+        {
+            entry.Size = 1;
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(1);
+            return _context.Voters
+                .Select(v => v.VOTER_STATUS_TYPE_CODE)
+                .Where(s => s != "")
+                .Distinct()
+                .OrderBy(s => s)
+                .ToArrayAsync(ct);
+        });
+        return statuses ?? [];
     }
 
     private static (DateTime Start, DateTime End) GetAstrologySignDates(string astrologySign)
@@ -913,6 +999,9 @@ public class SearchFilterDto
     public DistrictType? DistrictType { get; set; }
     public string District { get; set; } = "";
     public string DistrictWithin { get; set; } = "";
+    /// <summary>The advanced search (SearchConditions): ANDed with the fields above and with each other. Optional;
+    /// without it the search is as it was.</summary>
+    public List<SearchConditionDto>? Conditions { get; set; }
 }
 
 public class VoterGridDto

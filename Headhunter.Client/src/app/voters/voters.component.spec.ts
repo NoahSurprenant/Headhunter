@@ -474,3 +474,244 @@ describe('VotersComponent opened with an area in the URL', () => {
     expect(fakeCesium().state.viewer!.entities.getById('selected-area')).toBeDefined();
   });
 });
+
+describe('VotersComponent advanced search', () => {
+  const page = votersPage([voterRow({ id: 'voter-3001', firstName: 'Alex', lastName: 'Example' })], 1);
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [VotersComponent],
+      providers: [provideRouter([{ path: '', component: VotersComponent }]), provideHttpClient(), provideHttpClientTesting()],
+    });
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function open(url = '/') {
+    const harness = await RouterTestingHarness.create(url);
+    await harness.fixture.whenStable();
+    const component = harness.routeDebugElement!.componentInstance as VotersComponent;
+    const el = harness.routeNativeElement as HTMLElement;
+    const settle = () => harness.fixture.whenStable();
+    return { harness, component, el, settle };
+  }
+
+  const rows = (el: HTMLElement) => Array.from(el.querySelectorAll('.cond-row')) as HTMLElement[];
+  const options = (select: Element) => Array.from((select as HTMLSelectElement).options).map(o => o.textContent!.trim());
+  const choose = (select: Element, value: string) => {
+    (select as HTMLSelectElement).value = value;
+    select.dispatchEvent(new Event('change'));
+  };
+  const type = (input: Element, value: string) => {
+    (input as HTMLInputElement).value = value;
+    input.dispatchEvent(new Event('input'));
+  };
+  const votersBody = (fetchMock: ReturnType<typeof stubFetch>) => {
+    const sent = fetchMock.mock.calls.filter(c => String(c[0]).startsWith('Api/voters')).at(-1)![1]?.body;
+    return sent === undefined ? undefined : JSON.parse(sent as string);
+  };
+
+  it('opens with one row, adds and removes rows, and stops at ten', async () => {
+    stubFetch(() => page);
+    const { component, el, settle } = await open();
+    expect(el.querySelector('#advanced-conditions')).toBeNull();
+
+    (el.querySelector('.advanced-toggle') as HTMLButtonElement).click();
+    await settle();
+    expect(el.querySelector('.advanced-toggle')!.getAttribute('aria-expanded')).toBe('true');
+    expect(rows(el)).toHaveLength(1);
+    // A new row is a fast one: last name starts with
+    expect((rows(el)[0].querySelector('.cond-field') as HTMLSelectElement).value).toBe('lastName');
+    expect((rows(el)[0].querySelector('.cond-op') as HTMLSelectElement).value).toBe('startsWith');
+
+    (el.querySelector('.add-condition') as HTMLButtonElement).click();
+    (el.querySelector('.add-condition') as HTMLButtonElement).click();
+    await settle();
+    expect(rows(el)).toHaveLength(3);
+    expect(el.querySelector('.advanced-toggle')!.textContent).toContain('3');
+
+    (rows(el)[1].querySelector('.cond-remove') as HTMLButtonElement).click();
+    await settle();
+    expect(rows(el)).toHaveLength(2);
+
+    for (let i = 0; i < 12; i++) component.addCondition();
+    await settle();
+    expect(rows(el)).toHaveLength(10);
+    expect((el.querySelector('.add-condition') as HTMLButtonElement).disabled).toBe(true);
+
+    // Closing hides the rows; they still count, and come back when opened again
+    (el.querySelector('.advanced-toggle') as HTMLButtonElement).click();
+    await settle();
+    expect(el.querySelector('#advanced-conditions')).toBeNull();
+    expect(component.conditions()).toHaveLength(10);
+  });
+
+  it('offers the operators of the field\'s type, and choices for a choice field', async () => {
+    stubFetch(() => page);
+    const { component, el, settle } = await open();
+    component.toggleAdvanced();
+    await settle();
+    TestBed.inject(HttpTestingController).expectOne('/api/voterStatuses').flush(['A', 'V']);
+    const row = () => rows(el)[0];
+
+    expect(options(row().querySelector('.cond-op')!)).toEqual(['equals', 'is not', 'starts with', 'ends with', 'contains']);
+
+    choose(row().querySelector('.cond-field')!, 'birthYear');
+    await settle();
+    expect(options(row().querySelector('.cond-op')!)).toEqual(['equals', 'is not', 'less than', 'at most', 'more than', 'at least', 'between']);
+    expect(row().querySelector('.cond-value input')!.getAttribute('type')).toBe('number');
+
+    choose(row().querySelector('.cond-field')!, 'registrationDate');
+    await settle();
+    expect(options(row().querySelector('.cond-op')!)).toEqual(['on', 'not on', 'before', 'on or before', 'after', 'on or after', 'between']);
+    expect(row().querySelector('.cond-value input')!.getAttribute('type')).toBe('date');
+
+    choose(row().querySelector('.cond-field')!, 'gender');
+    await settle();
+    expect(options(row().querySelector('.cond-op')!)).toEqual(['is', 'is not']);
+    expect(options(row().querySelector('.cond-value select')!)).toEqual(['Female', 'Male', 'X']);
+
+    choose(row().querySelector('.cond-field')!, 'voterStatus');
+    await settle();
+    expect(options(row().querySelector('.cond-value select')!)).toEqual(['A', 'V']);
+    expect(component.conditions()[0]).toEqual(expect.objectContaining({ field: 'voterStatus', op: 'is', value: 'A' }));
+  });
+
+  it('shows two inputs for "between", and sends both', async () => {
+    const fetchMock = stubFetch(() => page);
+    const { component, el, settle } = await open();
+    component.toggleAdvanced();
+    await settle();
+    const row = () => rows(el)[0];
+    choose(row().querySelector('.cond-field')!, 'birthYear');
+    await settle();
+    expect(row().querySelectorAll('.cond-value input')).toHaveLength(1);
+
+    choose(row().querySelector('.cond-op')!, 'between');
+    await settle();
+    const inputs = row().querySelectorAll('.cond-value input');
+    expect(inputs).toHaveLength(2);
+    expect(Array.from(inputs).map(i => i.getAttribute('aria-label'))).toEqual(['From', 'To']);
+
+    type(inputs[0], '1990');
+    type(inputs[1], '1999');
+    component.onSubmit();
+    await settle();
+    expect(votersBody(fetchMock).conditions).toEqual([{ field: 'birthYear', operator: 'between', value: '1990', value2: '1999' }]);
+  });
+
+  it('flags the operators that can\'t use an index as maybe slow', async () => {
+    stubFetch(() => page);
+    const { el, settle } = await open();
+    (el.querySelector('.advanced-toggle') as HTMLButtonElement).click();
+    await settle();
+    const row = () => rows(el)[0];
+    expect(row().querySelector('.slow-hint')).toBeNull();
+
+    for (const op of ['contains', 'endsWith', 'notEquals']) {
+      choose(row().querySelector('.cond-op')!, op);
+      await settle();
+      expect(row().querySelector('.slow-hint')?.textContent).toContain('May be slow');
+    }
+    choose(row().querySelector('.cond-op')!, 'equals');
+    await settle();
+    expect(row().querySelector('.slow-hint')).toBeNull();
+  });
+
+  it('keeps the rows in the URL with Search, and leaves unfinished ones out of the request', async () => {
+    const fetchMock = stubFetch(() => page);
+    const { component, settle } = await open();
+    component.toggleAdvanced();
+    const [first] = component.conditions();
+    component.setConditionValue(first.id, 'value', 'St. Clair~1');
+    component.addCondition();
+    component.formGroup.patchValue({ city: 'Testville' });
+    component.onSubmit();
+    await settle();
+
+    // The value's "." and "~" escaped; the second row has no value yet, but is kept for the page to come back to
+    expect(TestBed.inject(Router).url).toBe('/?city=Testville&cond=lastName.startsWith.St%252E%20Clair%257E1~lastName.startsWith.');
+    expect(votersBody(fetchMock)).toEqual(expect.objectContaining({
+      city: 'Testville',
+      conditions: [{ field: 'lastName', operator: 'startsWith', value: 'St. Clair~1' }],
+    }));
+  });
+
+  it('restores the rows from the URL and searches with them straight away', async () => {
+    const fetchMock = stubFetch(() => page);
+    const { component, el } = await open('/?lastName=Example&cond=birthYear.between.1990.1999~city.contains.LAN~bogus.eq.1~gender.isNot.M');
+
+    expect(component.advanced()).toBe(true);
+    expect(rows(el)).toHaveLength(3);
+    expect(votersBody(fetchMock)).toEqual(expect.objectContaining({
+      lastName: 'Example',
+      conditions: [
+        { field: 'birthYear', operator: 'between', value: '1990', value2: '1999' },
+        { field: 'city', operator: 'contains', value: 'LAN' },
+        { field: 'gender', operator: 'isNot', value: 'M' },
+      ],
+    }));
+    expect((rows(el)[0].querySelectorAll('.cond-value input')[1] as HTMLInputElement).value).toBe('1999');
+    expect(rows(el)[1].querySelector('.slow-hint')).not.toBeNull();
+  });
+
+  it('exports the same conditions to the CSV', async () => {
+    stubFetch(() => page);
+    const { el } = await open('/?lastName=Example&cond=birthYear.ge.1990~street.startsWith.100%2520MAIN');
+
+    expect((el.querySelector('a[download]') as HTMLAnchorElement).getAttribute('href')).toBe('Api/VotersCsv?lastName=Example'
+      + '&conditions%5B0%5D.field=birthYear&conditions%5B0%5D.operator=ge&conditions%5B0%5D.value=1990'
+      + '&conditions%5B1%5D.field=street&conditions%5B1%5D.operator=startsWith&conditions%5B1%5D.value=100+MAIN');
+  });
+
+  it('clears the rows, and the URL, with Clear All', async () => {
+    const fetchMock = stubFetch(() => page);
+    const { component, el, settle } = await open('/?cond=lastName.equals.EXAMPLE');
+
+    component.clearAll();
+    await settle();
+
+    expect(component.conditions()).toEqual([]);
+    expect(component.advanced()).toBe(false);
+    expect(el.querySelector('#advanced-conditions')).toBeNull();
+    expect(TestBed.inject(Router).url).toBe('/');
+    expect(votersBody(fetchMock)).toBeUndefined();
+  });
+
+  describe('a search the API turns down', () => {
+    function respondWith(status: number, body: unknown) {
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/problem+json' } }));
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    it('says a search that ran out of time is too broad, rather than showing the last results', async () => {
+      stubFetch(() => page);
+      const { component, el, settle } = await open();
+      expect(el.textContent).toContain('Alex Example');
+
+      respondWith(422, { title: 'Search too broad' });
+      component.clicked();
+      await settle();
+
+      expect(el.querySelector('.search-problem')!.textContent)
+        .toContain('This search is too broad to finish; add a narrower condition (e.g. a city or birth year)');
+      expect(el.querySelector('.search-problem')!.getAttribute('role')).toBe('alert');
+      expect(el.textContent).not.toContain('Alex Example');
+    });
+
+    it('shows the API\'s message for a condition it can\'t use', async () => {
+      respondWith(400, { detail: '"abc" is not a valid birthYear: expected a whole number from 1800 to 2200.' });
+      const { el } = await open();
+
+      expect(el.querySelector('.search-problem')!.textContent).toContain('"abc" is not a valid birthYear');
+    });
+
+    it('falls back to a general message when a 400 has none', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 400 })));
+      const { el } = await open();
+
+      expect(el.querySelector('.search-problem')!.textContent).toContain('The API could not use this search.');
+    });
+  });
+});

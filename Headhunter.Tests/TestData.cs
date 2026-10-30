@@ -114,7 +114,8 @@ public static class TestData
         AddVoter(context, AdaId, maple, "Ada", "Q", "Fakename", ThisYear - 30, "F", new DateTime(2020, 1, 15), permanentAbsentee: true);
         AddVoter(context, AdalineId, maple, "Adaline", "R", "Fakename", ThisYear - 31, "F", new DateTime(2022, 6, 1));
         AddVoter(context, AdaOakId, oak, "Ada", "S", "Placeholder", ThisYear - 50, "F", new DateTime(2018, 3, 9));
-        AddVoter(context, BrunoId, oak, "Bruno", "T", "Fakename", ThisYear - 50, "M", new DateTime(2024, 10, 2), permanentAbsentee: true);
+        AddVoter(context, BrunoId, oak, "Bruno", "T", "Fakename", ThisYear - 50, "M", new DateTime(2024, 10, 2), permanentAbsentee: true,
+            status: "V");
         // Cleo registered recently: the globe's "new registrations" colour has one voter to find (in the date-line box).
         AddVoter(context, CleoId, datelineEast, "Cleo", "U", "Sample", ThisYear - 70, "X", DateTime.Today.AddMonths(-2));
         AddVoter(context, DanaId, pine, "Dana", "V", "Transplant", ThisYear - 40,
@@ -222,9 +223,10 @@ public static class TestData
 
     /// <param name="mailingAddressLineOne">Non-empty makes HAS_MAILING_ADDRESS true ("Lives elsewhere"); its last
     /// non-empty line (of lines one..two here - tests don't need all five) decides "Out of state".</param>
+    /// <param name="status">VOTER_STATUS_TYPE_CODE; Bruno alone is "V", for the advanced search.</param>
     private static void AddVoter(HeadhunterContext context, Guid id, Address address, string first, string middle, string last, int birthYear,
         string gender = "X", DateTime? registered = null, bool permanentAbsentee = false,
-        string mailingAddressLineOne = "", string mailingAddressLineTwo = "")
+        string mailingAddressLineOne = "", string mailingAddressLineTwo = "", string status = "A")
     {
         // Voters share their primary key with the raw MichiganVoterRecords row they came from.
         var registeredOn = registered ?? new DateTime(2020, 1, 15);
@@ -248,6 +250,7 @@ public static class TestData
         voter.GENDER = gender;
         voter.REGISTRATION_DATE = registeredOn;
         voter.IS_PERM_AV_BALLOT_VOTER = permanentAbsentee;
+        voter.VOTER_STATUS_TYPE_CODE = status;
         voter.Address = address;
         voter.MAILING_ADDRESS_LINE_ONE = mailingAddressLineOne;
         voter.MAILING_ADDRESS_LINE_TWO = mailingAddressLineTwo;
