@@ -36,6 +36,8 @@ export function createFakeCesium() {
     clickHandler: undefined as ((movement: { position: unknown }) => void) | undefined,
     // Every ScreenSpaceEventHandler action by event type (LEFT_DOWN, MOUSE_MOVE, LEFT_UP for drawing an area).
     handlers: {} as Record<string, (movement: Record<string, unknown>) => void>,
+    // The MOUSE_MOVE action again, typed for the cluster tooltip specs.
+    moveHandler: undefined as ((movement: { endPosition: { x: number; y: number } }) => void) | undefined,
     rectangle: { west: 0, south: 0, east: 0, north: 0 } as { west: number; south: number; east: number; north: number } | undefined,
     picked: undefined as { id?: unknown } | undefined,
     // Where the (fake) camera currently sits, read by persistViewToUrl; tests move it by assignment,
@@ -77,9 +79,10 @@ export function createFakeCesium() {
     module: {
       Viewer: FakeViewer,
       ScreenSpaceEventHandler: class {
-        setInputAction(fn: (movement: Record<string, unknown>) => void, type: string) {
-          state.handlers[type] = fn;
-          if (type === 'LEFT_CLICK') state.clickHandler = fn;
+        setInputAction(fn: (movement: never) => void, type: string) {
+          state.handlers[type] = fn as (movement: Record<string, unknown>) => void;
+          if (type === 'LEFT_CLICK') state.clickHandler = fn as typeof state.clickHandler;
+          if (type === 'MOUSE_MOVE') state.moveHandler = fn as typeof state.moveHandler;
         }
       },
       ScreenSpaceEventType: { LEFT_CLICK: 'LEFT_CLICK', LEFT_DOWN: 'LEFT_DOWN', MOUSE_MOVE: 'MOUSE_MOVE', LEFT_UP: 'LEFT_UP' },
@@ -94,19 +97,27 @@ export function createFakeCesium() {
       UrlTemplateImageryProvider: class { constructor(public options: { url: string; maximumLevel: number; credit: string }) {} },
       buildModuleUrl: (path: string) => `/assets/cesium/${path}`,
       Cartesian2: class { constructor(public x: number, public y: number) {} },
-      Cartesian3: { fromDegrees: (lon: number, lat: number, height = 0) => ({ lon, lat, height }) },
+      Cartesian3: class {
+        constructor(public x: number, public y: number, public z: number) {}
+        static fromDegrees(lon: number, lat: number, height = 0) { return { lon, lat, height }; }
+      },
       Cartographic: { fromCartesian: (c: { lon: number; lat: number }) => ({ longitude: (c.lon * Math.PI) / 180, latitude: (c.lat * Math.PI) / 180 }) },
       Rectangle: { fromDegrees: (west: number, south: number, east: number, north: number) => ({ west, south, east, north }) },
       BoundingSphere: { fromRectangle3D: (rectangle: object) => ({ sphereAround: rectangle }) },
       HeadingPitchRange: class { constructor(public heading: number, public pitch: number, public range: number) {} },
       Math: { toRadians: radians, toDegrees: degrees },
       Color: {
-        AQUA: 'AQUA', WHITE: 'WHITE', YELLOW: { name: 'YELLOW', withAlpha: (a: number) => `YELLOW@${a}` },
+        AQUA: 'AQUA', WHITE: Object.assign(new String('WHITE'), { withAlpha: (a: number) => `WHITE@${a}` }), BLACK: 'BLACK',
+        YELLOW: { name: 'YELLOW', withAlpha: (a: number) => `YELLOW@${a}` },
         ORANGE: { withAlpha: (a: number) => `ORANGE@${a}` },
+        GRAY: { withAlpha: (a: number) => `GRAY@${a}` },
+        fromCssColorString: (css: string) => ({ withAlpha: (a: number) => `${css}@${a}` }),
         GOLD: { toString: () => 'GOLD', withAlpha: (a: number) => `GOLD@${a}` },
       },
+      ConstantProperty: class { constructor(public value: unknown) {} },
       LabelStyle: { FILL_AND_OUTLINE: 'FILL_AND_OUTLINE' },
       VerticalOrigin: { TOP: 'TOP', CENTER: 'CENTER' },
+      HorizontalOrigin: { LEFT: 'LEFT', CENTER: 'CENTER' },
       DistanceDisplayCondition: class { constructor(public near: number, public far: number) {} },
       defined: (value: unknown) => value !== undefined && value !== null,
     },
@@ -130,6 +141,7 @@ export function resetFakeCesium(fake: FakeCesium) {
   fake.state.viewer = undefined;
   fake.state.clickHandler = undefined;
   fake.state.handlers = {};
+  fake.state.moveHandler = undefined;
   fake.state.picked = undefined;
   fake.state.rectangle = undefined;
   fake.state.view = { latitude: (43.333202 * Math.PI) / 180, longitude: (-84.557916 * Math.PI) / 180, height: 400000, heading: 0, pitch: (-90 * Math.PI) / 180 };

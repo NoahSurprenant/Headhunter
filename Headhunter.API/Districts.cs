@@ -49,6 +49,23 @@ public static class Districts
             _ => throw new ArgumentOutOfRangeException(nameof(type)),
         };
 
+    /// <summary>InDistrict as a SQL predicate over Addresses, for raw SQL (the globe's coloured clusters): the district's
+    /// name is @district and, for precincts, wards and commissioner districts, what it is within is @districtWithin.</summary>
+    public static string InDistrictSql(DistrictType type) =>
+        type switch
+        {
+            DistrictType.County => "COUNTY_NAME = @district",
+            DistrictType.Jurisdiction => "JURISDICTION_NAME = @district",
+            DistrictType.Precinct => "JURISDICTION_NAME = @districtWithin AND PRECINCT = @district",
+            DistrictType.Ward => "JURISDICTION_NAME = @districtWithin AND WARD = @district",
+            DistrictType.SchoolDistrict => "SCHOOL_DISTRICT_NAME = @district",
+            DistrictType.StateHouse => "STATE_HOUSE_DISTRICT_NAME = @district",
+            DistrictType.StateSenate => "STATE_SENATE_DISTRICT_NAME = @district",
+            DistrictType.UsCongress => "US_CONGRESS_DISTRICT_NAME = @district",
+            DistrictType.CountyCommissioner => "COUNTY_NAME = @districtWithin AND COUNTY_COMMISSIONER_DISTRICT_NAME = @district",
+            _ => throw new ArgumentOutOfRangeException(nameof(type)),
+        };
+
     /// <summary>Every address's name for its district of this type (one row per address, not distinct).</summary>
     public static IQueryable<string> Names(this IQueryable<Address> addresses, DistrictType type, string within) =>
         type switch

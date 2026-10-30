@@ -27,7 +27,9 @@ public class DesignTimeContextFactory : IDesignTimeDbContextFactory<HeadhunterCo
         Console.WriteLine($"Using database {target.InitialCatalog} on {target.DataSource}");
 
         var optionsBuilder = new DbContextOptionsBuilder<HeadhunterContext>();
-        optionsBuilder.UseSqlServer(connectionString);
+        // Migrations (the bundle in the migration Job) build indexes over all 8M voters, which can take minutes on a
+        // small server: well past the default 30 s command timeout.
+        optionsBuilder.UseSqlServer(connectionString, o => o.CommandTimeout((int)TimeSpan.FromMinutes(30).TotalSeconds));
 
         return new HeadhunterContext(optionsBuilder.Options);
     }

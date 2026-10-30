@@ -3,11 +3,13 @@ using Headhunter.API.Pagination;
 using Headhunter.Database;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using System.Globalization;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace Headhunter.API;
 
@@ -96,11 +98,13 @@ public class ApiController : ControllerBase
     // people are instead of an arbitrary sample. Unsorted on purpose: sorting the matches (it used to be by ID) made
     // SQL Server walk all 4M addresses in that order instead of seeking IX_Addresses_Latitude_Longitude.
     // With a district (districtType, district and, for precincts, wards and commissioner districts, districtWithin), only
-    // its addresses: the globe highlighting one.
+    // its addresses: the globe highlighting one. With a metric, each cell also carries that figure for its voters
+    // (ClusterMetric), which the globe colours it by.
     [HttpGet("Area")]
     public async Task<AreaDto> Area(decimal west, decimal east, decimal north, decimal south,
         [FromServices] IOptions<AreaOptions> options, [FromServices] IMemoryCache cache, CancellationToken ct,
-        DistrictType? districtType = null, string district = "", string districtWithin = "")
+        DistrictType? districtType = null, string district = "", string districtWithin = "",
+        ClusterMetric metric = ClusterMetric.None)
     {
         var o = options.Value;
         var source = districtType is { } type && district != ""
@@ -140,12 +144,15 @@ public class ApiController : ControllerBase
 
         // The same view asks again on every pan back to it, and the data only changes on import: the whole state
         // takes seconds to group (every address), so grids are kept for a while.
-        var key = (west, east, north, south, o.GridCells, districtType, district, districtWithin);
+        var key = (west, east, north, south, o.GridCells, districtType, district, districtWithin, metric);
         var clusters = await cache.GetOrCreateAsync(key, entry =>
         {
             entry.Size = 1;
             entry.AbsoluteExpirationRelativeToNow = o.ClusterCacheDuration;
-            return Clusters(inBox, (double)west, (double)east, (double)north, (double)south, o.GridCells, ct);
+            return metric == ClusterMetric.None
+                ? Clusters(inBox, (double)west, (double)east, (double)north, (double)south, o.GridCells, ct)
+                : ClustersWithMetric(west, east, north, south, o.GridCells, metric,
+                    districtType is { } t && district != "" ? t : null, district, districtWithin, ct);
         });
         return new AreaDto { Addresses = [], Clusters = clusters! };
     }
@@ -186,6 +193,82 @@ public class ApiController : ControllerBase
                 Count = c.Count,
             })
             .ToArray();
+    }
+
+    // The same grid as Clusters, plus a figure over each cell's voters. Raw SQL because the median has no LINQ
+    // translation (APPROX_PERCENTILE_CONT, SQL Server 2022+, is an ordinary aggregate, unlike PERCENTILE_CONT). One
+    // statement, two GROUP BYs over the same cells: the counts and centres are by address exactly as in Clusters
+    // (joining voters would weight them by household), the figure by voter. The expressions come from the enum, never
+    // from the request.
+    private async Task<ClusterDto[]> ClustersWithMetric(decimal west, decimal east, decimal north, decimal south,
+        int gridCells, ClusterMetric metric, DistrictType? districtType, string district, string districtWithin,
+        CancellationToken ct)
+    {
+        var value = metric switch
+        {
+            // Unknown birth years (0) are left out of the median.
+            ClusterMetric.MedianAge => "@year - APPROX_PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY NULLIF(v.YEAR_OF_BIRTH, 0))",
+            ClusterMetric.PermanentAbsentee => "AVG(CASE WHEN v.IS_PERM_AV_BALLOT_VOTER = 1 THEN 100.0 ELSE 0 END)",
+            ClusterMetric.RecentlyRegistered => "AVG(CASE WHEN v.REGISTRATION_DATE >= @since THEN 100.0 ELSE 0 END)",
+            ClusterMetric.Female => "AVG(CASE WHEN v.GENDER = N'F' THEN 100.0 ELSE 0 END)",
+            _ => throw new ArgumentOutOfRangeException(nameof(metric)),
+        };
+        var westEdge = (double)west;
+        var width = west > east ? (double)(east - west) + 360 : (double)(east - west);
+        var longitude = west > east ? "(Longitude <= @east OR Longitude >= @west)" : "Longitude <= @east AND Longitude >= @west";
+        // A district, as SQL over the same Addresses columns InDistrict filters on (the column names come from the enum).
+        var inDistrict = districtType is { } type ? " AND " + Districts.InDistrictSql(type) : "";
+
+        var sql = $"""
+            WITH a AS (
+                SELECT ID, CAST(Latitude AS float) AS Lat,
+                    CASE WHEN CAST(Longitude AS float) >= @westEdge THEN CAST(Longitude AS float) - @westEdge
+                        ELSE CAST(Longitude AS float) + 360 - @westEdge END AS X
+                FROM Addresses
+                WHERE Latitude <= @north AND Latitude >= @south AND {longitude}{inDistrict}
+            ), c AS (
+                SELECT ID, Lat, X, FLOOR(X / @cellWidth) AS Col, FLOOR((Lat - @southEdge) / @cellHeight) AS Row FROM a
+            ), cells AS (
+                SELECT Col, Row, AVG(Lat) AS Latitude, AVG(X) AS X, COUNT(*) AS Count FROM c GROUP BY Col, Row
+            ), metric AS (
+                SELECT c.Col, c.Row, CAST({value} AS float) AS Value
+                FROM c JOIN Voters v ON v.AddressID = c.ID
+                GROUP BY c.Col, c.Row
+            )
+            SELECT cells.Latitude, cells.X, cells.Count, metric.Value
+            FROM cells LEFT JOIN metric ON metric.Col = cells.Col AND metric.Row = cells.Row
+            """;
+        object[] parameters =
+        [
+            new SqlParameter("@west", west), new SqlParameter("@east", east),
+            new SqlParameter("@north", north), new SqlParameter("@south", south),
+            new SqlParameter("@westEdge", westEdge), new SqlParameter("@southEdge", (double)south),
+            new SqlParameter("@cellWidth", width / gridCells), new SqlParameter("@cellHeight", (double)(north - south) / gridCells),
+            new SqlParameter("@year", DateTime.Now.Year), new SqlParameter("@since", DateTime.Today.AddYears(-1)),
+            new SqlParameter("@district", district), new SqlParameter("@districtWithin", districtWithin),
+        ];
+        // Every voter in the box joins in: Michigan took 8 to 11 s on 8M synthetic voters (1 to 2 s for a city), against
+        // 1 to 2 s uncoloured, so past the default 30 s on a slower server. Once per view, then cached like the rest.
+        _context.Database.SetCommandTimeout(TimeSpan.FromMinutes(2));
+        var cells = await _context.Database.SqlQueryRaw<CellRow>(sql, parameters).ToArrayAsync(ct);
+
+        return cells
+            .Select(c => new ClusterDto
+            {
+                Latitude = c.Latitude,
+                Longitude = westEdge + c.X > 180 ? westEdge + c.X - 360 : westEdge + c.X,
+                Count = c.Count,
+                Value = c.Value,
+            })
+            .ToArray();
+    }
+
+    private class CellRow
+    {
+        public double Latitude { get; set; }
+        public double X { get; set; }
+        public int Count { get; set; }
+        public double? Value { get; set; }
     }
 
     [ProducesResponseType(typeof(VoterDetailDto), StatusCodes.Status200OK)]
@@ -936,6 +1019,23 @@ public class ClusterDto
     public required double Latitude { get; set; }
     public required double Longitude { get; set; }
     public required int Count { get; set; }
+    /// <summary>The asked-for <see cref="ClusterMetric"/> over the cell's voters; absent without one, or with no voters.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? Value { get; set; }
+}
+
+/// <summary>What the globe can colour clusters by.</summary>
+public enum ClusterMetric
+{
+    None,
+    /// <summary>Years, by birth year.</summary>
+    MedianAge,
+    /// <summary>Percent of voters on the permanent absentee ballot list (IS_PERM_AV_BALLOT_VOTER).</summary>
+    PermanentAbsentee,
+    /// <summary>Percent of voters registered in the last 12 months (REGISTRATION_DATE).</summary>
+    RecentlyRegistered,
+    /// <summary>Percent of voters whose GENDER is F.</summary>
+    Female,
 }
 
 /// <summary>The globe's area queries (configuration section "Area").</summary>

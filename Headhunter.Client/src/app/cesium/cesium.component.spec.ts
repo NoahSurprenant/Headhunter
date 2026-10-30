@@ -5,7 +5,7 @@ import { provideRouter, Router } from '@angular/router';
 import { fakeCesium, resetFakeCesium } from '../../testing/fake-cesium';
 import { areaAddress } from '../../testing/synthetic-data';
 import type { AddressDto } from './cesium.component';
-import { ClusterDto, clusterId, shortCount, clusterSize } from './clusters';
+import { ClusterDto, clusterId, clusterLabelFont, clusterName, shortCount, clusterSize, scaleColor, scaleStops, valueRange, metricOption } from './clusters';
 import type { CesiumComponent as CesiumComponentType } from './cesium.component';
 
 // The real Viewer needs WebGL, which jsdom does not have, so the cesium module is
@@ -56,6 +56,7 @@ describe('CesiumComponent', () => {
     expect(viewer.container).toBe('cesiumContainer');
     expect(viewer.options['infoBox']).toBe(false);
     expect(viewer.options['geocoder']).toBe(false);
+    expect(viewer.options['navigationInstructionsInitiallyVisible']).toBe(false);
     const models = viewer.options['imageryProviderViewModels'] as { name: string }[];
     expect(models.length).toBe(4);
     expect((viewer.options['selectedImageryProviderViewModel'] as { name: string }).name).toBe('ArcGIS World Imagery');
@@ -199,6 +200,13 @@ describe('CesiumComponent', () => {
     expect(entity['position']).toEqual({ lon: -83.05, lat: 42.33, height: 0 });
     expect(entity['label'].text).toBe('46k');
     expect(entity['point'].pixelSize).toBe(clusterSize(45678, 45678));
+    // Legible on any fill: white on a solid black outline, sized to the dot, and a light ring around it.
+    expect(entity['label'].fillColor).toBe(cesium.module.Color.WHITE);
+    expect(entity['label'].outlineColor).toBe('BLACK');
+    expect(entity['label'].font).toBe(clusterLabelFont(40));
+    expect(entity['point'].outlineColor).toBe('WHITE@0.9');
+    expect(entity['label'].eyeOffset).toEqual(expect.objectContaining({ z: -100 }));
+    expect(entity['label'].disableDepthTestDistance).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('sizes clusters against the busiest in view, and draws a lone address without a number', () => {
@@ -214,6 +222,11 @@ describe('CesiumComponent', () => {
     expect(size(small)).toBe(17);
     expect(size(lone)).toBe(8);
     expect((viewer.entities.getById(clusterId(lone)) as Record<string, any>)['label']).toBeUndefined();
+    // A 17 px dot is too small for its number, which goes beside it; a 40 px one keeps it inside.
+    const label = (c: ClusterDto) => (viewer.entities.getById(clusterId(c)) as Record<string, any>)['label'];
+    expect(label(small).horizontalOrigin).toBe('LEFT');
+    expect(label(small).pixelOffset).toEqual(expect.objectContaining({ x: 17 / 2 + 3, y: 0 }));
+    expect(label(big).horizontalOrigin).toBeUndefined();
   });
 
   it('zooms in on a clicked cluster instead of opening the info box', async () => {
@@ -242,6 +255,162 @@ describe('CesiumComponent', () => {
     expectArea().flush(area([areaAddress()]));
 
     expect(viewer.entities.values.map(e => e['id'])).toEqual(['addr-0001']);
+  });
+
+  describe('colour by', () => {
+    const young = { latitude: 42.3, longitude: -83.0, count: 10000, value: 34.2 };
+    const old = { latitude: 42.4, longitude: -83.2, count: 100, value: 61.8 };
+    const empty = { latitude: 42.5, longitude: -83.4, count: 3 };
+
+    async function pick(fixture: { whenStable: () => Promise<unknown>, nativeElement: HTMLElement }, metric: string) {
+      const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+      select.value = metric;
+      select.dispatchEvent(new Event('change'));
+      await fixture.whenStable();
+    }
+
+    it('offers the metrics in a dropdown over the globe, starting with none', () => {
+      const { fixture } = render();
+      const options = [...fixture.nativeElement.querySelectorAll('select option')].map((o: Element) => o.textContent!.trim());
+      expect(options).toEqual(['None', 'Median age', '% permanent absentee', '% registered in the last 12 months', '% female']);
+      expect((fixture.nativeElement.querySelector('select') as HTMLSelectElement).value).toBe('None');
+      expect(fixture.nativeElement.querySelector('[data-testid="legend"]')).toBeNull();
+    });
+
+    it('asks for the same view again with the metric, and leaves it out for none', async () => {
+      const { fixture, viewer } = render();
+      moveCamera(viewer);
+      expect(expectArea().request.params.has('metric')).toBe(false);
+
+      await pick(fixture, 'MedianAge');
+      const req = expectArea();
+      expect(req.request.params.get('metric')).toBe('MedianAge');
+      expect(Number(req.request.params.get('west'))).toBeCloseTo(-85);
+      req.flush(area([], [young]));
+
+      await pick(fixture, 'None');
+      const plain = expectArea();
+      expect(plain.request.params.has('metric')).toBe(false);
+      plain.flush(area([], [young]));
+    });
+
+    it('colours clusters on a scale over the view\'s range, greys cells without voters, and shows a legend', async () => {
+      const { fixture, viewer } = render();
+      await pick(fixture, 'MedianAge');
+      expectArea().flush(area([], [young, old, empty]));
+      await fixture.whenStable();
+
+      const entity = (c: ClusterDto) => viewer.entities.getById(clusterId(c, 'MedianAge')) as Record<string, any>;
+      expect(entity(young)['point'].color).toBe(scaleStops[0] + '@0.85');
+      expect(entity(old)['point'].color).toBe(scaleStops[scaleStops.length - 1] + '@0.85');
+      expect(entity(empty)['point'].color).toBe('GRAY@0.6');
+      expect(entity(young)['name']).toBe((10000).toLocaleString() + ' addresses · median age 34 yrs');
+      expect(entity(empty)['name']).toBe('3 addresses · no voters');
+
+      const legend = fixture.nativeElement.querySelector('[data-testid="legend"]') as HTMLElement;
+      expect(legend.textContent).toContain('Median age');
+      expect(legend.textContent).toContain('34 yrs');
+      expect(legend.textContent).toContain('62 yrs');
+    });
+
+    it('recolours a cluster it keeps when the view\'s range changes', async () => {
+      const { fixture, viewer } = render();
+      await pick(fixture, 'Female');
+      const a = { latitude: 42.3, longitude: -83.0, count: 500, value: 40 };
+      const b = { latitude: 42.4, longitude: -83.2, count: 500, value: 60 };
+      expectArea().flush(area([], [a, b]));
+      const kept = viewer.entities.getById(clusterId(a, 'Female')) as Record<string, any>;
+      expect(kept['point'].color).toBe(scaleStops[0] + '@0.85');
+
+      cesium.state.rectangle = { west: rad(-84.9), south: rad(42), east: rad(-84), north: rad(43) };
+      moveCamera(viewer);
+      expectArea().flush(area([], [a, { ...b, value: 20 }]));
+
+      expect(viewer.entities.getById(clusterId(a, 'Female'))).toBe(kept);
+      expect(kept['point'].color.value).toBe(scaleStops[scaleStops.length - 1] + '@0.85');
+    });
+
+    it('keeps the orange clusters and no legend without a metric', () => {
+      const { fixture, viewer } = render();
+      moveCamera(viewer);
+      expectArea().flush(area([], [young]));
+      expect((viewer.entities.getById(clusterId(young)) as Record<string, any>)['point'].color).toBe('ORANGE@0.75');
+      expect(fixture.nativeElement.querySelector('[data-testid="legend"]')).toBeNull();
+    });
+
+    it('hides the legend when no cluster in view has a value (e.g. zoomed in to addresses)', async () => {
+      const { fixture, viewer } = render();
+      await pick(fixture, 'Female');
+      expectArea().flush(area([], [young]));
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('[data-testid="legend"]')).not.toBeNull();
+
+      cesium.state.rectangle = { west: rad(-84.6), south: rad(42.9), east: rad(-84.4), north: rad(43.1) };
+      moveCamera(viewer);
+      expectArea().flush(area([areaAddress()]));
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('[data-testid="legend"]')).toBeNull();
+      expect((viewer.entities.getById('addr-0001') as Record<string, any>)['point'].color).toBe('AQUA');
+    });
+
+    it('shows a tooltip with the value over a cluster, and none elsewhere', async () => {
+      const { fixture, viewer } = render();
+      await pick(fixture, 'PermanentAbsentee');
+      const c = { latitude: 42.3, longitude: -83.0, count: 1234, value: 31.6 };
+      expectArea().flush(area([], [c]));
+
+      cesium.state.picked = { id: viewer.entities.getById(clusterId(c, 'PermanentAbsentee')) };
+      cesium.state.moveHandler!({ endPosition: { x: 100, y: 50 } });
+      await fixture.whenStable();
+      const tip = fixture.nativeElement.querySelector('[role="tooltip"]') as HTMLElement;
+      expect(tip.textContent!.trim()).toBe((1234).toLocaleString() + ' addresses · 32% permanent absentee');
+      expect(tip.style.left).toBe('114px');
+
+      cesium.state.picked = undefined;
+      cesium.state.moveHandler!({ endPosition: { x: 10, y: 10 } });
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('[role="tooltip"]')).toBeNull();
+    });
+
+    it('does not pick on mouse moves while there are no clusters', async () => {
+      const { fixture, viewer } = render();
+      moveCamera(viewer);
+      expectArea().flush(area([areaAddress()]));
+      viewer.scene.pick.mockClear();
+      cesium.state.moveHandler!({ endPosition: { x: 1, y: 1 } });
+      await fixture.whenStable();
+      expect(viewer.scene.pick).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.querySelector('[role="tooltip"]')).toBeNull();
+    });
+  });
+
+  it('names clusters with their value', () => {
+    const c = { latitude: 1, longitude: 2, count: 1, value: 4.04 };
+    expect(clusterName(c, 'None')).toBe('1 address');
+    expect(clusterName(c, 'RecentlyRegistered')).toBe('1 address · 4% registered in the last 12 months');
+    expect(clusterName({ ...c, value: 50 }, 'Female')).toBe('1 address · 50% female');
+    expect(clusterId(c)).toBe('cluster:1.00000,2.00000,1');
+    expect(clusterId(c, 'Female')).toBe('cluster:Female:1.00000,2.00000,1');
+    expect(metricOption('Nope' as never).metric).toBe('None');
+    expect(metricOption('None').format(3)).toBe('3');
+  });
+
+  it('spreads the scale over the range, clamped, and puts a single value mid-scale', () => {
+    const range = { min: 10, max: 20 };
+    expect(scaleColor(10, range)).toBe(scaleStops[0]);
+    expect(scaleColor(20, range)).toBe(scaleStops[scaleStops.length - 1]);
+    expect(scaleColor(99, range)).toBe(scaleStops[scaleStops.length - 1]);
+    expect(scaleColor(-5, range)).toBe(scaleStops[0]);
+    expect(scaleColor(15, range)).toBe(scaleStops[4]);
+    expect(scaleColor(7, { min: 7, max: 7 })).toBe(scaleStops[4]);
+    expect(valueRange([{ latitude: 0, longitude: 0, count: 1 }])).toBeUndefined();
+    expect(valueRange([{ latitude: 0, longitude: 0, count: 1, value: 3 }, { latitude: 0, longitude: 0, count: 1, value: 0 }]))
+      .toEqual({ min: 0, max: 3 });
+  });
+
+  it('shrinks the label font with the dot', () => {
+    expect([14, 23, 24, 33, 34, 40].map(clusterLabelFont))
+      .toEqual(['bold 9px sans-serif', 'bold 9px sans-serif', 'bold 10px sans-serif', 'bold 10px sans-serif', 'bold 12px sans-serif', 'bold 12px sans-serif']);
   });
 
   it('shortens cluster counts', () => {

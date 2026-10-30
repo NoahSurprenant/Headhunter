@@ -141,6 +141,136 @@ public class ApiEndpointTests
         });
     }
 
+    // Maple's voters: Ada (30, F, permanent absentee) and Adaline (31, F); Oak's: Ada (50, F) and Bruno (50, M, permanent
+    // absentee). Nobody here registered in the last year (Cleo, across the date line, did). One cell holds both addresses.
+    [TestCase("MedianAge", 40.5)]
+    [TestCase("PermanentAbsentee", 50)]
+    [TestCase("RecentlyRegistered", 0)]
+    [TestCase("Female", 75)]
+    public async Task Area_Clusters_CarryTheMetricOverTheirVoters(string metric, double expected)
+    {
+        using var client = ClusteringClient(gridCells: 1);
+
+        var area = await client.GetFromJsonAsync<AreaDto>($"/Api/Area?west=-84.5&east=-83&north=43.5&south=42&metric={metric}");
+
+        var cluster = area!.Clusters.Single();
+        Assert.Multiple(() =>
+        {
+            // Still by address, not by voter: two addresses, centred between them.
+            Assert.That(cluster.Count, Is.EqualTo(2));
+            Assert.That(cluster.Latitude, Is.EqualTo(42.75).Within(1e-9));
+            Assert.That(cluster.Longitude, Is.EqualTo(-83.75).Within(1e-9));
+            // The median is approximate (APPROX_PERCENTILE_CONT), the percentages exact.
+            Assert.That(cluster.Value, Is.EqualTo(expected).Within(metric == "MedianAge" ? 1 : 1e-9));
+        });
+    }
+
+    [Test]
+    public async Task Area_Clusters_WithoutAMetric_LeaveTheValueOut()
+    {
+        using var client = ClusteringClient(gridCells: 1);
+
+        var json = await client.GetStringAsync("/Api/Area?west=-84.5&east=-83&north=43.5&south=42");
+
+        // Older clients see the same shape as before.
+        Assert.That(json, Does.Not.Contain("value"));
+    }
+
+    // Each metric is its own cache entry: the plain grid cached first must not answer the coloured one.
+    [Test]
+    public async Task Area_Clusters_CacheEachMetricSeparately()
+    {
+        using var client = ClusteringClient(gridCells: 1);
+        const string box = "/Api/Area?west=-84.5&east=-83&north=43.5&south=42";
+
+        var plain = await client.GetFromJsonAsync<AreaDto>(box);
+        var female = await client.GetFromJsonAsync<AreaDto>(box + "&metric=Female");
+        var age = await client.GetFromJsonAsync<AreaDto>(box + "&metric=MedianAge");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(plain!.Clusters.Single().Value, Is.Null);
+            Assert.That(female!.Clusters.Single().Value, Is.EqualTo(75).Within(1e-9));
+            Assert.That(age!.Clusters.Single().Value, Is.EqualTo(40.5).Within(1));
+        });
+    }
+
+    // Westedge has no voters: its cell keeps its count but has no value. Eastedge's one voter (Cleo) is 70.
+    [Test]
+    public async Task Area_Clusters_WithAMetric_SplitTheGridAcrossTheDateLine()
+    {
+        using var client = ClusteringClient(gridCells: 40);
+
+        var area = await client.GetFromJsonAsync<AreaDto>("/Api/Area?west=179&east=-179&north=11&south=9&metric=MedianAge");
+
+        var east = area!.Clusters.Single(c => c.Longitude > 0);
+        var west = area.Clusters.Single(c => c.Longitude < 0);
+        Assert.Multiple(() =>
+        {
+            Assert.That(east.Longitude, Is.EqualTo(179.5).Within(1e-9));
+            Assert.That(east.Count, Is.EqualTo(1));
+            Assert.That(east.Value, Is.EqualTo(70).Within(1e-9));
+            Assert.That(west.Longitude, Is.EqualTo(-179.5).Within(1e-9));
+            Assert.That(west.Count, Is.EqualTo(1));
+            Assert.That(west.Value, Is.Null);
+        });
+    }
+
+    // Cleo, the one voter across the date line, registered two months ago.
+    [Test]
+    public async Task Area_Clusters_RecentlyRegistered_CountsTheLastYear()
+    {
+        using var client = ClusteringClient(gridCells: 40);
+
+        var area = await client.GetFromJsonAsync<AreaDto>("/Api/Area?west=179&east=-179&north=11&south=9&metric=RecentlyRegistered");
+
+        Assert.That(area!.Clusters.Single(c => c.Longitude > 0).Value, Is.EqualTo(100).Within(1e-9));
+    }
+
+    // A district and a metric together: only the district's addresses, coloured by their own voters. The City of
+    // Testville is Maple alone (Ada and Adaline, both F); Oak, in the same box, is left out.
+    [Test]
+    public async Task Area_Clusters_WithADistrictAndAMetric_ColourOnlyTheDistrict()
+    {
+        // One address is still over a limit of none, so it comes back as a cell.
+        using var client = new HeadhunterApiFactory("Production")
+            .WithWebHostBuilder(b =>
+            {
+                b.UseSetting("Area:MaxAddresses", "0");
+                b.UseSetting("Area:GridCells", "1");
+            })
+            .CreateClient();
+
+        var area = await client.GetFromJsonAsync<AreaDto>(
+            "/Api/Area?west=-84.5&east=-83&north=43.5&south=42&metric=Female&districtType=Jurisdiction&district=CITY%20OF%20TESTVILLE");
+
+        var cluster = area!.Clusters.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(cluster.Count, Is.EqualTo(1));
+            Assert.That(cluster.Value, Is.EqualTo(100).Within(1e-9));
+        });
+    }
+
+    // The raw-SQL twin of InDistrict: every type has a predicate on the district's name.
+    [TestCaseSource(nameof(AllDistrictTypes))]
+    public void InDistrictSql_FiltersOnTheDistrictName(DistrictType type)
+    {
+        Assert.That(Districts.InDistrictSql(type), Does.Contain("= @district"));
+    }
+
+    private static IEnumerable<DistrictType> AllDistrictTypes() => Enum.GetValues<DistrictType>();
+
+    [Test]
+    public async Task Area_UnknownMetric_IsABadRequest()
+    {
+        using var client = ClusteringClient(gridCells: 1);
+
+        using var response = await client.GetAsync("/Api/Area?west=-84.5&east=-83&north=43.5&south=42&metric=Shoe");
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+    }
+
     [Test]
     public async Task Voter_ReturnsDetailsWithAddress()
     {
