@@ -285,9 +285,11 @@ public class ApiController : ControllerBase
         // Two queries, each with a single AND-only predicate on Addresses, unioned in memory - rather than one
         // query ORing "nearby" against "same street" on a joined table, which would force SQL Server to settle
         // on one plan for both halves. Split like this (same idea as StreetSuggestions' two unioned queries
-        // above), each half seeks its own index (IX_Addresses_Latitude_Longitude, IX_Addresses_STREET_NAME_CITY)
-        // and only then filters by last name, so a common surname can't turn into a scan of every Voters row
-        // with that name - the candidate set is bounded by geography first, not by how common the name is.
+        // above), the box half seeks IX_Addresses_Latitude_Longitude and the street half seeks the existing
+        // CITY or STREET_NAME index (residual-filtered on the other column - both are bounded: a city's or a
+        // street name's address count, not the whole table), and only then filters by last name, so a common
+        // surname can't turn into a scan of every Voters row with that name - the candidate set is bounded by
+        // geography first, not by how common the name is.
         var byBox = hasLocation
             ? await _context.Addresses
                 .Where(a => a.Latitude >= south && a.Latitude <= north && a.Longitude >= west && a.Longitude <= east)
