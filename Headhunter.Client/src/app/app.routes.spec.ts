@@ -59,6 +59,14 @@ describe('app routes (real appConfig)', () => {
     expect(harness.routeNativeElement?.textContent).toContain('Astrology Sign');
   });
 
+  it('serves the not-on-the-map page', async () => {
+    stubFetch(url => (String(url).includes('counties') ? [] : { totalCount: 0, results: [] }));
+    const harness = await RouterTestingHarness.create('/not-on-the-map');
+    await harness.fixture.whenStable();
+    expect(TestBed.inject(Title).getTitle()).toBe('Not on the Map');
+    expect(harness.routeNativeElement?.textContent).toContain('Not on the Map');
+  });
+
   it('opens the info box when a globe entity is picked, rendered through the root component', async () => {
     // Cesium's click callback is a raw DOM listener outside Angular. The pick must
     // reach the OnPush root -> globe page -> info box purely through the

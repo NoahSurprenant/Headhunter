@@ -29,11 +29,16 @@ describe('AppComponent', () => {
     expect(fixture.nativeElement.querySelector('.stub')?.textContent).toBe('stub page');
   });
 
-  it('has a nav bar to the globe and the voter search', () => {
+  it('has a nav bar to the globe, the voter search and the not-on-the-map list', () => {
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     const links = [...(fixture.nativeElement as HTMLElement).querySelectorAll('nav a')]
       .map(a => [a.textContent!.trim(), a.getAttribute('href')]);
-    expect(links).toEqual([['Headhunter', '/globe'], ['Globe', '/globe'], ['Voters', '/voters']]);
+    expect(links).toEqual([
+      ['Headhunter', '/globe'],
+      ['Globe', '/globe'],
+      ['Voters', '/voters'],
+      ['Not on the Map', '/not-on-the-map'],
+    ]);
   });
 });

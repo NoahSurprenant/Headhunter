@@ -1,5 +1,7 @@
+using CensusGeocoder;
 using Headhunter.API.Telemetry;
 using Headhunter.Database;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -36,6 +38,22 @@ public class Program
                 options.UseSqlServer(builder.Configuration.GetConnectionString("Headhunter"));
             });
             builder.Services.AddHttpClient();
+            // The US Census Bureau's free geocoder, no API key: NotOnMap's "Retry geocoding" (ApiController).
+            builder.Services.RegisterGeocodingService();
+            // RetryGeocode has no login to key a limit off, so this is one shared bucket for every caller, not
+            // per-IP: the goal is capping total load on the Census geocoder, not being fair between callers.
+            var retryGeocodeRateLimit = builder.Configuration.GetSection("RetryGeocodeRateLimit").Get<RetryGeocodeRateLimitOptions>()
+                ?? new RetryGeocodeRateLimitOptions();
+            builder.Services.AddRateLimiter(options =>
+            {
+                options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddFixedWindowLimiter(RetryGeocodeRateLimitOptions.PolicyName, limiterOptions =>
+                {
+                    limiterOptions.PermitLimit = retryGeocodeRateLimit.PermitLimit;
+                    limiterOptions.Window = retryGeocodeRateLimit.Window;
+                    limiterOptions.QueueLimit = 0;
+                });
+            });
             // Map tiles (Tiles/): OpenStreetMap's tile policy wants an identifying User-Agent.
             builder.Services.AddHttpClient(Tiles.TilesController.HttpClientName, client =>
             {
@@ -70,6 +88,7 @@ public class Program
             }
 
             app.UseAuthorization();
+            app.UseRateLimiter();
 
             app.MapAppHealthChecks();
             app.MapControllers();

@@ -25,6 +25,11 @@ public static class TestData
     // Far down the same street (same name/type/city/zip), well outside the default nearby search radius.
     public static readonly Guid ElmFarAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a199");
 
+    // Not on the map: failed or never-attempted geocoding, so Matched isn't true and there's no Latitude/Longitude.
+    public static readonly Guid PineFailedAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a030");
+    public static readonly Guid BirchNeverTriedAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a031");
+    public static readonly Guid ElmFailedAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a032");
+
     public static readonly Guid AdaId = Guid.Parse("00000000-0000-0000-0000-00000000b001");
     public static readonly Guid AdalineId = Guid.Parse("00000000-0000-0000-0000-00000000b002");
     public static readonly Guid AdaOakId = Guid.Parse("00000000-0000-0000-0000-00000000b003");
@@ -79,10 +84,16 @@ public static class TestData
         InDistricts(oak, "TESTSHIRE", "CITY OF TESTBURG", "00001", "01", "TESTBURG SCHOOLS", "2ND DISTRICT", "DISTRICT 02");
         InDistricts(datelineEast, "OTHERSHIRE", "TOWNSHIP OF EASTEDGE", "00001", "", "EASTEDGE SCHOOLS", "3RD DISTRICT", "DISTRICT 01");
 
+        // Not on the map: one the geocoder failed, one it hasn't reached yet, and another failure in another county.
+        var pineFailed = NewUnmatchedAddress(PineFailedAddressId, "300", "Pine", "Ln", "Lansing", "Ingham", matched: false);
+        var birchNeverTried = NewUnmatchedAddress(BirchNeverTriedAddressId, "301", "Birch", "Ln", "Lansing", "Ingham", matched: null);
+        var elmFailed = NewUnmatchedAddress(ElmFailedAddressId, "400", "Elm", "St", "Flint", "Genesee", matched: false);
+
         var pine = NewAddress(PineAddressId, "300", "Pine", "Ln", "Farview", 20.0m, -90.0m);
 
         context.Addresses.AddRange(maple, oak, datelineEast, datelineWest,
-            relativeRef, relativeNear, relativeStreet, relativeFar, common, commonNear, commonStreet, pine);
+            relativeRef, relativeNear, relativeStreet, relativeFar, common, commonNear, commonStreet, pine,
+            pineFailed, birchNeverTried, elmFailed);
 
         AddVoter(context, AdaId, maple, "Ada", "Q", "Fakename", ThisYear - 30, "F", new DateTime(2020, 1, 15), permanentAbsentee: true);
         AddVoter(context, AdalineId, maple, "Adaline", "R", "Fakename", ThisYear - 31, "F", new DateTime(2022, 6, 1));
@@ -165,6 +176,24 @@ public static class TestData
         address.STATE_SENATE_DISTRICT_NAME = "1ST DISTRICT";
         address.US_CONGRESS_DISTRICT_NAME = "1ST DISTRICT";
         address.COUNTY_COMMISSIONER_DISTRICT_NAME = commissioner;
+    }
+
+    private static Address NewUnmatchedAddress(Guid id, string number, string street, string type, string city, string county, bool? matched)
+    {
+        var address = Blank<Address>();
+        address.ID = id;
+        address.STREET_NUMBER = number;
+        address.STREET_NAME = street;
+        address.STREET_TYPE = type;
+        address.FullStreetAddress = $"{number} {street} {type}";
+        address.CITY = city;
+        address.STATE = "MI";
+        address.ZIP_CODE = "00000";
+        address.COUNTY_NAME = county;
+        address.Latitude = null;
+        address.Longitude = null;
+        address.Matched = matched;
+        return address;
     }
 
     /// <param name="mailingAddressLineOne">Non-empty makes HAS_MAILING_ADDRESS true ("Lives elsewhere"); its last
