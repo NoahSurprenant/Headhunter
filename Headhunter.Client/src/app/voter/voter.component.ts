@@ -90,6 +90,12 @@ export interface VoterDetailDto {
   zip: string,
   latitude: number | null,
   longitude: number | null,
+  /** Mail doesn't go to this voter's residence. */
+  hasMailingAddress: boolean,
+  /** Mail goes somewhere outside `state`, best-effort from the mailing address's last line. */
+  mailingAddressOutOfState: boolean,
+  /** The non-empty mailing address lines, in order. Empty when hasMailingAddress is false. */
+  mailingAddressLines: string[],
 };
 
 /** A possible relative: same last name, nearby or on the same street, outside the voter's household. */

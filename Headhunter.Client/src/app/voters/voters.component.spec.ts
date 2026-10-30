@@ -98,6 +98,7 @@ describe('VotersComponent', () => {
     const fetchMock = stubFetch(() => page);
     const { fixture, component } = await render();
     component.formGroup.patchValue({ firstName: 'Alex' });
+    component.mailingAddressDiffers.set(true);
     component.onSubmit();
     await settle(fixture);
 
@@ -106,7 +107,61 @@ describe('VotersComponent', () => {
 
     expect(component.formGroup.getRawValue().firstName).toBe('');
     expect(component.searchFilter()).toBeUndefined();
+    expect(component.mailingAddressDiffers()).toBe(false);
     expect(lastCall(fetchMock)[1]?.body).toBeUndefined();
+    expect(lastCall(fetchMock)[0]).toBe('Api/voters?pageSize=10&pageNumber=1');
+  });
+
+  it('flags rows that have a mailing address, and out-of-state ones', async () => {
+    const flaggedPage = votersPage([
+      voterRow({ id: 'voter-2001', firstName: 'Dana', lastName: 'Elsewhere', hasMailingAddress: true, mailingAddressOutOfState: true }),
+      voterRow({ id: 'voter-2002', firstName: 'Jamie', lastName: 'InState', hasMailingAddress: true, mailingAddressOutOfState: false }),
+      voterRow({ id: 'voter-2003', firstName: 'Robin', lastName: 'AtHome', hasMailingAddress: false, mailingAddressOutOfState: false }),
+    ]);
+    stubFetch(() => flaggedPage);
+    const { el } = await render();
+
+    const rows = Array.from(el.querySelectorAll('li'));
+    const chipsFor = (name: string) =>
+      rows.find(li => li.textContent!.includes(name))!.querySelectorAll('.chip');
+
+    expect(chipsFor('Dana')).toHaveLength(2);
+    expect(chipsFor('Jamie')).toHaveLength(1);
+    expect(chipsFor('Robin')).toHaveLength(0);
+    expect(el.textContent).toContain('Lives elsewhere');
+    expect(el.textContent).toContain('Out of state');
+  });
+
+  it('sends "mailingAddressDiffers" as a query param, combinable with the rest of the search', async () => {
+    const fetchMock = stubFetch(() => page);
+    const { fixture, component, el } = await render();
+
+    const checkbox = el.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    await settle(fixture);
+
+    expect(component.mailingAddressDiffers()).toBe(true);
+    expect(lastCall(fetchMock)[0]).toBe('Api/voters?pageSize=10&pageNumber=1&mailingAddressDiffers=true');
+
+    // Still applies once a name filter is submitted too: it's its own query param, not a replacement.
+    component.formGroup.patchValue({ lastName: 'Example' });
+    component.onSubmit();
+    await settle(fixture);
+
+    const [url, init] = lastCall(fetchMock);
+    expect(url).toBe('Api/voters?pageSize=10&pageNumber=1&mailingAddressDiffers=true');
+    expect(JSON.parse(init!.body as string).lastName).toBe('Example');
+  });
+
+  it('exports only the voters whose mail goes elsewhere when that box is ticked', async () => {
+    stubFetch(() => page);
+    const { fixture, component, el } = await render();
+
+    component.mailingAddressDiffers.set(true);
+    await settle(fixture);
+
+    expect((el.querySelector('a[download]') as HTMLAnchorElement).getAttribute('href')).toBe('Api/VotersCsv?mailingAddressDiffers=true');
   });
 
   it('requests the next page when the paginator moves forward', async () => {

@@ -21,6 +21,9 @@ export function voterDetail(overrides: Partial<VoterDetailDto> = {}): VoterDetai
     zip: '49999',
     latitude: 43.0,
     longitude: -84.5,
+    hasMailingAddress: false,
+    mailingAddressOutOfState: false,
+    mailingAddressLines: [],
     ...overrides,
   };
 }
@@ -47,6 +50,8 @@ export function voterRow(overrides: Partial<VoterDto> = {}): VoterDto {
     zipCode: '49999',
     latitude: null,
     longitude: null,
+    hasMailingAddress: false,
+    mailingAddressOutOfState: false,
     ...overrides,
   };
 }

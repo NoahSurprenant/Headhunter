@@ -194,7 +194,7 @@ public class ApiController : ControllerBase
     {
         var voter = await _context.Voters
             .Where(v => v.ID == id)
-            .Select(x => new VoterDetailDto()
+            .Select(x => new VoterDetailRow()
             {
                 Id = x.ID,
                 Gender = x.GENDER,
@@ -209,12 +209,17 @@ public class ApiController : ControllerBase
                 FullStreetAddress = x.Address.FullStreetAddress,
                 City = x.Address.CITY,
                 State = x.Address.STATE,
-                Zip = x.Address.ZIP_CODE
+                Zip = x.Address.ZIP_CODE,
+                MailingAddressLineOne = x.MAILING_ADDRESS_LINE_ONE,
+                MailingAddressLineTwo = x.MAILING_ADDRESS_LINE_TWO,
+                MailingAddressLineThree = x.MAILING_ADDRESS_LINE_THREE,
+                MailingAddressLineFour = x.MAILING_ADDRESS_LINE_FOUR,
+                MailingAddressLineFive = x.MAILING_ADDRESS_LINE_FIVE,
             })
             .FirstOrDefaultAsync(ct);
         if (voter is null)
             return NotFound();
-        return Ok(voter);
+        return Ok(voter.ToDto());
     }
 
     [ProducesResponseType(typeof(VoterDetailDto[]), StatusCodes.Status200OK)]
@@ -224,7 +229,7 @@ public class ApiController : ControllerBase
     {
         var voters = await _context.Voters
             .Where(v => v.AddressID == id)
-            .Select(x => new VoterDetailDto()
+            .Select(x => new VoterDetailRow()
             {
                 Id = x.ID,
                 Gender = x.GENDER,
@@ -239,12 +244,17 @@ public class ApiController : ControllerBase
                 FullStreetAddress = x.Address.FullStreetAddress,
                 City = x.Address.CITY,
                 State = x.Address.STATE,
-                Zip = x.Address.ZIP_CODE
+                Zip = x.Address.ZIP_CODE,
+                MailingAddressLineOne = x.MAILING_ADDRESS_LINE_ONE,
+                MailingAddressLineTwo = x.MAILING_ADDRESS_LINE_TWO,
+                MailingAddressLineThree = x.MAILING_ADDRESS_LINE_THREE,
+                MailingAddressLineFour = x.MAILING_ADDRESS_LINE_FOUR,
+                MailingAddressLineFive = x.MAILING_ADDRESS_LINE_FIVE,
             })
             .ToArrayAsync(ct);
         //if (voter is null)
         //    return NotFound();
-        return Ok(voters);
+        return Ok(voters.Select(v => v.ToDto()).ToArray());
     }
 
     // Other voters with the same last name who live on the same street in the same city, or within a few km
@@ -496,10 +506,16 @@ public class ApiController : ControllerBase
 
     private static double ToRadians(double degrees) => degrees * Math.PI / 180;
 
-    // The voters list's filters, shared by the page (Voters) and its download (VotersCsv).
-    private IQueryable<Voter> Search(SearchFilterDto? dto)
+    // The voters list's filters, shared by the page (Voters) and its download (VotersCsv). mailingAddressDiffers is
+    // a separate query parameter (not part of the SearchFilterDto body) so it combines with whatever's already in
+    // the search form; it seeks IX_Voters_HAS_MAILING_ADDRESS rather than scanning MAILING_ADDRESS_LINE_ONE (see
+    // VoterConfiguration.HAS_MAILING_ADDRESS).
+    private IQueryable<Voter> Search(SearchFilterDto? dto, bool? mailingAddressDiffers)
     {
         var x = _context.Voters.AsQueryable();
+
+        if (mailingAddressDiffers == true)
+            x = x.Where(x => x.HAS_MAILING_ADDRESS);
 
         if (dto is not null)
         {
@@ -577,9 +593,10 @@ public class ApiController : ControllerBase
     }
 
     [HttpPost("Voters")]
-    public async Task<PaginationResult<VoterGridDto>> Voters([FromQuery] PaginationFilter filter, [FromBody] SearchFilterDto? dto, CancellationToken ct)
+    public async Task<PaginationResult<VoterGridDto>> Voters([FromQuery] PaginationFilter filter,
+        [FromQuery] bool? mailingAddressDiffers, [FromBody] SearchFilterDto? dto, CancellationToken ct)
     {
-        var final = Search(dto).OrderBy(x => x.ID).Select(x => new VoterGridDto()
+        var final = Search(dto, mailingAddressDiffers).OrderBy(x => x.ID).Select(x => new VoterGridRow()
         {
             ID = x.ID,
             FirstName = x.FIRST_NAME,
@@ -601,17 +618,28 @@ public class ApiController : ControllerBase
             ZipCode = x.Address.ZIP_CODE,
             Latitude = x.Address.Latitude,
             Longitude = x.Address.Longitude,
+            MailingAddressLineOne = x.MAILING_ADDRESS_LINE_ONE,
+            MailingAddressLineTwo = x.MAILING_ADDRESS_LINE_TWO,
+            MailingAddressLineThree = x.MAILING_ADDRESS_LINE_THREE,
+            MailingAddressLineFour = x.MAILING_ADDRESS_LINE_FOUR,
+            MailingAddressLineFive = x.MAILING_ADDRESS_LINE_FIVE,
         });
 
-        return await final.PaginationResult(filter, ct);
+        var page = await final.PaginationResult(filter, ct);
+        return new PaginationResult<VoterGridDto>
+        {
+            TotalCount = page.TotalCount,
+            Results = page.Results.Select(r => r.ToDto()).ToArray(),
+        };
     }
 
     // The voters list as a file: every page of the current search, written row by row as SQL Server reads them,
     // so a big area never sits in memory. A GET, so the browser downloads it itself. At most Export:MaxRows rows.
     [HttpGet("VotersCsv")]
-    public async Task VotersCsv([FromQuery] SearchFilterDto dto, [FromServices] IOptions<ExportOptions> options, CancellationToken ct)
+    public async Task VotersCsv([FromQuery] SearchFilterDto dto, [FromQuery] bool? mailingAddressDiffers,
+        [FromServices] IOptions<ExportOptions> options, CancellationToken ct)
     {
-        var rows = Search(dto)
+        var rows = Search(dto, mailingAddressDiffers)
             .OrderBy(x => x.ID)
             .Take(options.Value.MaxRows)
             .Select(x => new
@@ -733,6 +761,73 @@ public class VoterGridDto
     public required string ZipCode { get; set; }
     public required decimal? Latitude { get; set; }
     public required decimal? Longitude { get; set; }
+    /// <summary>Mail doesn't go to this voter's residence (MAILING_ADDRESS_LINE_ONE is non-empty).</summary>
+    public required bool HasMailingAddress { get; set; }
+    /// <summary>Mail goes somewhere outside <see cref="State"/>, best-effort from the mailing address's last line.</summary>
+    public required bool MailingAddressOutOfState { get; set; }
+}
+
+/// <summary>
+/// What <see cref="ApiController.Voters"/> projects from SQL for the grid: the raw mailing address lines, so
+/// <see cref="ToDto"/> can turn them into flags in C# (the state/ZIP parsing isn't something LINQ can translate).
+/// </summary>
+public class VoterGridRow
+{
+    public required Guid ID { get; set; }
+    public required string FirstName { get; set; }
+    public required string MiddleName { get; set; }
+    public required string LastName { get; set; }
+    public required int BirthYear { get; set; }
+    public required string Gender { get; set; }
+    public required Guid AddressId { get; set; }
+    public required string StreetNumberPrefix { get; set; }
+    public required string StreetNumber { get; set; }
+    public required string StreetNumberSuffix { get; set; }
+    public required string DirectionPrefix { get; set; }
+    public required string StreetName { get; set; }
+    public required string StreetType { get; set; }
+    public required string DirectionSuffix { get; set; }
+    public required string Extension { get; set; }
+    public required string City { get; set; }
+    public required string State { get; set; }
+    public required string ZipCode { get; set; }
+    public required decimal? Latitude { get; set; }
+    public required decimal? Longitude { get; set; }
+    public required string MailingAddressLineOne { get; set; }
+    public required string MailingAddressLineTwo { get; set; }
+    public required string MailingAddressLineThree { get; set; }
+    public required string MailingAddressLineFour { get; set; }
+    public required string MailingAddressLineFive { get; set; }
+
+    public VoterGridDto ToDto()
+    {
+        var lines = MailingAddress.NonEmptyLines(MailingAddressLineOne, MailingAddressLineTwo, MailingAddressLineThree, MailingAddressLineFour, MailingAddressLineFive);
+        return new VoterGridDto
+        {
+            ID = ID,
+            FirstName = FirstName,
+            MiddleName = MiddleName,
+            LastName = LastName,
+            BirthYear = BirthYear,
+            Gender = Gender,
+            AddressId = AddressId,
+            StreetNumberPrefix = StreetNumberPrefix,
+            StreetNumber = StreetNumber,
+            StreetNumberSuffix = StreetNumberSuffix,
+            DirectionPrefix = DirectionPrefix,
+            StreetName = StreetName,
+            StreetType = StreetType,
+            DirectionSuffix = DirectionSuffix,
+            Extension = Extension,
+            City = City,
+            State = State,
+            ZipCode = ZipCode,
+            Latitude = Latitude,
+            Longitude = Longitude,
+            HasMailingAddress = lines.Length > 0,
+            MailingAddressOutOfState = MailingAddress.IsOutOfState(lines, State),
+        };
+    }
 }
 
 /// <summary>What the globe draws for a box: its addresses, or, when there are too many, clusters. One is empty.</summary>
@@ -836,6 +931,64 @@ public class VoterDetailDto
     public required string City { get; set; }
     public required string State { get; set; }
     public required string Zip { get; set; }
+    /// <summary>Mail doesn't go to this voter's residence (MAILING_ADDRESS_LINE_ONE is non-empty).</summary>
+    public required bool HasMailingAddress { get; set; }
+    /// <summary>Mail goes somewhere outside <see cref="State"/>, best-effort from the mailing address's last line.</summary>
+    public required bool MailingAddressOutOfState { get; set; }
+    /// <summary>The non-empty MAILING_ADDRESS_LINE_ONE..FIVE, in order. Empty when <see cref="HasMailingAddress"/> is false.</summary>
+    public required string[] MailingAddressLines { get; set; }
+}
+
+/// <summary>
+/// What the Voter and Address actions project from SQL: the raw mailing address lines, so <see cref="ToDto"/> can
+/// turn them into flags and a clean line list in C# (the state/ZIP parsing isn't something LINQ can translate).
+/// </summary>
+public class VoterDetailRow
+{
+    public required Guid Id { get; set; }
+    public required string Gender { get; set; }
+    public required decimal? Latitude { get; set; }
+    public required decimal? Longitude { get; set; }
+    public required string FirstName { get; set; }
+    public required string MiddleName { get; set; }
+    public required string LastName { get; set; }
+    public required int BirthYear { get; set; }
+    public required DateTime RegistrationDate { get; set; }
+    public required Guid AddressId { get; set; }
+    public required string FullStreetAddress { get; set; }
+    public required string City { get; set; }
+    public required string State { get; set; }
+    public required string Zip { get; set; }
+    public required string MailingAddressLineOne { get; set; }
+    public required string MailingAddressLineTwo { get; set; }
+    public required string MailingAddressLineThree { get; set; }
+    public required string MailingAddressLineFour { get; set; }
+    public required string MailingAddressLineFive { get; set; }
+
+    public VoterDetailDto ToDto()
+    {
+        var lines = MailingAddress.NonEmptyLines(MailingAddressLineOne, MailingAddressLineTwo, MailingAddressLineThree, MailingAddressLineFour, MailingAddressLineFive);
+        return new VoterDetailDto
+        {
+            Id = Id,
+            Gender = Gender,
+            Latitude = Latitude,
+            Longitude = Longitude,
+            FirstName = FirstName,
+            MiddleName = MiddleName,
+            LastName = LastName,
+            BirthYear = BirthYear,
+            RegistrationDate = RegistrationDate,
+            AddressId = AddressId,
+            FullStreetAddress = FullStreetAddress,
+            City = City,
+            State = State,
+            Zip = Zip,
+            MailingAddressLines = lines,
+            HasMailingAddress = lines.Length > 0,
+            MailingAddressOutOfState = MailingAddress.IsOutOfState(lines, State),
+        };
+    }
 }
 
 /// <summary>One row of ApiController.Relatives, before it's ranked into a RelativeDto.</summary>

@@ -112,4 +112,28 @@ describe('VoterComponent', () => {
 
     expect(el.textContent).toContain('Registration date unknown');
   });
+
+  it('shows a "Mail goes to" card with its chips when mail goes elsewhere', async () => {
+    const v = voterDetail({
+      hasMailingAddress: true,
+      mailingAddressOutOfState: true,
+      mailingAddressLines: ['PO Box 1', 'Chicago, IL 60601'],
+    });
+    stubFetch(url => (String(url).startsWith('api/address/') ? [] : v));
+    const el = await render('voter-0001');
+
+    expect(el.textContent).toContain('Mail goes to');
+    expect(el.textContent).toContain('Lives elsewhere');
+    expect(el.textContent).toContain('Out of state');
+    expect(el.textContent).toContain('PO Box 1');
+    expect(el.textContent).toContain('Chicago, IL 60601');
+  });
+
+  it('hides the "Mail goes to" card when there is no mailing address', async () => {
+    stubFetch(url => (String(url).startsWith('api/address/') ? [] : voterDetail()));
+    const el = await render('voter-0001');
+
+    expect(el.textContent).not.toContain('Mail goes to');
+    expect(el.textContent).not.toContain('Lives elsewhere');
+  });
 });

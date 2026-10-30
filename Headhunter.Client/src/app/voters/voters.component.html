@@ -57,6 +57,12 @@
                         <x-input formControlName="district" placeholder="Start typing" [onSearch]="districtSuggestions"></x-input>
                     </div>
                 }
+                <div class="flex items-end pb-1">
+                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                        <input type="checkbox" [checked]="mailingAddressDiffers()" (change)="onMailingAddressDiffersChange($event)" />
+                        Mailing address differs
+                    </label>
+                </div>
             </div>
             <div class="flex gap-2 mt-3">
                 <x-button type="submit" [disabled]="!formGroup.valid">Search</x-button>
@@ -94,8 +100,16 @@
                         [class.bg-purple-100]="selected()?.id === voter.id"
                         class="flex items-center gap-3 px-4 py-2 border-b border-gray-100 cursor-pointer hover:bg-purple-50 animate-fade-in">
                         <div class="flex-1 min-w-0">
-                            <a [routerLink]="['/voter', voter.id]" (click)="$event.stopPropagation()"
-                               class="font-semibold text-gray-900 hover:text-purple-700 hover:underline">{{ fullName(voter) }}</a>
+                            <div class="flex items-center gap-2">
+                                <a [routerLink]="['/voter', voter.id]" (click)="$event.stopPropagation()"
+                                   class="font-semibold text-gray-900 hover:text-purple-700 hover:underline">{{ fullName(voter) }}</a>
+                                @if (voter.hasMailingAddress) {
+                                    <span class="chip bg-amber-100 text-amber-800">Lives elsewhere</span>
+                                }
+                                @if (voter.mailingAddressOutOfState) {
+                                    <span class="chip bg-red-100 text-red-800">Out of state</span>
+                                }
+                            </div>
                             <div class="text-sm text-gray-600 truncate">
                                 {{ addressColumn(voter) }}, {{ voter.city }}, {{ voter.state }} {{ voter.zipCode }}
                             </div>

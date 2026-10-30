@@ -45,6 +45,21 @@
         }
     </div>
 
+    @if (v.hasMailingAddress) {
+        <div class="card mt-6">
+            <h2 class="card-title">Mail goes to</h2>
+            <div class="flex flex-wrap gap-2 mb-3">
+                <span class="chip bg-amber-100 text-amber-800">Lives elsewhere</span>
+                @if (v.mailingAddressOutOfState) {
+                    <span class="chip bg-red-100 text-red-800">Out of state</span>
+                }
+            </div>
+            @for (line of v.mailingAddressLines; track line) {
+                <p class="text-gray-900">{{ line }}</p>
+            }
+        </div>
+    }
+
     <div class="card mt-6">
         <h2 class="card-title">Also registered at this address</h2>
         @if (others().length === 0) {

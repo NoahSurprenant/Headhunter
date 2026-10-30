@@ -165,6 +165,44 @@ public class ApiEndpointTests
     }
 
     [Test]
+    public async Task Voter_WithNoMailingAddress_HasNoMailingFlagsOrLines()
+    {
+        var voter = await _client.GetFromJsonAsync<VoterDetailDto>($"/Api/Voter/{TestData.AdaId}");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(voter!.HasMailingAddress, Is.False);
+            Assert.That(voter.MailingAddressOutOfState, Is.False);
+            Assert.That(voter.MailingAddressLines, Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task Voter_WithAnOutOfStateMailingAddress_FlagsBoth()
+    {
+        var voter = await _client.GetFromJsonAsync<VoterDetailDto>($"/Api/Voter/{TestData.DanaId}");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(voter!.HasMailingAddress, Is.True);
+            Assert.That(voter.MailingAddressOutOfState, Is.True);
+            Assert.That(voter.MailingAddressLines, Is.EqualTo(new[] { "PO Box 1", "Chicago, IL 60601" }));
+        });
+    }
+
+    [Test]
+    public async Task Voter_WithAnInStateMailingAddress_OnlyFlagsLivesElsewhere()
+    {
+        var voter = await _client.GetFromJsonAsync<VoterDetailDto>($"/Api/Voter/{TestData.EmersonId}");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(voter!.HasMailingAddress, Is.True);
+            Assert.That(voter.MailingAddressOutOfState, Is.False);
+        });
+    }
+
+    [Test]
     public async Task Address_ListsEveryVoterAtTheAddress()
     {
         var voters = await _client.GetFromJsonAsync<VoterDetailDto[]>($"/Api/Address/{TestData.OakAddressId}");
@@ -446,5 +484,76 @@ public class ApiEndpointTests
 
         // The header and two of the five voters.
         Assert.That(csv.Split('\n', StringSplitOptions.RemoveEmptyEntries), Has.Length.EqualTo(3));
+    }
+
+    [Test]
+    public async Task Voters_FlagsMailingAddressAndOutOfStateOnEachRow()
+    {
+        var filter = new SearchFilterDto { LastName = "Transplant" };
+
+        using var response = await _client.PostAsJsonAsync("/Api/Voters?PageNumber=1&PageSize=10", filter);
+        var result = await response.Content.ReadFromJsonAsync<PaginationResult<VoterGridDto>>();
+
+        var dana = result!.Results.Single(v => v.ID == TestData.DanaId);
+        var emerson = result.Results.Single(v => v.ID == TestData.EmersonId);
+        Assert.Multiple(() =>
+        {
+            Assert.That(dana.HasMailingAddress, Is.True);
+            Assert.That(dana.MailingAddressOutOfState, Is.True);
+            Assert.That(emerson.HasMailingAddress, Is.True);
+            Assert.That(emerson.MailingAddressOutOfState, Is.False);
+        });
+    }
+
+    [Test]
+    public async Task Voters_MailingAddressDiffersFilter_OnlyMatchesVotersWithOne()
+    {
+        using var response = await _client.PostAsJsonAsync("/Api/Voters?PageNumber=1&PageSize=50&mailingAddressDiffers=true", new SearchFilterDto());
+        var result = await response.Content.ReadFromJsonAsync<PaginationResult<VoterGridDto>>();
+
+        Assert.That(result!.Results.Select(v => v.ID), Is.EquivalentTo(new[] { TestData.DanaId, TestData.EmersonId }));
+    }
+
+    // The query param combines with the request body's filters (an AND), rather than replacing them.
+    [Test]
+    public async Task Voters_MailingAddressDiffersFilter_CombinesWithTheSearchFormFilters()
+    {
+        var filter = new SearchFilterDto { FirstName = "Dana" };
+
+        using var response = await _client.PostAsJsonAsync("/Api/Voters?PageNumber=1&PageSize=50&mailingAddressDiffers=true", filter);
+        var result = await response.Content.ReadFromJsonAsync<PaginationResult<VoterGridDto>>();
+
+        Assert.That(result!.Results.Select(v => v.ID), Is.EqualTo(new[] { TestData.DanaId }));
+    }
+
+    [Test]
+    public async Task Voters_WithoutTheMailingAddressDiffersFilter_IncludesEveryone()
+    {
+        // Ada (no mailing address) and Dana (one), each found by name: the unfiltered list is longer than a page.
+        async Task<Guid[]> Ids(string lastName)
+        {
+            using var response = await _client.PostAsJsonAsync("/Api/Voters?PageNumber=1&PageSize=50", new SearchFilterDto { LastName = lastName });
+            var result = await response.Content.ReadFromJsonAsync<PaginationResult<VoterGridDto>>();
+            return result!.Results.Select(v => v.ID).ToArray();
+        }
+
+        var fakenames = await Ids("Fakename");
+        var transplants = await Ids("Transplant");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(fakenames, Does.Contain(TestData.AdaId));
+            Assert.That(transplants, Does.Contain(TestData.DanaId));
+        });
+    }
+
+    // The download takes the same flag as the list, so it exports what the list shows.
+    [Test]
+    public async Task VotersCsv_MailingAddressDiffersFilter_OnlyExportsVotersWithOne()
+    {
+        var csv = await _client.GetStringAsync("/Api/VotersCsv?mailingAddressDiffers=true");
+
+        Assert.That(csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1).Select(l => l.Split(',')[0]),
+            Is.EquivalentTo(new[] { "Dana V Transplant", "Emerson W Transplant" }));
     }
 }
