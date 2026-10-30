@@ -52,7 +52,7 @@ describe('VotersComponent', () => {
     expect(text).toContain('Alex Quinn Example');
     expect(text).toContain('Jordan Sample');
     expect(text).toContain('N Pretend Ave');
-    expect(text).toContain('Items 1 - 2 of 42');
+    expect(text).toContain('1–2 of 42');
     const links = Array.from(el.querySelectorAll('li a')).map(a => a.getAttribute('href'));
     expect(links).toEqual(['/voter/voter-1001', '/voter/voter-1002']);
   });

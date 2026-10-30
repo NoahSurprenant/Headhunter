@@ -19,12 +19,31 @@ describe('PaginatorComponent', () => {
 
   it('describes the current page and item range', async () => {
     const { texts } = await render(2, 10, 25, 10);
-    expect(texts()).toEqual(['Page 2 of 3', 'Items 11 - 20 of 25']);
+    expect(texts()).toEqual(['11–20 of 25', 'Page 2 of 3']);
   });
 
   it('uses the actual row count for the end of the last page', async () => {
     const { texts } = await render(3, 10, 25, 5);
-    expect(texts()).toEqual(['Page 3 of 3', 'Items 21 - 25 of 25']);
+    expect(texts()).toEqual(['21–25 of 25', 'Page 3 of 3']);
+  });
+
+  it('writes big counts with thousands separators', async () => {
+    const { texts } = await render(1, 10, 8_506_687, 10);
+    expect(texts()).toEqual(['1–10 of 8,506,687', 'Page 1 of 850,669']);
+  });
+
+  it('says nothing is shown when there are no results', async () => {
+    const { texts, prev, next } = await render(1, 10, 0, 0);
+    expect(texts()).toEqual(['0 of 0', 'Page 1 of 0']);
+    expect(prev.disabled).toBe(true);
+    expect(next.disabled).toBe(true);
+  });
+
+  it('names its controls for screen readers', async () => {
+    const { el, prev, next } = await render(1, 10, 25, 10);
+    expect(prev.getAttribute('aria-label')).toBe('Previous page');
+    expect(next.getAttribute('aria-label')).toBe('Next page');
+    expect(el.querySelector('select')!.getAttribute('aria-label')).toBe('Voters per page');
   });
 
   it('disables Previous on the first page and moves forward with Next', async () => {
@@ -35,7 +54,7 @@ describe('PaginatorComponent', () => {
     next.click();
     fixture.detectChanges();
     expect(component.pageNumber()).toBe(2);
-    expect(texts()[0]).toBe('Page 2 of 3');
+    expect(texts()[1]).toBe('Page 2 of 3');
     expect(prev.disabled).toBe(false);
   });
 
@@ -56,6 +75,6 @@ describe('PaginatorComponent', () => {
     select.dispatchEvent(new Event('change'));
     fixture.detectChanges();
     expect(Number(component.pageSize())).toBe(5);
-    expect(texts()[0]).toBe('Page 1 of 5');
+    expect(texts()[1]).toBe('Page 1 of 5');
   });
 });

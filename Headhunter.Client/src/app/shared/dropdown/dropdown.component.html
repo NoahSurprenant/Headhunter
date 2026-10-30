@@ -1,5 +1,5 @@
 <div class="">
-    <select [formControl]="control" class="border border-gray-300 bg-white text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+    <select [formControl]="control" [attr.aria-label]="label()" class="border border-gray-300 bg-white text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
     @if (addNullOption()) {
         <option [value]="null">NULL</option>
     }
