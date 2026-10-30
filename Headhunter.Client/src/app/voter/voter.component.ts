@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, resource } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MapPreviewComponent } from '../shared/map-preview/map-preview.component';
 import { approximateAge, fullName, genderLabel, globeParams, initials } from '../shared/people/people';
@@ -8,6 +8,7 @@ import { approximateAge, fullName, genderLabel, globeParams, initials } from '..
   selector: 'app-voter',
   imports: [
     DatePipe,
+    DecimalPipe,
     RouterLink,
     MapPreviewComponent,
   ],
@@ -46,6 +47,20 @@ export class VoterComponent {
     return (Array.isArray(all) ? all : []).filter(v => v.id !== this.id());
   });
 
+  // Other voters with the same last name nearby or on the same street, outside this household.
+  relatives = resource({
+    params: () => ({ id: this.id() }),
+    loader: async ({ params, abortSignal }) => {
+      const response = await fetch(`api/voter/${params.id}/relatives`, { method: 'GET', signal: abortSignal });
+      if (!response.ok) return [] as RelativeDto[];
+      return response.json() as Promise<RelativeDto[]>;
+    },
+  });
+  relativesList = computed(() => {
+    const all = this.relatives.hasValue() ? this.relatives.value() : [];
+    return Array.isArray(all) ? all : [];
+  });
+
   globe = computed(() => {
     if (!this.x.hasValue()) return null;
     const v = this.x.value();
@@ -56,6 +71,7 @@ export class VoterComponent {
   protected readonly initials = initials;
   protected readonly genderLabel = genderLabel;
   protected readonly approximateAge = approximateAge;
+  protected readonly globeParams = globeParams;
 }
 
 export interface VoterDetailDto {
@@ -73,4 +89,22 @@ export interface VoterDetailDto {
   zip: string,
   latitude: number | null,
   longitude: number | null,
+};
+
+/** A possible relative: same last name, nearby or on the same street, outside the voter's household. */
+export interface RelativeDto {
+  id: string,
+  firstName: string,
+  middleName: string,
+  lastName: string,
+  birthYear: number,
+  gender: string,
+  addressId: string,
+  fullStreetAddress: string,
+  city: string,
+  state: string,
+  zip: string,
+  latitude: number | null,
+  longitude: number | null,
+  distanceKm: number | null,
 };

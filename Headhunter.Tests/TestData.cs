@@ -20,20 +20,72 @@ public static class TestData
     public static readonly Guid BrunoId = Guid.Parse("00000000-0000-0000-0000-00000000b004");
     public static readonly Guid CleoId = Guid.Parse("00000000-0000-0000-0000-00000000b005");
 
+    // Possible relatives (ApiController.Relatives): RelativeRef's household (same address, excluded), a match
+    // ~1.4 km away on a different street, a match on the same street far away, and a negative control (same
+    // last name, but neither close nor on the same street - like Bruno/Ada above, but kept separate so this
+    // doesn't disturb the "Fakename" fixtures other tests already rely on).
+    public static readonly Guid RelativeRefAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a005");
+    public static readonly Guid RelativeNearAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a006");
+    public static readonly Guid RelativeStreetAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a007");
+    public static readonly Guid RelativeFarAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a008");
+    public static readonly Guid RelativeRefId = Guid.Parse("00000000-0000-0000-0000-00000000b006");
+    public static readonly Guid RelativeHouseholdId = Guid.Parse("00000000-0000-0000-0000-00000000b007");
+    public static readonly Guid RelativeNearId = Guid.Parse("00000000-0000-0000-0000-00000000b008");
+    public static readonly Guid RelativeStreetId = Guid.Parse("00000000-0000-0000-0000-00000000b009");
+    public static readonly Guid RelativeFarId = Guid.Parse("00000000-0000-0000-0000-00000000b010");
+
+    // A common-surname scenario, with NoiseCount other "Commonname" voters scattered far away, to show the
+    // query stays bounded and fast regardless of how common the name is.
+    public static readonly Guid CommonAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a009");
+    public static readonly Guid CommonNearAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a010");
+    public static readonly Guid CommonStreetAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a011");
+    public static readonly Guid CommonRefId = Guid.Parse("00000000-0000-0000-0000-00000000b011");
+    public static readonly Guid CommonNearId = Guid.Parse("00000000-0000-0000-0000-00000000b012");
+    public static readonly Guid CommonStreetId = Guid.Parse("00000000-0000-0000-0000-00000000b013");
+    public const int NoiseCount = 100;
+
     public static async Task SeedAsync(HeadhunterContext context)
     {
         var maple = NewAddress(MapleAddressId, "100", "Maple", "St", "Testville", 42.500000000001m, -83.500000000001m);
         var oak = NewAddress(OakAddressId, "200", "Oak", "Ave", "Testburg", 43.0m, -84.0m);
         var datelineEast = NewAddress(DatelineEastAddressId, "1", "Meridian", "Rd", "Eastedge", 10.0m, 179.5m);
         var datelineWest = NewAddress(DatelineWestAddressId, "2", "Meridian", "Rd", "Westedge", 10.0m, -179.5m);
+        var relativeRef = NewAddress(RelativeRefAddressId, "10", "Birch", "Ln", "Kinfolk", 44.000000000001m, -85.000000000001m);
+        var relativeNear = NewAddress(RelativeNearAddressId, "20", "Cedar", "Ave", "Kinwood", 44.010000000001m, -85.010000000001m);
+        var relativeStreet = NewAddress(RelativeStreetAddressId, "90", "Birch", "Ln", "Kinfolk", 6.0m, 6.0m);
+        var relativeFar = NewAddress(RelativeFarAddressId, "30", "Spruce", "Rd", "Farplace", 7.0m, 7.0m);
+        var common = NewAddress(CommonAddressId, "10", "Elm", "Dr", "Groveport", 41.000000000001m, -85.000000000001m);
+        var commonNear = NewAddress(CommonNearAddressId, "20", "Cedar", "Ln", "Fernwood", 41.010000000001m, -85.010000000001m);
+        var commonStreet = NewAddress(CommonStreetAddressId, "30", "Elm", "Dr", "Groveport", 5.0m, 5.0m);
 
-        context.Addresses.AddRange(maple, oak, datelineEast, datelineWest);
+        context.Addresses.AddRange(maple, oak, datelineEast, datelineWest,
+            relativeRef, relativeNear, relativeStreet, relativeFar, common, commonNear, commonStreet);
 
         AddVoter(context, AdaId, maple, "Ada", "Q", "Fakename", ThisYear - 30);
         AddVoter(context, AdalineId, maple, "Adaline", "R", "Fakename", ThisYear - 31);
         AddVoter(context, AdaOakId, oak, "Ada", "S", "Placeholder", ThisYear - 50);
         AddVoter(context, BrunoId, oak, "Bruno", "T", "Fakename", ThisYear - 50);
         AddVoter(context, CleoId, datelineEast, "Cleo", "U", "Sample", ThisYear - 70);
+        AddVoter(context, RelativeRefId, relativeRef, "Kin", "V", "Testkin", ThisYear - 45);
+        AddVoter(context, RelativeHouseholdId, relativeRef, "Kin2", "W", "Testkin", ThisYear - 46);
+        AddVoter(context, RelativeNearId, relativeNear, "Noor", "X", "Testkin", ThisYear - 40);
+        AddVoter(context, RelativeStreetId, relativeStreet, "Sam", "Y", "Testkin", ThisYear - 60);
+        AddVoter(context, RelativeFarId, relativeFar, "Robin", "Z", "Testkin", ThisYear - 55);
+        AddVoter(context, CommonRefId, common, "CommonRef", "", "Commonname", ThisYear - 35);
+        AddVoter(context, CommonNearId, commonNear, "CommonNear", "", "Commonname", ThisYear - 36);
+        AddVoter(context, CommonStreetId, commonStreet, "CommonStreet", "", "Commonname", ThisYear - 37);
+
+        // Scattered noise, nowhere near Common/CommonNear/CommonStreet and on none of their streets: proves
+        // the query's cost comes from geography, not from how many voters share the surname.
+        for (var i = 0; i < NoiseCount; i++)
+        {
+            var noiseAddress = NewAddress(
+                Guid.Parse($"00000000-0000-0000-00c1-{i:D12}"),
+                (100 + i).ToString(), $"NoiseSt{i:D3}", "Rd", $"NoiseCity{i:D3}",
+                20.0m + i * 0.5m, -60.0m - i * 0.3m);
+            context.Addresses.Add(noiseAddress);
+            AddVoter(context, Guid.Parse($"00000000-0000-0000-00c2-{i:D12}"), noiseAddress, $"Noise{i:D3}", "", "Commonname", ThisYear - 48);
+        }
 
         await context.SaveChangesAsync();
     }

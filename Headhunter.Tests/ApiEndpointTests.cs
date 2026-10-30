@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using Headhunter.API;
@@ -169,6 +170,55 @@ public class ApiEndpointTests
         var voters = await _client.GetFromJsonAsync<VoterDetailDto[]>($"/Api/Address/{TestData.OakAddressId}");
 
         Assert.That(voters!.Select(v => v.FirstName), Is.EquivalentTo(new[] { "Ada", "Bruno" }));
+    }
+
+    [Test]
+    public async Task Relatives_MatchesNearbyOrSameStreet_ExcludingHouseholdAndFarMatches()
+    {
+        var relatives = await _client.GetFromJsonAsync<RelativeDto[]>($"/Api/Voter/{TestData.RelativeRefId}/Relatives");
+
+        Assert.That(relatives, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            // RelativeHouseholdId shares the address (excluded); RelativeFarId shares the last name but is
+            // neither nearby nor on the same street (excluded).
+            Assert.That(relatives!.Select(r => r.Id),
+                Is.EqualTo(new[] { TestData.RelativeNearId, TestData.RelativeStreetId }), "closest first");
+            var near = relatives!.Single(r => r.Id == TestData.RelativeNearId);
+            var street = relatives!.Single(r => r.Id == TestData.RelativeStreetId);
+            Assert.That(near.DistanceKm, Is.Not.Null.And.LessThan(2.0));
+            Assert.That(street.DistanceKm, Is.Not.Null.And.GreaterThan(100));
+        });
+    }
+
+    [Test]
+    public async Task Relatives_UnknownVoterIsNotFound()
+    {
+        using var response = await _client.GetAsync($"/Api/Voter/{Guid.NewGuid()}/Relatives");
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+    }
+
+    // A common surname (Commonname) has NoiseCount extra voters scattered far away, none of them a real
+    // match: the result must still be exactly the two real relatives, and quick despite the noise.
+    [Test]
+    public async Task Relatives_CommonSurname_StaysFastAndCapped()
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        var relatives = await _client.GetFromJsonAsync<RelativeDto[]>($"/Api/Voter/{TestData.CommonRefId}/Relatives");
+
+        stopwatch.Stop();
+        TestContext.Out.WriteLine($"Relatives for a common surname ({TestData.NoiseCount} noise voters): {stopwatch.ElapsedMilliseconds} ms");
+
+        Assert.That(relatives, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(relatives!.Select(r => r.Id),
+                Is.EquivalentTo(new[] { TestData.CommonNearId, TestData.CommonStreetId }));
+            // Generous for CI; the point is that it doesn't scale with how many voters share the name.
+            Assert.That(stopwatch.ElapsedMilliseconds, Is.LessThan(5000));
+        });
     }
 
     [Test]
