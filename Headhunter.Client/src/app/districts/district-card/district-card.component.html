@@ -8,9 +8,10 @@
     </div>
 
     @if (stats.isLoading() && !stats.hasValue()) {
-        <p class="text-gray-500 mt-3">Counting…</p>
+        <p class="text-gray-500 mt-3">Counting voters… large districts (whole counties) can take a few seconds.</p>
     } @else if (stats.error()) {
         <p class="text-gray-500 mt-3">Couldn't load this district.</p>
+        <button type="button" class="btn-secondary mt-2" (click)="stats.reload()">Retry</button>
     } @else if (stats.hasValue() && stats.value() === null) {
         <p class="text-gray-500 mt-3">Nobody is registered in this district.</p>
     } @else if (stats.hasValue()) {

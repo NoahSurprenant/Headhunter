@@ -73,6 +73,33 @@ public class DistrictTests
         });
     }
 
+    // A county with mixed genders (F, M, X), birth years spanning four age bands and a mix of permanent-absentee
+    // voters across two households: the grouped query (GROUP BY YEAR_OF_BIRTH, GENDER) that replaced the six
+    // separate counts/group-bys must still add up to the same totals, ages, gender split and absentee percent.
+    [Test]
+    public async Task District_WithMixedGendersAgesAndAbsentee_CountsThemCorrectly()
+    {
+        var stats = await _client.GetFromJsonAsync<DistrictStatsDto>("/Api/District?type=County&name=MIXCOUNTY");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stats!.Voters, Is.EqualTo(4));
+            Assert.That(stats.Households, Is.EqualTo(2));
+            Assert.That(stats.Ages.Select(a => a.Count), Is.EqualTo(new[] { 1, 0, 0, 1, 0, 1, 1 }));
+            Assert.That(stats.Genders.Select(g => (g.Gender, g.Count)), Is.EqualTo(new[] { ("F", 2), ("M", 1), ("X", 1) }));
+            // Two of the four (the Under-25 F and the 65-74 X) are permanent absentee.
+            Assert.That(stats.PermanentAbsenteePercent, Is.EqualTo(50.0));
+            Assert.That(stats.NewestRegistrations.Select(r => r.Id), Is.EqualTo(new[]
+            {
+                TestData.MixVoterF1Id, TestData.MixVoterM1Id, TestData.MixVoterX1Id, TestData.MixVoterF2Id,
+            }));
+            Assert.That(stats.Extent!.West, Is.EqualTo(-95.01m));
+            Assert.That(stats.Extent.East, Is.EqualTo(-95.0m));
+            Assert.That(stats.Extent.South, Is.EqualTo(50.0m));
+            Assert.That(stats.Extent.North, Is.EqualTo(50.01m));
+        });
+    }
+
     // Precinct 00001 is also Maple's, in Testville: only Testburg's is asked for.
     [Test]
     public async Task District_PrecinctIsTheJurisdictions()

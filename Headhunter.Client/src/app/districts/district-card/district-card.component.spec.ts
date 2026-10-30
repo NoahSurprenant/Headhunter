@@ -92,4 +92,36 @@ describe('DistrictCardComponent', () => {
 
     expect(text(el)).toContain('Couldn\'t load this district.');
   });
+
+  it('shows a longer message about large districts while counting', async () => {
+    let resolveFetch!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>(resolve => { resolveFetch = resolve; }));
+    vi.stubGlobal('fetch', fetchMock);
+    const fixture: ComponentFixture<DistrictCardComponent> = TestBed.createComponent(DistrictCardComponent);
+    fixture.componentRef.setInput('district', precinct);
+
+    // A real delay, not whenStable(): the fetch is still pending, so whenStable() would never resolve.
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect((fixture.nativeElement as HTMLElement).textContent)
+      .toContain('Counting voters… large districts (whole counties) can take a few seconds.');
+
+    resolveFetch(new Response(JSON.stringify(districtStats()), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    await fixture.whenStable();
+    expect(text(fixture.nativeElement)).toContain('1,240 voters');
+  });
+
+  it('offers a retry after a failed load, which re-fetches the stats', async () => {
+    const fetchMock = stubFetch(() => API_UNAVAILABLE);
+    const { fixture, el } = await render();
+    expect(text(el)).toContain('Couldn\'t load this district.');
+
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify(districtStats()),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const retry = Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Retry'))!;
+    retry.click();
+    await fixture.whenStable();
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+    expect(text(el)).toContain('1,240 voters');
+  });
 });

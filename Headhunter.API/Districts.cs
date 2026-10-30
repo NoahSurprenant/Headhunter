@@ -159,21 +159,42 @@ public class DistrictController : ControllerBase
         var addresses = _context.Addresses.InDistrict(type, name, within);
         var voters = addresses.SelectMany(a => a.Voters);
 
-        var count = await voters.CountAsync(ct);
-        if (count == 0)
+        // Count, permanent-absentee count, birth years and genders all come out of one grouped query (a hundred-odd
+        // birth years crossed with a handful of genders, so the group count stays small): one pass over the join
+        // instead of four, aggregated in SQL and only banded into ages and summed by gender here.
+        var groups = await voters
+            .GroupBy(v => new { v.YEAR_OF_BIRTH, v.GENDER })
+            .Select(g => new
+            {
+                g.Key.YEAR_OF_BIRTH,
+                g.Key.GENDER,
+                Count = g.Count(),
+                PermanentAbsentee = g.Sum(v => v.IS_PERM_AV_BALLOT_VOTER ? 1 : 0),
+            })
+            .ToArrayAsync(ct);
+        if (groups.Length == 0)
             return null;
 
-        var households = await voters.Select(v => v.AddressID).Distinct().CountAsync(ct);
-        var permanentAbsentee = await voters.CountAsync(v => v.IS_PERM_AV_BALLOT_VOTER, ct);
-        // A hundred-odd birth years, banded here rather than in SQL.
-        var birthYears = await voters
-            .GroupBy(v => v.YEAR_OF_BIRTH)
-            .Select(g => new { Year = g.Key, Count = g.Count() })
-            .ToArrayAsync(ct);
-        var genders = await voters
-            .GroupBy(v => v.GENDER)
-            .Select(g => new GenderCountDto { Gender = g.Key, Count = g.Count() })
-            .ToArrayAsync(ct);
+        var count = groups.Sum(g => g.Count);
+        var permanentAbsentee = groups.Sum(g => g.PermanentAbsentee);
+
+        var thisYear = DateTime.Now.Year;
+        var ages = new int[AgeBands.Length];
+        foreach (var g in groups)
+        {
+            // The last band the age reaches; under the first band's start (a bad birth year) counts in the first.
+            var age = thisYear - g.YEAR_OF_BIRTH;
+            ages[Math.Max(0, Array.FindLastIndex(AgeBands, band => age >= band.From))] += g.Count;
+        }
+        var genders = groups
+            .GroupBy(g => g.GENDER)
+            .Select(g => new GenderCountDto { Gender = g.Key, Count = g.Sum(x => x.Count) })
+            .OrderByDescending(g => g.Count).ThenBy(g => g.Gender)
+            .ToArray();
+
+        // Households: the district's addresses with at least one voter, not a DISTINCT over every voter.
+        var households = await addresses.CountAsync(a => a.Voters.Any(), ct);
+
         var newest = await voters
             .OrderByDescending(v => v.REGISTRATION_DATE)
             .ThenBy(v => v.ID)
@@ -188,15 +209,6 @@ public class DistrictController : ControllerBase
             })
             .ToArrayAsync(ct);
 
-        var thisYear = DateTime.Now.Year;
-        var ages = new int[AgeBands.Length];
-        foreach (var b in birthYears)
-        {
-            // The last band the age reaches; under the first band's start (a bad birth year) counts in the first.
-            var age = thisYear - b.Year;
-            ages[Math.Max(0, Array.FindLastIndex(AgeBands, band => age >= band.From))] += b.Count;
-        }
-
         return new DistrictStatsDto
         {
             Type = type,
@@ -205,7 +217,7 @@ public class DistrictController : ControllerBase
             Voters = count,
             Households = households,
             Ages = AgeBands.Select((band, i) => new AgeBandDto { Label = band.Label, Count = ages[i] }).ToArray(),
-            Genders = genders.OrderByDescending(g => g.Count).ThenBy(g => g.Gender).ToArray(),
+            Genders = genders,
             PermanentAbsenteePercent = Math.Round(100.0 * permanentAbsentee / count, 1),
             NewestRegistrations = newest,
             Extent = await Extent(addresses, ct),
