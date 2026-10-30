@@ -79,7 +79,7 @@
                 <fieldset id="advanced-conditions" class="@container mt-1 flex flex-col gap-3">
                     <legend class="sr-only">Advanced conditions, all of which must match</legend>
                     @for (row of conditions(); track row.id) {
-                        <div class="cond-row grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] @lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.6fr)_auto] gap-2 items-center">
+                        <div class="cond-row pb-3 border-b border-gray-200 @lg:pb-0 @lg:border-0 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] @lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.6fr)_auto] gap-2 items-center">
                             <select aria-label="Field" (change)="setConditionField(row.id, $any($event.target).value)"
                                     class="cond-field border border-gray-300 bg-white text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full min-w-0 p-2.5">
                                 @for (f of conditionFields; track f.name) {
