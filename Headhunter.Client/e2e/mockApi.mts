@@ -170,6 +170,26 @@ export function mockResponse(method: string, url: string): MockResponse {
     });
   }
 
+  // Not on the map: the geocoder's gaps by county, and a page of them
+  const COUNTIES = ['Wayne', 'Oakland', 'Macomb', 'Kent', 'Genesee', 'Washtenaw', 'Ingham', 'Kalamazoo',
+    'Saginaw', 'Grand Traverse', 'Houghton', 'Schoolcraft'];
+  if (path === 'notonmap/counties') {
+    return json(COUNTIES.map((county, i) => ({ county, count: 41_207 - i * 3_317 })));
+  }
+  if (path === 'notonmap') {
+    const pageSize = Math.max(1, Number(searchParams.get('pageSize') ?? 10));
+    const pageNumber = Math.max(1, Number(searchParams.get('pageNumber') ?? 1));
+    const start = (pageNumber - 1) * pageSize;
+    const results = Array.from({ length: pageSize }, (_, i) => {
+      const row = voterDetail((start + i) * 3);
+      return {
+        id: row.addressId, fullStreetAddress: row.fullStreetAddress, city: row.city, state: row.state, zipCode: row.zip,
+        county: COUNTIES[(start + i) % COUNTIES.length], matched: (start + i) % 3 === 0 ? null : false,
+      };
+    });
+    return json({ totalCount: 276_642, results });
+  }
+
   if (path.endsWith('suggestions')) {
     return json(['Alex', 'Alexander', 'Alexandra']);
   }

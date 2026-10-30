@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Headhunter.API.Pagination;
 using Headhunter.Database;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
@@ -505,6 +506,98 @@ public class ApiController : ControllerBase
     }
 
     private static double ToRadians(double degrees) => degrees * Math.PI / 180;
+
+    // "Not on the map": addresses the geocoder hasn't matched (Matched is false, or still null because a batch
+    // run hasn't reached them yet), so Latitude/Longitude are null and they can't show on the globe or a map
+    // preview. Ordered by ID like Voters, so pages don't overlap as the underlying data changes.
+    [HttpGet("NotOnMap")]
+    public async Task<PaginationResult<NotOnMapAddressDto>> NotOnMap(
+        [FromQuery] PaginationFilter filter, string? city, string? county, CancellationToken ct)
+    {
+        var query = _context.Addresses.Where(x => x.Matched != true);
+        if (!string.IsNullOrEmpty(city))
+            query = query.Where(x => x.CITY == city);
+        if (!string.IsNullOrEmpty(county))
+            query = query.Where(x => x.COUNTY_NAME == county);
+
+        var final = query.OrderBy(x => x.ID).Select(x => new NotOnMapAddressDto
+        {
+            Id = x.ID,
+            FullStreetAddress = x.FullStreetAddress,
+            City = x.CITY,
+            State = x.STATE,
+            ZipCode = x.ZIP_CODE,
+            County = x.COUNTY_NAME,
+            Matched = x.Matched,
+        });
+
+        return await final.PaginationResult(filter, ct);
+    }
+
+    // The breakdown behind NotOnMap's county filter: how many unmatched addresses are in each county, so the
+    // page can show where the gaps are before anyone picks a filter.
+    [HttpGet("NotOnMap/Counties")]
+    public async Task<CountyCountDto[]> NotOnMapCounties(CancellationToken ct)
+    {
+        return await _context.Addresses
+            .Where(x => x.Matched != true)
+            .GroupBy(x => x.COUNTY_NAME)
+            .Select(g => new CountyCountDto { County = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.County)
+            .ToArrayAsync(ct);
+    }
+
+    // Retries the US Census Bureau's free geocoder for one address: the same service Headhunter.Geocoding's
+    // batch run uses, but a single lookup instead of a batch file, so it's cheap enough to trigger from the UI.
+    // No API key needed. Overwrites Matched/Latitude/Longitude with whatever this attempt finds.
+    // Rate limited (RetryGeocodeRateLimitOptions, configured in Program.cs): the site has no login, so without a
+    // cap a free-for-all client could hammer the Census geocoder through us.
+    [ProducesResponseType(typeof(RetryGeocodeResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    [EnableRateLimiting(RetryGeocodeRateLimitOptions.PolicyName)]
+    [HttpPost("Address/{id}/RetryGeocode")]
+    public async Task<IActionResult> RetryGeocode([FromRoute] Guid id, [FromServices] CensusGeocoder.GeocodingService geocoder, CancellationToken ct)
+    {
+        var address = await _context.Addresses.FirstOrDefaultAsync(a => a.ID == id, ct);
+        if (address is null)
+            return NotFound();
+
+        CensusGeocoder.LocationDto location;
+        try
+        {
+            location = await geocoder.AddressToLocation(address.FullStreetAddress, address.CITY, address.STATE, address.ZIP_CODE, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "RetryGeocode {AddressId}: the Census geocoder was unreachable", id);
+            return StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        var match = location.addressMatches.FirstOrDefault();
+        if (match is null)
+        {
+            address.Matched = false;
+            address.Latitude = null;
+            address.Longitude = null;
+        }
+        else
+        {
+            address.Matched = true;
+            address.Latitude = match.coordinates.y;
+            address.Longitude = match.coordinates.x;
+        }
+        await _context.SaveChangesAsync(ct);
+
+        return Ok(new RetryGeocodeResultDto
+        {
+            Matched = address.Matched ?? false,
+            Latitude = address.Latitude,
+            Longitude = address.Longitude,
+        });
+    }
 
     // The voters list's filters, shared by the page (Voters) and its download (VotersCsv). mailingAddressDiffers is
     // a separate query parameter (not part of the SearchFilterDto body) so it combines with whatever's already in
@@ -1037,6 +1130,46 @@ public class RelativesOptions
     public int MaxCandidatesPerBranch { get; set; } = 500;
     /// <summary>How many relatives to return, closest first.</summary>
     public int MaxResults { get; set; } = 20;
+}
+
+/// <summary>One row of the "Not on the map" list: an address the geocoder hasn't placed.</summary>
+public class NotOnMapAddressDto
+{
+    public required Guid Id { get; set; }
+    public required string FullStreetAddress { get; set; }
+    public required string City { get; set; }
+    public required string State { get; set; }
+    public required string ZipCode { get; set; }
+    public required string County { get; set; }
+    public required bool? Matched { get; set; }
+}
+
+/// <summary>How many unmatched addresses are in a county, for NotOnMap's per-county breakdown.</summary>
+public class CountyCountDto
+{
+    public required string County { get; set; }
+    public required int Count { get; set; }
+}
+
+/// <summary>The result of a single-address retry against the Census geocoder.</summary>
+public class RetryGeocodeResultDto
+{
+    public required bool Matched { get; set; }
+    public required decimal? Latitude { get; set; }
+    public required decimal? Longitude { get; set; }
+}
+
+/// <summary>
+/// RetryGeocode's rate limit (configuration section "RetryGeocodeRateLimit"), one shared bucket for every
+/// caller since there's no login to key a per-caller limit off. Defaults match what was asked for: 10 requests
+/// a minute, no queueing (requests over the limit are rejected immediately with 429, not held).
+/// </summary>
+public class RetryGeocodeRateLimitOptions
+{
+    public const string PolicyName = "RetryGeocode";
+
+    public int PermitLimit { get; set; } = 10;
+    public TimeSpan Window { get; set; } = TimeSpan.FromMinutes(1);
 }
 
 public enum BeforeAfter

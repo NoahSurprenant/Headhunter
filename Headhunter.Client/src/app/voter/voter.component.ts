@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, resource } from '@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MapPreviewComponent } from '../shared/map-preview/map-preview.component';
+import { NotOnMapChipComponent } from '../shared/not-on-map-chip/not-on-map-chip.component';
 import { approximateAge, fullName, genderLabel, globeParams, initials, yearsAgoLabel } from '../shared/people/people';
 
 @Component({
@@ -11,6 +12,7 @@ import { approximateAge, fullName, genderLabel, globeParams, initials, yearsAgoL
     DecimalPipe,
     RouterLink,
     MapPreviewComponent,
+    NotOnMapChipComponent,
   ],
   templateUrl: './voter.component.html',
   styleUrl: './voter.component.css',

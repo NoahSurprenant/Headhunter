@@ -27,4 +27,9 @@ export const routes: Routes = [
         loadComponent: () => import('./address/address.component').then(c => c.AddressComponent),
         title: 'Address',
     },
+    {
+        path: 'not-on-the-map',
+        loadComponent: () => import('./not-on-map/not-on-map.component').then(c => c.NotOnMapComponent),
+        title: 'Not on the Map',
+    },
 ];

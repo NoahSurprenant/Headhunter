@@ -41,7 +41,7 @@
                 <app-map-preview [latitude]="v.latitude" [longitude]="v.longitude" [height]="220"></app-map-preview>
             </a>
         } @else {
-            <div class="card flex items-center justify-center text-gray-500">This address hasn't been placed on the map.</div>
+            <app-not-on-map-chip [addressId]="v.addressId" (geocoded)="x.reload()" />
         }
     </div>
 

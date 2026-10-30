@@ -136,4 +136,29 @@ describe('VoterComponent', () => {
     expect(el.textContent).not.toContain('Mail goes to');
     expect(el.textContent).not.toContain('Lives elsewhere');
   });
+
+  it('shows the "Not on the map" chip instead of the map preview when ungeocoded, and reloads after a successful retry', async () => {
+    let geocoded = false;
+    const fetchMock = stubFetch(url => {
+      const u = String(url);
+      if (u.includes('retrygeocode')) return { matched: true, latitude: 42.5, longitude: -83.5 };
+      if (u.includes('/relatives')) return [];
+      if (u.startsWith('api/address/')) return [];
+      return voterDetail({ id: 'voter-0001', latitude: geocoded ? 42.5 : null, longitude: geocoded ? -83.5 : null });
+    });
+    const fixture = TestBed.createComponent(VoterComponent);
+    fixture.componentRef.setInput('id', 'voter-0001');
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.textContent).toContain('Not on the map');
+    expect(el.querySelector('app-map-preview')).toBeNull();
+
+    geocoded = true;
+    (el.querySelector('app-not-on-map-chip button') as HTMLButtonElement).click();
+    await fixture.whenStable();
+
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('retrygeocode') && c[1]?.method === 'POST')).toBe(true);
+    expect(el.querySelector('app-map-preview')).not.toBeNull();
+  });
 });

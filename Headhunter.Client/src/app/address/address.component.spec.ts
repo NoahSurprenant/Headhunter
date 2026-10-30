@@ -161,4 +161,30 @@ describe('AddressComponent', () => {
     expect(text).toContain('registration date unknown');
     expect(text).toContain('registered Jan 1, 2012');
   });
+
+  it('shows the "Not on the map" chip instead of the map preview when ungeocoded, and reloads after a successful retry', async () => {
+    let geocoded = false;
+    const fetchMock = stubFetch(url => {
+      if (String(url).includes('retrygeocode'))
+        return { matched: true, latitude: 42.5, longitude: -83.5 };
+      if (String(url).includes('/walk'))
+        return noWalk;
+      return [voterDetail({ latitude: geocoded ? 42.5 : null, longitude: geocoded ? -83.5 : null })];
+    });
+    const fixture = TestBed.createComponent(AddressComponent);
+    fixture.componentRef.setInput('id', 'addr-0001');
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.textContent).toContain('Not on the map');
+    expect(el.querySelector('app-map-preview')).toBeNull();
+    expect(el.querySelector('a[href^="/globe"]')).toBeNull();
+
+    geocoded = true;
+    (el.querySelector('app-not-on-map-chip button') as HTMLButtonElement).click();
+    await fixture.whenStable();
+
+    expect(fetchMock.mock.calls.some(c => c[0] === 'api/address/addr-0001/retrygeocode' && c[1]?.method === 'POST')).toBe(true);
+    expect(el.querySelector('app-map-preview')).not.toBeNull();
+  });
 });

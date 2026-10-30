@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { VoterDetailDto } from '../voter/voter.component';
 import { MapPreviewComponent } from '../shared/map-preview/map-preview.component';
 import { RegistrationTimelineComponent } from '../shared/registration-timeline/registration-timeline.component';
+import { NotOnMapChipComponent } from '../shared/not-on-map-chip/not-on-map-chip.component';
 import { approximateAge, formatDistance, fullName, genderLabel, globeParams, initials, registrationDateOrNull } from '../shared/people/people';
 
 /** One neighbouring house: enough to link to it. */
@@ -34,6 +35,7 @@ export interface WalkDto {
     RouterLink,
     MapPreviewComponent,
     RegistrationTimelineComponent,
+    NotOnMapChipComponent,
   ],
   templateUrl: './address.component.html',
   styleUrl: './address.component.css',

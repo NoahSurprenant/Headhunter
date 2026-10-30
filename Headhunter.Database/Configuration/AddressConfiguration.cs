@@ -14,6 +14,10 @@ internal class AddressConfiguration : IEntityTypeConfiguration<Address>
 
         builder.HasIndex(x => new { x.Latitude, x.Longitude }).HasDatabaseName("IX_Addresses_Latitude_Longitude");
 
+        // "Not on the map" list: addresses where Matched isn't true (false, or still null) are a small minority
+        // of the ~4M rows once geocoding has run, so this lets that filter seek instead of scanning everything.
+        builder.HasIndex(x => x.Matched).HasDatabaseName("IX_Addresses_Matched");
+
         // Bounded so CitySuggestions' StartsWith (LIKE 'x%') can seek an index; nvarchar(max) can't be an index key.
         // The longest city in the data is 20 characters.
         builder.Property(x => x.CITY).HasMaxLength(100);

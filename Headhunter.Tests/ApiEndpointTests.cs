@@ -348,6 +348,78 @@ public class ApiEndpointTests
     }
 
     [Test]
+    public async Task NotOnMap_ListsAddressesWhereMatchedIsntTrue()
+    {
+        var page = await _client.GetFromJsonAsync<PaginationResult<NotOnMapAddressDto>>("/Api/NotOnMap?pageSize=10&pageNumber=1");
+
+        Assert.That(page!.Results.Select(a => a.Id), Is.EquivalentTo(new[]
+        {
+            TestData.PineFailedAddressId, TestData.BirchNeverTriedAddressId, TestData.ElmFailedAddressId,
+        }));
+        var pine = page.Results.Single(a => a.Id == TestData.PineFailedAddressId);
+        Assert.Multiple(() =>
+        {
+            Assert.That(pine.Matched, Is.False);
+            Assert.That(pine.City, Is.EqualTo("Lansing"));
+            Assert.That(pine.County, Is.EqualTo("Ingham"));
+            Assert.That(page.Results.Single(a => a.Id == TestData.BirchNeverTriedAddressId).Matched, Is.Null);
+        });
+    }
+
+    [Test]
+    public async Task NotOnMap_FiltersByCity()
+    {
+        var page = await _client.GetFromJsonAsync<PaginationResult<NotOnMapAddressDto>>("/Api/NotOnMap?city=Flint");
+
+        Assert.That(page!.Results.Select(a => a.Id), Is.EqualTo(new[] { TestData.ElmFailedAddressId }));
+    }
+
+    [Test]
+    public async Task NotOnMap_FiltersByCounty()
+    {
+        var page = await _client.GetFromJsonAsync<PaginationResult<NotOnMapAddressDto>>("/Api/NotOnMap?county=Ingham");
+
+        Assert.That(page!.Results.Select(a => a.Id), Is.EquivalentTo(new[] { TestData.PineFailedAddressId, TestData.BirchNeverTriedAddressId }));
+    }
+
+    [Test]
+    public async Task NotOnMap_Paginates()
+    {
+        var page1 = await _client.GetFromJsonAsync<PaginationResult<NotOnMapAddressDto>>("/Api/NotOnMap?pageNumber=1&pageSize=2");
+        var page2 = await _client.GetFromJsonAsync<PaginationResult<NotOnMapAddressDto>>("/Api/NotOnMap?pageNumber=2&pageSize=2");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(page1!.TotalCount, Is.EqualTo(3));
+            Assert.That(page1.Results, Has.Length.EqualTo(2));
+            Assert.That(page2!.Results, Has.Length.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task NotOnMap_DoesNotIncludeMatchedAddresses()
+    {
+        var page = await _client.GetFromJsonAsync<PaginationResult<NotOnMapAddressDto>>("/Api/NotOnMap?pageSize=50");
+
+        Assert.That(page!.Results.Select(a => a.Id), Does.Not.Contain(TestData.MapleAddressId).And.Not.Contain(TestData.OakAddressId));
+    }
+
+    [Test]
+    public async Task NotOnMapCounties_CountsUnmatchedAddressesPerCounty()
+    {
+        var counties = await _client.GetFromJsonAsync<CountyCountDto[]>("/Api/NotOnMap/Counties");
+
+        var ingham = counties!.Single(c => c.County == "Ingham");
+        var genesee = counties.Single(c => c.County == "Genesee");
+        Assert.Multiple(() =>
+        {
+            Assert.That(ingham.Count, Is.EqualTo(2));
+            Assert.That(genesee.Count, Is.EqualTo(1));
+        });
+    }
+
+
+    [Test]
     public async Task Voters_FiltersByLastNameAndPaginates()
     {
         var filter = new SearchFilterDto { LastName = "Fakename" };

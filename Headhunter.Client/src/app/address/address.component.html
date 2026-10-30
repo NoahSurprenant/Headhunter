@@ -16,6 +16,8 @@
                 <a routerLink="/globe" [queryParams]="globe()" class="block" title="Show on globe">
                     <app-map-preview [latitude]="a.latitude" [longitude]="a.longitude" [height]="220"></app-map-preview>
                 </a>
+            } @else {
+                <app-not-on-map-chip [addressId]="a.addressId" (geocoded)="x.reload()" />
             }
         </div>
 

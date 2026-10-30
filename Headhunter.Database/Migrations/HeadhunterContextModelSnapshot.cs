@@ -185,6 +185,9 @@ namespace Headhunter.Database.Migrations
 
                     b.HasIndex("FullStreetAddress");
 
+                    b.HasIndex("Matched")
+                        .HasDatabaseName("IX_Addresses_Matched");
+
                     b.HasIndex("SCHOOL_DISTRICT_NAME");
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("SCHOOL_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
