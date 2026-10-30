@@ -26,6 +26,11 @@ public class VoterConfiguration : IEntityTypeConfiguration<Voter>
         builder.HasIndex(x => x.LAST_NAME);
         // The voter search by birth year, age or star sign (all filter YEAR_OF_BIRTH): 15 s on 8.5M voters without it.
         builder.HasIndex(x => x.YEAR_OF_BIRTH);
+        // The address foreign key's index, covering the globe's cluster colours (ApiController.ClustersWithMetric) so
+        // they join voters without reading the whole table: Michigan coloured in 8 to 11 s instead of 15 to 16 s on
+        // 8M synthetic voters.
+        builder.HasIndex(x => x.AddressID)
+            .IncludeProperties(x => new { x.YEAR_OF_BIRTH, x.GENDER, x.IS_PERM_AV_BALLOT_VOTER, x.REGISTRATION_DATE });
 
         // MAILING_ADDRESS_LINE_ONE is nvarchar(max) (the CSV import leaves it "" rather than NULL when a voter has
         // no mailing address - see Headhunter.CSVDump/Worker.cs), and SQL Server can't key an index on a LOB

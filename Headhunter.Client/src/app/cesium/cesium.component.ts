@@ -7,6 +7,7 @@ import { buildModuleUrl,
   Rectangle,
   LabelStyle,
   VerticalOrigin,
+  HorizontalOrigin,
   Color,
   ScreenSpaceEventType,
   DistanceDisplayCondition,
@@ -15,10 +16,12 @@ import { buildModuleUrl,
   Cartographic,
   BoundingSphere,
   HeadingPitchRange,
+  ConstantProperty
 } from 'cesium';
-import { distinctUntilChanged, Subject, switchMap, takeUntil, tap } from 'rxjs';
+import { distinctUntilChanged, map, Subject, switchMap, takeUntil, tap } from 'rxjs';
 import { CustomInfoBoxComponent } from '../custom-info-box/custom-info-box.component';
-import { AreaDto, ClusterDto, clusterId, clusterSize, shortCount } from './clusters';
+import { AreaDto, ClusterDto, ClusterMetric, clusterId, clusterLabelFont, clusterName, clusterSize, metricOption, metricOptions, scaleColor,
+  scaleGradient, shortCount, valueRange } from './clusters';
 import { AreaBox, boxFromCorners, Corner, isEmptyBox, SELECTED_AREA_ID } from './area-selection';
 import { DistrictExtentDto, DistrictRef, districtQuery, districtRef } from '../districts/districts';
 
@@ -52,11 +55,19 @@ export class CesiumComponent implements OnInit {
   private http = inject(HttpClient);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
-  private searchParams$ = new Subject<{ west: number, east: number, north: number, south: number, district?: DistrictRef }>();
+  private searchParams$ = new Subject<{ west: number, east: number, north: number, south: number, district?: DistrictRef, metric: ClusterMetric }>();
   private cancelRequest$ = new Subject<void>();
   // A signal because it is set from Cesium's own DOM callbacks, which Angular
   // (zoneless) does not see; writing the signal schedules change detection.
   selectedEntity = signal<Entity | undefined>(undefined);
+
+  // What the clusters are coloured by (the dropdown over the globe), the view's range of it for the legend, and the
+  // cluster under the pointer for the tooltip.
+  readonly metricOptions = metricOptions;
+  readonly scaleGradient = scaleGradient;
+  metric = signal<ClusterMetric>('None');
+  legend = signal<{ label: string, min: string, max: string } | undefined>(undefined);
+  hovered = signal<{ text: string, x: number, y: number } | undefined>(undefined);
 
   // A place to show: /globe?lat=..&lon=..&address=.. (the voter and address pages link here), or the voters page's
   // selected row. The camera flies there, and the address's info box opens once its point has loaded.
@@ -149,6 +160,9 @@ export class CesiumComponent implements OnInit {
       animation: false, // No need for animation over time
       timeline: false,
       infoBox: false,
+      // The mouse/touch help stays behind the toolbar's "?" instead of opening over the globe (and its top-left
+      // toolbar, on a phone) at every start.
+      navigationInstructionsInitiallyVisible: false,
       selectedImageryProviderViewModel: vm,
       imageryProviderViewModels: vms,
       terrainProviderViewModels: [],
@@ -194,7 +208,8 @@ export class CesiumComponent implements OnInit {
         prev.east === curr.east &&
         prev.north === curr.north &&
         prev.south === curr.south &&
-        JSON.stringify(prev.district) === JSON.stringify(curr.district)
+        JSON.stringify(prev.district) === JSON.stringify(curr.district) &&
+        prev.metric === curr.metric
       ),
       tap(() => this.cancelRequest$.next()), // Cancel existing request
       switchMap((params) => {
@@ -209,17 +224,20 @@ export class CesiumComponent implements OnInit {
             .append('district', params.district.name)
             .append('districtWithin', params.district.within);
         }
+        if (params.metric !== 'None') {
+          httpParams = httpParams.append('metric', params.metric);
+        }
 
         return this.http.get<AreaDto>('api/area', { params: httpParams })
-          .pipe(takeUntil(this.cancelRequest$));
+          .pipe(takeUntil(this.cancelRequest$), map(area => ({ area, metric: params.metric })));
       })
     )
     .subscribe({
-      next: (area) => {
+      next: ({ area, metric }) => {
         this.viewer.entities.suspendEvents();
 
         // Zoomed out, the API sends clusters (a count per grid cell) instead of addresses.
-        this.clusters = new Map(area.clusters.map(c => [clusterId(c), c]));
+        this.clusters = new Map(area.clusters.map(c => [clusterId(c, metric), c]));
 
         // Only remove entities that are not in the new result set
         const all = this.viewer.entities.values.map(x => x.id);
@@ -232,27 +250,48 @@ export class CesiumComponent implements OnInit {
         const busiest = Math.max(0, ...area.clusters.map(c => c.count));
         // A district's are gold, so it reads as picked out rather than as the whole map.
         const inDistrict = !!this.currentDistrict;
+        // Coloured by the view's own range, so the legend's ends are the lowest and highest cell on screen. Cells
+        // without voters are grey. Individual addresses (zoomed in past the clusters) are not coloured.
+        const range = metric === 'None' ? undefined : valueRange(area.clusters);
+        const option = metricOption(metric);
+        this.legend.set(range && { label: option.label, min: option.format(range.min), max: option.format(range.max) });
+        const colorOf = (c: ClusterDto) => !range ? (inDistrict ? Color.GOLD : Color.ORANGE).withAlpha(0.75)
+          : c.value === undefined || c.value === null ? Color.GRAY.withAlpha(0.6)
+          : Color.fromCssColorString(scaleColor(c.value, range)).withAlpha(0.85);
         this.clusters.forEach((c, id) => {
-          if (this.viewer.entities.getById(id)) {
+          const size = clusterSize(c.count, busiest);
+          const existing = this.viewer.entities.getById(id);
+          if (existing) {
+            // Kept from the last view, whose range may have been different.
+            if (existing.point) existing.point.color = new ConstantProperty(colorOf(c));
             return;
           }
           this.viewer.entities.add({
             id,
-            name: c.count.toLocaleString() + ' addresses',
+            name: clusterName(c, metric),
             position: Cartesian3.fromDegrees(c.longitude, c.latitude),
             point: {
-              pixelSize: clusterSize(c.count, busiest),
-              color: (inDistrict ? Color.GOLD : Color.ORANGE).withAlpha(0.75),
-              outlineColor: Color.WHITE,
-              outlineWidth: 1,
+              pixelSize: size,
+              color: colorOf(c),
+              // A light ring, so the dark end of the scale still stands out on dark imagery.
+              outlineColor: Color.WHITE.withAlpha(0.9),
+              outlineWidth: 2,
             },
-            // A lone address needs no number on it.
+            // A lone address needs no number on it. White on a solid black outline reads on any fill colour; the
+            // font shrinks with the dot so the number stays inside it.
             label: c.count <= 1 ? undefined : {
               text: shortCount(c.count),
-              font: "bold 10pt sans-serif",
+              font: clusterLabelFont(size),
               style: LabelStyle.FILL_AND_OUTLINE,
-              outlineWidth: 3,
+              fillColor: Color.WHITE,
+              outlineColor: Color.BLACK,
+              outlineWidth: 4,
               verticalOrigin: VerticalOrigin.CENTER,
+              // Too small a dot for the number: beside it instead.
+              ...(size < 20 ? { horizontalOrigin: HorizontalOrigin.LEFT, pixelOffset: new Cartesian2(size / 2 + 3, 0) } : {}),
+              // In front of its own dot (and the globe): otherwise the dot covers half the number.
+              eyeOffset: new Cartesian3(0, 0, -100),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
           });
         });
@@ -351,13 +390,6 @@ export class CesiumComponent implements OnInit {
       }
     }, ScreenSpaceEventType.LEFT_DOWN);
 
-    handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
-      const corner = this.dragStart && this.cornerAt(movement.endPosition);
-      if (this.dragStart && corner) {
-        this.drawBox(boxFromCorners(this.dragStart, corner));
-      }
-    }, ScreenSpaceEventType.MOUSE_MOVE);
-
     handler.setInputAction((movement: { position: Cartesian2 }) => {
       if (!this.dragStart) {
         return;
@@ -375,9 +407,39 @@ export class CesiumComponent implements OnInit {
       }
     }, ScreenSpaceEventType.LEFT_UP);
 
+    // One MOUSE_MOVE action per handler: mid-drag it draws the selected area's box, otherwise it is a cluster's
+    // tooltip (its count and, when coloured, its value).
+    handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
+      if (this.dragStart) {
+        const corner = this.cornerAt(movement.endPosition);
+        if (corner) {
+          this.drawBox(boxFromCorners(this.dragStart, corner));
+        }
+        return;
+      }
+      // Picking renders a frame of its own: none while there are no clusters to find.
+      if (this.clusters.size === 0) {
+        if (this.hovered()) this.hovered.set(undefined);
+        return;
+      }
+      const picked = this.viewer.scene.pick(movement.endPosition);
+      const entity = defined(picked) && picked.id ? picked.id as Entity : undefined;
+      const cluster = entity ? this.clusters.get(entity.id) : undefined;
+      this.hovered.set(cluster && entity
+        ? { text: entity.name ?? '', x: movement.endPosition.x, y: movement.endPosition.y }
+        : undefined);
+    }, ScreenSpaceEventType.MOUSE_MOVE);
+
     this.viewer.trackedEntityChanged.addEventListener(() => {
       this.trackedEntity.set(this.viewer.trackedEntity);
     });
+  }
+
+  /** The dropdown's choice: ask for the same view again, coloured by it. */
+  setMetric(metric: string): void {
+    this.metric.set(metric as ClusterMetric);
+    this.hovered.set(undefined);
+    this.computeBounds();
   }
 
   closeInfoBox(): void {
@@ -555,7 +617,7 @@ export class CesiumComponent implements OnInit {
     const east = CesiumMath.toDegrees(rectangle.east);
     const north = CesiumMath.toDegrees(rectangle.north);
 
-    this.searchParams$.next({ west, east, north, south, district: this.currentDistrict });
+    this.searchParams$.next({ west, east, north, south, district: this.currentDistrict, metric: this.metric() });
   }
 
   createDefaultImageryProviderViewModels() {

@@ -516,6 +516,8 @@ namespace Headhunter.Database.Migrations
 
                     b.HasIndex("AddressID");
 
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("AddressID"), new[] { "YEAR_OF_BIRTH", "GENDER", "IS_PERM_AV_BALLOT_VOTER", "REGISTRATION_DATE" });
+
                     b.HasIndex("FIRST_NAME");
 
                     b.HasIndex("HAS_MAILING_ADDRESS");

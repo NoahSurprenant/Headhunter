@@ -129,11 +129,13 @@
     <section class="hidden lg:block flex-1 min-w-0 relative">
         <app-cesium [lat]="selected()?.latitude ?? undefined" [lon]="selected()?.longitude ?? undefined" [address]="selected()?.addressId"
                      [selectable]="true" [selectedArea]="area()" (areaSelected)="selectArea($event)"
-                     [districtType]="activeDistrict()?.type" [district]="activeDistrict()?.name" [districtWithin]="activeDistrict()?.within"></app-cesium>
-        @if (!selected() && !area()) {
-            <div class="absolute top-14 left-3 max-w-xs bg-black/60 text-white text-sm px-3 py-1 rounded pointer-events-none">
-                Pick a voter to see where they live, or select an area
-            </div>
-        }
+                     [districtType]="activeDistrict()?.type" [district]="activeDistrict()?.name" [districtWithin]="activeDistrict()?.within">
+            <!-- Under the globe's toolbar and legend (projected into their column), so it never sits on them. -->
+            @if (!selected() && !area()) {
+                <div class="globe-hint max-w-xs bg-black/60 text-white text-sm px-3 py-1 rounded">
+                    Pick a voter to see where they live, or select an area
+                </div>
+            }
+        </app-cesium>
     </section>
 </div>

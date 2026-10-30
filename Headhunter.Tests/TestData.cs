@@ -99,7 +99,8 @@ public static class TestData
         AddVoter(context, AdalineId, maple, "Adaline", "R", "Fakename", ThisYear - 31, "F", new DateTime(2022, 6, 1));
         AddVoter(context, AdaOakId, oak, "Ada", "S", "Placeholder", ThisYear - 50, "F", new DateTime(2018, 3, 9));
         AddVoter(context, BrunoId, oak, "Bruno", "T", "Fakename", ThisYear - 50, "M", new DateTime(2024, 10, 2), permanentAbsentee: true);
-        AddVoter(context, CleoId, datelineEast, "Cleo", "U", "Sample", ThisYear - 70, "X", new DateTime(2020, 1, 15));
+        // Cleo registered recently: the globe's "new registrations" colour has one voter to find (in the date-line box).
+        AddVoter(context, CleoId, datelineEast, "Cleo", "U", "Sample", ThisYear - 70, "X", DateTime.Today.AddMonths(-2));
         AddVoter(context, DanaId, pine, "Dana", "V", "Transplant", ThisYear - 40,
             mailingAddressLineOne: "PO Box 1", mailingAddressLineTwo: "Chicago, IL 60601");
         AddVoter(context, EmersonId, pine, "Emerson", "W", "Transplant", ThisYear - 45,
