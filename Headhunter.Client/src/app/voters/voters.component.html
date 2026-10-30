@@ -83,7 +83,7 @@
 
         <div class="flex-1 min-h-0 overflow-auto">
             @if (activeDistrict(); as d) {
-                <app-district-card [district]="d" class="m-3"></app-district-card>
+                <app-district-card [district]="d" class="block m-3"></app-district-card>
             }
             @if (x.isLoading() && current().results.length === 0) {
                 <p class="p-6 text-gray-500">Searching…</p>
