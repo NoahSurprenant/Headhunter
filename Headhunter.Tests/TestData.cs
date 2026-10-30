@@ -14,6 +14,15 @@ public static class TestData
     public static readonly Guid DatelineEastAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a003");
     public static readonly Guid DatelineWestAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a004");
 
+    // A block of Elm St, Elmville, in a line 11m apart (by latitude) for "walk the street": house numbers
+    // 101-107 in order, so ElmAddressIds[i] is house "10{i+1}", and far enough from Maple/Oak/Meridian to
+    // not collide with the Area/distance tests or the Relatives fixtures (Common sits at 41, -85).
+    public static readonly Guid[] ElmAddressIds = Enumerable.Range(1, 7)
+        .Select(i => Guid.Parse($"00000000-0000-0000-0000-00000000a10{i}"))
+        .ToArray();
+    // Far down the same street (same name/type/city/zip), well outside the default nearby search radius.
+    public static readonly Guid ElmFarAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a199");
+
     public static readonly Guid AdaId = Guid.Parse("00000000-0000-0000-0000-00000000b001");
     public static readonly Guid AdalineId = Guid.Parse("00000000-0000-0000-0000-00000000b002");
     public static readonly Guid AdaOakId = Guid.Parse("00000000-0000-0000-0000-00000000b003");
@@ -85,6 +94,25 @@ public static class TestData
                 20.0m + i * 0.5m, -60.0m - i * 0.3m);
             context.Addresses.Add(noiseAddress);
             AddVoter(context, Guid.Parse($"00000000-0000-0000-00c2-{i:D12}"), noiseAddress, $"Noise{i:D3}", "", "Commonname", ThisYear - 48);
+        }
+
+        // Elm St: houses 101-107, 11m apart, plus a different street nearby (not Elm, so it never shows up
+        // as a "walk the street" neighbor) for the nearby-radius widening test.
+        var elm = ElmAddressIds
+            .Select((id, i) => NewAddress(id, (101 + i).ToString(), "Elm", "St", "Elmville", 45.0m + 0.0001m * i, -86.0m))
+            .ToArray();
+        var elmFar = NewAddress(ElmFarAddressId, "1", "Birch", "St", "Elmville", 45.05m, -86.0m);
+        context.Addresses.AddRange(elm);
+        context.Addresses.Add(elmFar);
+
+        // Voter counts vary (0 to 2) so the nearby list's counts can be checked, not just its order.
+        var elmVoterCounts = new[] { 2, 0, 1, 0, 1, 0, 1 };
+        for (var i = 0; i < elm.Length; i++)
+        {
+            for (var v = 0; v < elmVoterCounts[i]; v++)
+            {
+                AddVoter(context, Guid.Parse($"00000000-0000-0000-0000-00000000c1{i}{v}"), elm[i], "Elm", v.ToString(), "Walker", ThisYear - 40);
+            }
         }
 
         await context.SaveChangesAsync();

@@ -24,6 +24,7 @@ public class Program
             builder.Services.AddControllers();
             builder.Services.Configure<AreaOptions>(builder.Configuration.GetSection("Area"));
             builder.Services.Configure<RelativesOptions>(builder.Configuration.GetSection("Relatives"));
+            builder.Services.Configure<WalkOptions>(builder.Configuration.GetSection("Walk"));
             // The globe's cluster grids (ApiController.Area), counted in entries.
             builder.Services.AddMemoryCache(o => o.SizeLimit = 500);
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

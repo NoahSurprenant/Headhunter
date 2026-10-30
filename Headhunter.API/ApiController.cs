@@ -364,6 +364,130 @@ public class ApiController : ControllerBase
         Longitude = v.Address.Longitude,
     };
 
+    // "Walk the street": the previous and next house on the same block (same street name/type/direction/
+    // city/zip), ordered numerically by STREET_NUMBER, plus the nearest households by straight-line distance.
+    [ProducesResponseType(typeof(WalkDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [HttpGet("Address/{id}/Walk")]
+    public async Task<IActionResult> Walk([FromRoute] Guid id, bool sameSideOnly,
+        [FromServices] IOptions<WalkOptions> options, CancellationToken ct)
+    {
+        var current = await _context.Addresses
+            .Where(a => a.ID == id)
+            .Select(a => new
+            {
+                a.STREET_NUMBER,
+                a.STREET_NAME,
+                a.STREET_TYPE,
+                a.DIRECTION_PREFIX,
+                a.DIRECTION_SUFFIX,
+                a.CITY,
+                a.ZIP_CODE,
+                a.Latitude,
+                a.Longitude,
+            })
+            .FirstOrDefaultAsync(ct);
+        if (current is null)
+            return NotFound();
+
+        // Same block: the STREET_NAME index seeks straight to this street. A single street, even state-wide
+        // under a common name, is small enough to sort by house number in memory.
+        var sameStreet = await _context.Addresses
+            .Where(a => a.STREET_NAME == current.STREET_NAME
+                && a.STREET_TYPE == current.STREET_TYPE
+                && a.DIRECTION_PREFIX == current.DIRECTION_PREFIX
+                && a.DIRECTION_SUFFIX == current.DIRECTION_SUFFIX
+                && a.CITY == current.CITY
+                && a.ZIP_CODE == current.ZIP_CODE)
+            .Select(a => new { a.ID, a.STREET_NUMBER, a.FullStreetAddress })
+            .ToArrayAsync(ct);
+
+        var currentNumber = NumericStreetNumber(current.STREET_NUMBER);
+        var ordered = sameStreet
+            .Select(a => new { a.ID, a.FullStreetAddress, Number = NumericStreetNumber(a.STREET_NUMBER) })
+            // Same side of the street by default (odd/even house numbers), toggled off to see both sides.
+            .Where(a => !sameSideOnly || a.Number % 2 == currentNumber % 2)
+            .OrderBy(a => a.Number)
+            .ThenBy(a => a.ID) // Stable tie-break: duplicate numbers happen (units, apartments).
+            .ToArray();
+
+        var index = Array.FindIndex(ordered, a => a.ID == id);
+        var previous = index > 0 ? new WalkNeighborDto { Id = ordered[index - 1].ID, FullStreetAddress = ordered[index - 1].FullStreetAddress } : null;
+        var next = index >= 0 && index < ordered.Length - 1
+            ? new WalkNeighborDto { Id = ordered[index + 1].ID, FullStreetAddress = ordered[index + 1].FullStreetAddress }
+            : null;
+
+        var o = options.Value;
+        var nearby = current.Latitude is not null && current.Longitude is not null
+            ? await Nearby(id, current.Latitude.Value, current.Longitude.Value, o, ct)
+            : [];
+
+        return Ok(new WalkDto { Previous = previous, Next = next, Nearby = nearby });
+    }
+
+    // Expands a box around the point (seeking IX_Addresses_Latitude_Longitude, same approach as Area) until it
+    // holds enough candidates, then ranks them by actual distance. Only ever re-queries in near-empty areas.
+    private async Task<NearbyAddressDto[]> Nearby(Guid id, decimal latitude, decimal longitude, WalkOptions o, CancellationToken ct)
+    {
+        var degrees = o.InitialDegrees;
+        while (true)
+        {
+            var north = latitude + (decimal)degrees;
+            var south = latitude - (decimal)degrees;
+            var west = longitude - (decimal)degrees;
+            var east = longitude + (decimal)degrees;
+
+            var box = await _context.Addresses
+                .Where(a => a.ID != id && a.Latitude <= north && a.Latitude >= south && a.Longitude <= east && a.Longitude >= west)
+                .Select(a => new
+                {
+                    a.ID,
+                    a.FullStreetAddress,
+                    a.Latitude,
+                    a.Longitude,
+                    VoterCount = a.Voters.Count,
+                })
+                .ToArrayAsync(ct);
+
+            if (box.Length >= o.NearbyCount || degrees >= o.MaxDegrees)
+            {
+                return box
+                    .Select(a => new NearbyAddressDto
+                    {
+                        Id = a.ID,
+                        FullStreetAddress = a.FullStreetAddress,
+                        VoterCount = a.VoterCount,
+                        DistanceMeters = HaversineMeters((double)latitude, (double)longitude, (double)a.Latitude!, (double)a.Longitude!),
+                    })
+                    .OrderBy(a => a.DistanceMeters)
+                    .Take(o.NearbyCount)
+                    .ToArray();
+            }
+            degrees *= 4;
+        }
+    }
+
+    // STREET_NUMBER is text in the source data ("12", "12A", occasionally non-numeric); only the leading
+    // digits are the house number, so a blank or non-numeric value sorts as 0 rather than throwing.
+    private static int NumericStreetNumber(string streetNumber)
+    {
+        var digits = new string(streetNumber.TakeWhile(char.IsDigit).ToArray());
+        return digits.Length > 0 ? int.Parse(digits) : 0;
+    }
+
+    private static double HaversineMeters(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double earthRadiusMeters = 6371000;
+        var dLat = ToRadians(lat2 - lat1);
+        var dLon = ToRadians(lon2 - lon1);
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return earthRadiusMeters * c;
+    }
+
+    private static double ToRadians(double degrees) => degrees * Math.PI / 180;
+
     [HttpPost("Voters")]
     public async Task<PaginationResult<VoterGridDto>> Voters([FromQuery] PaginationFilter filter, [FromBody] SearchFilterDto? dto, CancellationToken ct)
     {
@@ -582,6 +706,39 @@ public class VoterDto
     public required Guid Id { get; set; }
     public required string FirstName { get; set; }
     public required string LastName { get; set; }
+}
+
+/// <summary>"Walk the street": the neighbouring houses and the nearest ones by distance.</summary>
+public class WalkDto
+{
+    public required WalkNeighborDto? Previous { get; set; }
+    public required WalkNeighborDto? Next { get; set; }
+    public required NearbyAddressDto[] Nearby { get; set; }
+}
+
+public class WalkNeighborDto
+{
+    public required Guid Id { get; set; }
+    public required string FullStreetAddress { get; set; }
+}
+
+public class NearbyAddressDto
+{
+    public required Guid Id { get; set; }
+    public required string FullStreetAddress { get; set; }
+    public required int VoterCount { get; set; }
+    public required double DistanceMeters { get; set; }
+}
+
+/// <summary>The walk endpoint's nearby search (configuration section "Walk").</summary>
+public class WalkOptions
+{
+    /// <summary>How many nearby households to return.</summary>
+    public int NearbyCount { get; set; } = 8;
+    /// <summary>Starting box half-size in degrees (~300 m of latitude). Widens by 4x until it has enough.</summary>
+    public double InitialDegrees { get; set; } = 0.003;
+    /// <summary>Gives up widening the box here (~55 km), returning whatever it found.</summary>
+    public double MaxDegrees { get; set; } = 0.5;
 }
 
 public class VoterDetailDto

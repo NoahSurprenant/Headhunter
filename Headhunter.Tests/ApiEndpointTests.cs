@@ -222,6 +222,94 @@ public class ApiEndpointTests
     }
 
     [Test]
+    public async Task Walk_DefaultsToTheSameSideOfTheStreet()
+    {
+        // House 103 (odd): previous and next odd-numbered houses on the block, evens skipped.
+        var walk = await _client.GetFromJsonAsync<WalkDto>($"/Api/Address/{TestData.ElmAddressIds[2]}/Walk?sameSideOnly=true");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(walk!.Previous!.Id, Is.EqualTo(TestData.ElmAddressIds[0])); // 101
+            Assert.That(walk.Previous!.FullStreetAddress, Is.EqualTo("101 Elm St"));
+            Assert.That(walk.Next!.Id, Is.EqualTo(TestData.ElmAddressIds[4])); // 105
+        });
+    }
+
+    [Test]
+    public async Task Walk_SameSideOnlyFalse_IncludesBothSidesOfTheStreet()
+    {
+        var walk = await _client.GetFromJsonAsync<WalkDto>($"/Api/Address/{TestData.ElmAddressIds[2]}/Walk?sameSideOnly=false");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(walk!.Previous!.Id, Is.EqualTo(TestData.ElmAddressIds[1])); // 102
+            Assert.That(walk.Next!.Id, Is.EqualTo(TestData.ElmAddressIds[3])); // 104
+        });
+    }
+
+    [Test]
+    public async Task Walk_FirstAndLastHouseOnTheSideHaveNoNeighborThatWay()
+    {
+        var first = await _client.GetFromJsonAsync<WalkDto>($"/Api/Address/{TestData.ElmAddressIds[0]}/Walk?sameSideOnly=true"); // 101
+        var last = await _client.GetFromJsonAsync<WalkDto>($"/Api/Address/{TestData.ElmAddressIds[6]}/Walk?sameSideOnly=true"); // 107
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(first!.Previous, Is.Null);
+            Assert.That(first.Next!.Id, Is.EqualTo(TestData.ElmAddressIds[2])); // 103
+            Assert.That(last!.Next, Is.Null);
+            Assert.That(last.Previous!.Id, Is.EqualTo(TestData.ElmAddressIds[4])); // 105
+        });
+    }
+
+    [Test]
+    public async Task Walk_UnknownAddressIsNotFound()
+    {
+        using var response = await _client.GetAsync($"/Api/Address/{Guid.NewGuid()}/Walk?sameSideOnly=true");
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+    }
+
+    [Test]
+    public async Task Walk_Nearby_OrdersByDistanceWithVoterCountsAndLimitsToTheConfiguredCount()
+    {
+        // House 101: distances to 102..107 increase monotonically (11m apart in a line), so the nearest 3
+        // are unambiguous: 102, 103, 104, each with its seeded voter count.
+        using var client = new HeadhunterApiFactory("Production")
+            .WithWebHostBuilder(b => b.UseSetting("Walk:NearbyCount", "3"))
+            .CreateClient();
+
+        var walk = await client.GetFromJsonAsync<WalkDto>($"/Api/Address/{TestData.ElmAddressIds[0]}/Walk?sameSideOnly=true");
+
+        Assert.That(walk!.Nearby.Select(n => n.Id), Is.EqualTo(new[]
+        {
+            TestData.ElmAddressIds[1], TestData.ElmAddressIds[2], TestData.ElmAddressIds[3],
+        }));
+        Assert.Multiple(() =>
+        {
+            Assert.That(walk.Nearby.Select(n => n.VoterCount), Is.EqualTo(new[] { 0, 1, 0 }));
+            // Strictly increasing: each house is further from 101 than the last.
+            Assert.That(walk.Nearby[0].DistanceMeters, Is.LessThan(walk.Nearby[1].DistanceMeters));
+            Assert.That(walk.Nearby[1].DistanceMeters, Is.LessThan(walk.Nearby[2].DistanceMeters));
+        });
+    }
+
+    [Test]
+    public async Task Walk_Nearby_WidensTheSearchBoxUntilItHasEnoughOrGivesUp()
+    {
+        // Only 7 houses exist on Elm St; the default NearbyCount (8) can never be met, so the box widens
+        // until it hits Walk:MaxDegrees and returns everything it found, including the far house.
+        var walk = await _client.GetFromJsonAsync<WalkDto>($"/Api/Address/{TestData.ElmAddressIds[0]}/Walk?sameSideOnly=true");
+
+        Assert.That(walk!.Nearby.Select(n => n.Id), Is.EqualTo(new[]
+        {
+            TestData.ElmAddressIds[1], TestData.ElmAddressIds[2], TestData.ElmAddressIds[3],
+            TestData.ElmAddressIds[4], TestData.ElmAddressIds[5], TestData.ElmAddressIds[6],
+            TestData.ElmFarAddressId,
+        }));
+    }
+
+    [Test]
     public async Task Voters_FiltersByLastNameAndPaginates()
     {
         var filter = new SearchFilterDto { LastName = "Fakename" };
