@@ -183,6 +183,9 @@ namespace Headhunter.Database.Migrations
                     b.HasIndex("Latitude", "Longitude")
                         .HasDatabaseName("IX_Addresses_Latitude_Longitude");
 
+                    b.HasIndex("STREET_NAME", "CITY")
+                        .HasDatabaseName("IX_Addresses_STREET_NAME_CITY");
+
                     b.ToTable("Addresses", (string)null);
                 });
 

@@ -1,7 +1,7 @@
 // Synthetic, obviously fake records for unit tests. Never put real voter data here.
 import type { AddressDto } from '../app/cesium/cesium.component';
 import type { PaginationResult } from '../app/paginationResult';
-import type { VoterDetailDto } from '../app/voter/voter.component';
+import type { RelativeDto, VoterDetailDto } from '../app/voter/voter.component';
 import type { VoterDto } from '../app/voters/voters.component';
 
 export function voterDetail(overrides: Partial<VoterDetailDto> = {}): VoterDetailDto {
@@ -52,6 +52,26 @@ export function voterRow(overrides: Partial<VoterDto> = {}): VoterDto {
 
 export function votersPage(results: VoterDto[], totalCount = results.length): PaginationResult<VoterDto> {
   return { totalCount, results };
+}
+
+export function relative(overrides: Partial<RelativeDto> = {}): RelativeDto {
+  return {
+    id: 'voter-0003',
+    firstName: 'Robin',
+    middleName: '',
+    lastName: 'Example',
+    birthYear: 1960,
+    gender: 'M',
+    addressId: 'addr-0002',
+    fullStreetAddress: '456 Nearby Rd',
+    city: 'Testville',
+    state: 'MI',
+    zip: '49999',
+    latitude: 43.01,
+    longitude: -84.51,
+    distanceKm: 1.3,
+    ...overrides,
+  };
 }
 
 export function areaAddress(overrides: Partial<AddressDto> = {}): AddressDto {

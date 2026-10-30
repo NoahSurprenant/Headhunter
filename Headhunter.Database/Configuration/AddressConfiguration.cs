@@ -25,5 +25,10 @@ internal class AddressConfiguration : IEntityTypeConfiguration<Address>
         builder.Property(x => x.STREET_NAME).HasMaxLength(100);
         builder.HasIndex(x => x.FullStreetAddress);
         builder.HasIndex(x => x.STREET_NAME).IncludeProperties(x => x.FullStreetAddress);
+
+        // Possible relatives' "same street, same city" branch (ApiController.Relatives): both columns are an
+        // equality match, so either order seeks equally well - STREET_NAME leads so this index doesn't overlap
+        // with the CITY index above and start competing with CitySuggestions' city-only prefix seek.
+        builder.HasIndex(x => new { x.STREET_NAME, x.CITY }).HasDatabaseName("IX_Addresses_STREET_NAME_CITY");
     }
 }

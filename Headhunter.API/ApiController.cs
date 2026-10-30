@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Headhunter.API.Pagination;
 using Headhunter.Database;
 using Microsoft.AspNetCore.Mvc;
@@ -238,6 +239,129 @@ public class ApiController : ControllerBase
         return Ok(voters);
     }
 
+    // Other voters with the same last name who live on the same street in the same city, or within a few km
+    // as the crow flies, excluding this voter's own household. Closest first, capped.
+    [ProducesResponseType(typeof(RelativeDto[]), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [HttpGet("Voter/{id}/Relatives")]
+    public async Task<IActionResult> Relatives([FromRoute] Guid id, [FromServices] IOptions<RelativesOptions> options, CancellationToken ct)
+    {
+        var o = options.Value;
+        var self = await _context.Voters
+            .Where(v => v.ID == id)
+            .Select(v => new
+            {
+                v.LAST_NAME,
+                v.AddressID,
+                City = v.Address.CITY,
+                StreetName = v.Address.STREET_NAME,
+                Latitude = v.Address.Latitude,
+                Longitude = v.Address.Longitude,
+            })
+            .FirstOrDefaultAsync(ct);
+        if (self is null)
+            return NotFound();
+
+        // A flat box, not a true circle - same approximation Area uses. Good enough at ~2 km, and it lets the
+        // query below seek IX_Addresses_Latitude_Longitude instead of computing a real distance for every row.
+        var hasLocation = self.Latitude is not null && self.Longitude is not null;
+        double lat0 = 0, lon0 = 0, cosLat0 = 1;
+        decimal north = 0, south = 0, east = 0, west = 0;
+        if (hasLocation)
+        {
+            lat0 = (double)self.Latitude!.Value;
+            lon0 = (double)self.Longitude!.Value;
+            // A degree of longitude shrinks toward the poles; clamped so a near-pole address (none in this
+            // data, but cheap to guard) can't blow the box out to an entire latitude band.
+            cosLat0 = Math.Max(Math.Cos(lat0 * Math.PI / 180), 0.01);
+            var latSpan = (decimal)(o.RadiusKm / KmPerDegree);
+            var lonSpan = (decimal)(o.RadiusKm / (KmPerDegree * cosLat0));
+            north = self.Latitude.Value + latSpan;
+            south = self.Latitude.Value - latSpan;
+            east = self.Longitude.Value + lonSpan;
+            west = self.Longitude.Value - lonSpan;
+        }
+
+        // Two queries, each with a single AND-only predicate on Addresses, unioned in memory - rather than one
+        // query ORing "nearby" against "same street" on a joined table, which would force SQL Server to settle
+        // on one plan for both halves. Split like this (same idea as StreetSuggestions' two unioned queries
+        // above), each half seeks its own index (IX_Addresses_Latitude_Longitude, IX_Addresses_STREET_NAME_CITY)
+        // and only then filters by last name, so a common surname can't turn into a scan of every Voters row
+        // with that name - the candidate set is bounded by geography first, not by how common the name is.
+        var byBox = hasLocation
+            ? await _context.Addresses
+                .Where(a => a.Latitude >= south && a.Latitude <= north && a.Longitude >= west && a.Longitude <= east)
+                .SelectMany(a => a.Voters.Where(v => v.LAST_NAME == self.LAST_NAME && v.AddressID != self.AddressID))
+                .Select(RelativeRowProjection)
+                .Take(o.MaxCandidatesPerBranch)
+                .ToArrayAsync(ct)
+            : [];
+
+        var byStreet = await _context.Addresses
+            .Where(a => a.CITY == self.City && a.STREET_NAME == self.StreetName)
+            .SelectMany(a => a.Voters.Where(v => v.LAST_NAME == self.LAST_NAME && v.AddressID != self.AddressID))
+            .Select(RelativeRowProjection)
+            .Take(o.MaxCandidatesPerBranch)
+            .ToArrayAsync(ct);
+
+        var relatives = byBox.Concat(byStreet)
+            .GroupBy(r => r.Id) // a match can satisfy both branches
+            .Select(g => g.First())
+            .Select(r => new RelativeDto
+            {
+                Id = r.Id,
+                FirstName = r.FirstName,
+                MiddleName = r.MiddleName,
+                LastName = r.LastName,
+                BirthYear = r.BirthYear,
+                Gender = r.Gender,
+                AddressId = r.AddressId,
+                FullStreetAddress = r.FullStreetAddress,
+                City = r.City,
+                State = r.State,
+                Zip = r.Zip,
+                Latitude = r.Latitude,
+                Longitude = r.Longitude,
+                DistanceKm = hasLocation && r.Latitude is not null && r.Longitude is not null
+                    ? DistanceKm(lat0, lon0, cosLat0, (double)r.Latitude.Value, (double)r.Longitude.Value)
+                    : null,
+            })
+            .OrderBy(r => r.DistanceKm ?? double.MaxValue)
+            .ThenBy(r => r.FullStreetAddress)
+            .Take(o.MaxResults)
+            .ToArray();
+
+        return Ok(relatives);
+    }
+
+    // Equirectangular approximation (flat, like the box above): plenty accurate at a few km, much cheaper than
+    // a real haversine, and this data (Michigan) is never anywhere that approximation would start to matter.
+    private const double KmPerDegree = 111.32;
+
+    private static double DistanceKm(double lat0, double lon0, double cosLat0, double lat, double lon)
+    {
+        var dLat = (lat - lat0) * KmPerDegree;
+        var dLon = (lon - lon0) * KmPerDegree * cosLat0;
+        return Math.Sqrt(dLat * dLat + dLon * dLon);
+    }
+
+    private static readonly Expression<Func<Voter, RelativeRow>> RelativeRowProjection = v => new RelativeRow
+    {
+        Id = v.ID,
+        FirstName = v.FIRST_NAME,
+        MiddleName = v.MIDDLE_NAME,
+        LastName = v.LAST_NAME,
+        BirthYear = v.YEAR_OF_BIRTH,
+        Gender = v.GENDER,
+        AddressId = v.AddressID,
+        FullStreetAddress = v.Address.FullStreetAddress,
+        City = v.Address.CITY,
+        State = v.Address.STATE,
+        Zip = v.Address.ZIP_CODE,
+        Latitude = v.Address.Latitude,
+        Longitude = v.Address.Longitude,
+    };
+
     [HttpPost("Voters")]
     public async Task<PaginationResult<VoterGridDto>> Voters([FromQuery] PaginationFilter filter, [FromBody] SearchFilterDto? dto, CancellationToken ct)
     {
@@ -474,6 +598,54 @@ public class VoterDetailDto
     public required string City { get; set; }
     public required string State { get; set; }
     public required string Zip { get; set; }
+}
+
+/// <summary>One row of ApiController.Relatives, before it's ranked into a RelativeDto.</summary>
+public class RelativeRow
+{
+    public required Guid Id { get; set; }
+    public required string FirstName { get; set; }
+    public required string MiddleName { get; set; }
+    public required string LastName { get; set; }
+    public required int BirthYear { get; set; }
+    public required string Gender { get; set; }
+    public required Guid AddressId { get; set; }
+    public required string FullStreetAddress { get; set; }
+    public required string City { get; set; }
+    public required string State { get; set; }
+    public required string Zip { get; set; }
+    public decimal? Latitude { get; set; }
+    public decimal? Longitude { get; set; }
+}
+
+public class RelativeDto
+{
+    public required Guid Id { get; set; }
+    public required string FirstName { get; set; }
+    public required string MiddleName { get; set; }
+    public required string LastName { get; set; }
+    public required int BirthYear { get; set; }
+    public required string Gender { get; set; }
+    public required Guid AddressId { get; set; }
+    public required string FullStreetAddress { get; set; }
+    public required string City { get; set; }
+    public required string State { get; set; }
+    public required string Zip { get; set; }
+    public decimal? Latitude { get; set; }
+    public decimal? Longitude { get; set; }
+    /// <summary>Straight-line km from the voter's own address. Null if either address isn't geocoded.</summary>
+    public double? DistanceKm { get; set; }
+}
+
+/// <summary>ApiController.Relatives (configuration section "Relatives").</summary>
+public class RelativesOptions
+{
+    /// <summary>Box half-width around the voter's address in km ("within ~2 km", not by road).</summary>
+    public double RadiusKm { get; set; } = 2.0;
+    /// <summary>Safety cap on each branch before ranking, so a huge street or a packed city block can't blow up the response.</summary>
+    public int MaxCandidatesPerBranch { get; set; } = 500;
+    /// <summary>How many relatives to return, closest first.</summary>
+    public int MaxResults { get; set; } = 20;
 }
 
 public enum BeforeAfter

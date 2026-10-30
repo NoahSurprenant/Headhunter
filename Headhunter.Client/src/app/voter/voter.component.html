@@ -58,6 +58,32 @@
             </ul>
         }
     </div>
+
+    <div class="card mt-6">
+        <h2 class="card-title">Possible relatives</h2>
+        <p class="text-sm text-gray-500 mb-2">Same last name, nearby or on the same street, outside this household.</p>
+        @if (relativesList().length === 0) {
+            <p class="text-gray-500">{{ relatives.isLoading() ? 'Loading…' : 'No matches nearby.' }}</p>
+        } @else {
+            <ul class="divide-y divide-gray-300">
+                @for (r of relativesList(); track r.id) {
+                    <li class="flex items-center justify-between gap-4 py-2">
+                        <a [routerLink]="['/voter', r.id]" class="flex-1 py-1 px-2 -mx-2 rounded hover:bg-white/60">
+                            <span class="block font-semibold text-gray-900">{{ fullName(r) }}</span>
+                            <span class="block text-sm text-gray-600">
+                                about {{ approximateAge(r.birthYear) }}@if (genderLabel(r.gender); as g) {, {{ g }}}
+                                · {{ r.fullStreetAddress }}, {{ r.city }}
+                                @if (r.distanceKm !== null) { · {{ r.distanceKm | number:'1.1-1' }} km away }
+                            </span>
+                        </a>
+                        @if (globeParams(r.latitude, r.longitude, r.addressId); as params) {
+                            <a routerLink="/globe" [queryParams]="params" class="btn-secondary shrink-0" title="Show on globe">Show on globe</a>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+    </div>
 </div>
 } @else if (x.isLoading()) {
     <div class="p-12 text-center text-gray-500">Loading…</div>
