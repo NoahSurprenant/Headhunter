@@ -442,6 +442,11 @@ namespace Headhunter.Database.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("HAS_MAILING_ADDRESS")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bit")
+                        .HasComputedColumnSql("(CASE WHEN [MAILING_ADDRESS_LINE_ONE] <> N'' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END)", true);
+
                     b.Property<bool>("IS_PERM_AV_APP_VOTER")
                         .HasColumnType("bit");
 
@@ -509,6 +514,8 @@ namespace Headhunter.Database.Migrations
                     b.HasIndex("AddressID");
 
                     b.HasIndex("FIRST_NAME");
+
+                    b.HasIndex("HAS_MAILING_ADDRESS");
 
                     b.HasIndex("LAST_NAME");
 

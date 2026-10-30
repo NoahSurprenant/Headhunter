@@ -47,6 +47,9 @@ function voterRow(n: number) {
     zipCode: String(48001 + (address * 11) % 1900),
     latitude: 42.3 + (address % 50) * 0.02,
     longitude: -83.2 - (address % 40) * 0.03,
+    // Every fourth voter's mail goes elsewhere, a third of those out of state
+    hasMailingAddress: n % 4 === 0,
+    mailingAddressOutOfState: n % 12 === 0,
   };
 }
 
@@ -68,6 +71,13 @@ function voterDetail(n: number) {
     zip: row.zipCode,
     latitude: row.latitude,
     longitude: row.longitude,
+    hasMailingAddress: row.hasMailingAddress,
+    mailingAddressOutOfState: row.mailingAddressOutOfState,
+    // Long, like a forwarding address can be: the card wraps it.
+    mailingAddressLines: row.hasMailingAddress
+      ? ['PO Box 123456', 'Synthetic Ridge Country Club Apartments, Unit 1204',
+        row.mailingAddressOutOfState ? 'Chicago, IL 60601-1234' : 'Lansing, MI 48901']
+      : [],
   };
 }
 

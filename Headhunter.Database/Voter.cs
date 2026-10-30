@@ -14,6 +14,9 @@ public class Voter
     public string MAILING_ADDRESS_LINE_THREE { get; set; }
     public string MAILING_ADDRESS_LINE_FOUR { get; set; }
     public string MAILING_ADDRESS_LINE_FIVE { get; set; }
+    // Computed in SQL from MAILING_ADDRESS_LINE_ONE (see VoterConfiguration); never set this directly, EF ignores
+    // writes to a computed column.
+    public bool HAS_MAILING_ADDRESS { get; set; }
     public string VOTER_IDENTIFICATION_NUMBER { get; set; }
     public bool IS_PERM_AV_BALLOT_VOTER { get; set; }
     public string VOTER_STATUS_TYPE_CODE { get; set; }

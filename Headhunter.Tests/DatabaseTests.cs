@@ -70,6 +70,7 @@ public class DatabaseTests
     [TestCase("IX_Addresses_FullStreetAddress")]
     [TestCase("IX_Addresses_STREET_NAME")]
     [TestCase("IX_Voters_YEAR_OF_BIRTH")]
+    [TestCase("IX_Voters_HAS_MAILING_ADDRESS")]
     public async Task SuggestionQuery_SeeksItsIndex(string index)
     {
         await using var context = SqlServerFixture.CreateContext();
@@ -86,6 +87,9 @@ public class DatabaseTests
             // The voter search by birth year, age or star sign.
             "IX_Voters_YEAR_OF_BIRTH" => context.Voters.Where(v => v.YEAR_OF_BIRTH == 1990).Select(v => v.YEAR_OF_BIRTH.ToString()),
             "IX_Addresses_STREET_NAME" => context.Addresses.Where(a => a.STREET_NAME.StartsWith("Meri")).Select(a => a.STREET_NAME),
+            // The "Mailing address differs" filter: seeks the persisted computed column instead of comparing
+            // MAILING_ADDRESS_LINE_ONE (nvarchar(max), not indexable) to '' on every row.
+            "IX_Voters_HAS_MAILING_ADDRESS" => context.Voters.Where(v => v.HAS_MAILING_ADDRESS).Select(v => v.ID.ToString()),
             _ => throw new ArgumentOutOfRangeException(nameof(index)),
         };
         // Same shape as the API's suggestion endpoints.

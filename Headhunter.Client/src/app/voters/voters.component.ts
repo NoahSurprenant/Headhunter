@@ -129,20 +129,34 @@ export class VotersComponent implements OnInit {
     Object.entries(this.filter() ?? {})
       .filter(([, value]) => value !== null && value !== undefined && value !== '')
       .forEach(([key, value]) => query.set(key, String(value)));
+    if (this.mailingAddressDiffers())
+      query.set('mailingAddressDiffers', 'true');
     const q = query.toString();
     return q ? `Api/VotersCsv?${q}` : 'Api/VotersCsv';
   });
+
+  // A query param rather than part of SearchFilterDto's body: it's its own toggle, combinable with whatever's
+  // already in the search form (first name, city, ...), not a replacement for it.
+  mailingAddressDiffers = signal(false);
+
+  onMailingAddressDiffersChange(event: Event): void {
+    this.mailingAddressDiffers.set((event.target as HTMLInputElement).checked);
+    this.x.reload();
+  }
 
   x = resource({
     params: () => ({
       pageSize: this.pageSize(),
       pageNumber: this.pageNumber(),
       filter: this.filter(),
+      mailingAddressDiffers: this.mailingAddressDiffers(),
     }),
     loader: async ({ params, abortSignal }) => {
       const query = new URLSearchParams();
       query.set('pageSize', params.pageSize.toString());
       query.set('pageNumber', params.pageNumber.toString());
+      if (params.mailingAddressDiffers)
+        query.set('mailingAddressDiffers', 'true');
 
       const response = await fetch(`Api/voters?${query}`, {
         method: 'POST',
@@ -189,6 +203,7 @@ export class VotersComponent implements OnInit {
     //this.formGroup.reset();
     this.formGroup = this.newForm();
     this.searchFilter.set(undefined);
+    this.mailingAddressDiffers.set(false);
     // The area too, in the same navigation: two in a row would each merge into the URL as it was.
     this.area.set(undefined);
     this.pageNumber.set(1);
@@ -310,6 +325,10 @@ export interface VoterDto
   zipCode: string,
   latitude: number | null,
   longitude: number | null,
+  /** Mail doesn't go to this voter's residence. */
+  hasMailingAddress: boolean,
+  /** Mail goes somewhere outside `state`, best-effort from the mailing address's last line. */
+  mailingAddressOutOfState: boolean,
 }
 
 export interface SearchFilterForm

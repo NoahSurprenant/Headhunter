@@ -13,6 +13,8 @@ public static class TestData
     public static readonly Guid OakAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a002");
     public static readonly Guid DatelineEastAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a003");
     public static readonly Guid DatelineWestAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a004");
+    // Outside every Area test's box, so voters with a mailing address don't show up there too.
+    public static readonly Guid PineAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a020");
 
     // A block of Elm St, Elmville, in a line 11m apart (by latitude) for "walk the street": house numbers
     // 101-107 in order, so ElmAddressIds[i] is house "10{i+1}", and far enough from Maple/Oak/Meridian to
@@ -28,6 +30,10 @@ public static class TestData
     public static readonly Guid AdaOakId = Guid.Parse("00000000-0000-0000-0000-00000000b003");
     public static readonly Guid BrunoId = Guid.Parse("00000000-0000-0000-0000-00000000b004");
     public static readonly Guid CleoId = Guid.Parse("00000000-0000-0000-0000-00000000b005");
+    // Mail to a PO box out of state - "Lives elsewhere" and "Out of state".
+    public static readonly Guid DanaId = Guid.Parse("00000000-0000-0000-0000-00000000b020");
+    // Mail to a different address, same state - "Lives elsewhere" only.
+    public static readonly Guid EmersonId = Guid.Parse("00000000-0000-0000-0000-00000000b021");
 
     // Possible relatives (ApiController.Relatives): RelativeRef's household (same address, excluded), a match
     // ~1.4 km away on a different street, a match on the same street far away, and a negative control (same
@@ -73,14 +79,20 @@ public static class TestData
         InDistricts(oak, "TESTSHIRE", "CITY OF TESTBURG", "00001", "01", "TESTBURG SCHOOLS", "2ND DISTRICT", "DISTRICT 02");
         InDistricts(datelineEast, "OTHERSHIRE", "TOWNSHIP OF EASTEDGE", "00001", "", "EASTEDGE SCHOOLS", "3RD DISTRICT", "DISTRICT 01");
 
+        var pine = NewAddress(PineAddressId, "300", "Pine", "Ln", "Farview", 20.0m, -90.0m);
+
         context.Addresses.AddRange(maple, oak, datelineEast, datelineWest,
-            relativeRef, relativeNear, relativeStreet, relativeFar, common, commonNear, commonStreet);
+            relativeRef, relativeNear, relativeStreet, relativeFar, common, commonNear, commonStreet, pine);
 
         AddVoter(context, AdaId, maple, "Ada", "Q", "Fakename", ThisYear - 30, "F", new DateTime(2020, 1, 15), permanentAbsentee: true);
         AddVoter(context, AdalineId, maple, "Adaline", "R", "Fakename", ThisYear - 31, "F", new DateTime(2022, 6, 1));
         AddVoter(context, AdaOakId, oak, "Ada", "S", "Placeholder", ThisYear - 50, "F", new DateTime(2018, 3, 9));
         AddVoter(context, BrunoId, oak, "Bruno", "T", "Fakename", ThisYear - 50, "M", new DateTime(2024, 10, 2), permanentAbsentee: true);
         AddVoter(context, CleoId, datelineEast, "Cleo", "U", "Sample", ThisYear - 70, "X", new DateTime(2020, 1, 15));
+        AddVoter(context, DanaId, pine, "Dana", "V", "Transplant", ThisYear - 40,
+            mailingAddressLineOne: "PO Box 1", mailingAddressLineTwo: "Chicago, IL 60601");
+        AddVoter(context, EmersonId, pine, "Emerson", "W", "Transplant", ThisYear - 45,
+            mailingAddressLineOne: "456 Side St", mailingAddressLineTwo: "Lansing, MI 48901");
         AddVoter(context, RelativeRefId, relativeRef, "Kin", "V", "Testkin", ThisYear - 45);
         AddVoter(context, RelativeHouseholdId, relativeRef, "Kin2", "W", "Testkin", ThisYear - 46);
         AddVoter(context, RelativeNearId, relativeNear, "Noor", "X", "Testkin", ThisYear - 40);
@@ -155,8 +167,11 @@ public static class TestData
         address.COUNTY_COMMISSIONER_DISTRICT_NAME = commissioner;
     }
 
+    /// <param name="mailingAddressLineOne">Non-empty makes HAS_MAILING_ADDRESS true ("Lives elsewhere"); its last
+    /// non-empty line (of lines one..two here - tests don't need all five) decides "Out of state".</param>
     private static void AddVoter(HeadhunterContext context, Guid id, Address address, string first, string middle, string last, int birthYear,
-        string gender = "X", DateTime? registered = null, bool permanentAbsentee = false)
+        string gender = "X", DateTime? registered = null, bool permanentAbsentee = false,
+        string mailingAddressLineOne = "", string mailingAddressLineTwo = "")
     {
         // Voters share their primary key with the raw MichiganVoterRecords row they came from.
         var registeredOn = registered ?? new DateTime(2020, 1, 15);
@@ -181,6 +196,8 @@ public static class TestData
         voter.REGISTRATION_DATE = registeredOn;
         voter.IS_PERM_AV_BALLOT_VOTER = permanentAbsentee;
         voter.Address = address;
+        voter.MAILING_ADDRESS_LINE_ONE = mailingAddressLineOne;
+        voter.MAILING_ADDRESS_LINE_TWO = mailingAddressLineTwo;
         context.Voters.Add(voter);
     }
 
