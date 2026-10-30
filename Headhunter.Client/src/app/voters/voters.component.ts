@@ -1,15 +1,16 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, effect, OnInit, resource, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, resource, signal } from '@angular/core';
 import { ButtonComponent } from '../shared/button/button.component';
 import { PaginatorComponent } from '../shared/paginator/paginator.component';
 import { PaginationResult } from '../paginationResult';
-import { RouterModule } from '@angular/router';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { InputComponent } from '../shared/input/input.component';
 import { DropdownComponent } from '../shared/dropdown/dropdown.component';
 import { Observable } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { CesiumComponent } from '../cesium/cesium.component';
+import { AreaBox, boxFromParams, boxParams } from '../cesium/area-selection';
 import { approximateAge, fullName, genderLabel } from '../shared/people/people';
 
 @Component({
@@ -94,11 +95,52 @@ export class VotersComponent implements OnInit {
   pageSize = signal(10);
   pageNumber = signal(1);
 
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
+
+  // The box drawn on the globe (Select area): only voters living inside it. Kept in ?west=&east=&north=&south=
+  // so a reload or a shared link keeps it.
+  area = signal<AreaBox | undefined>(boxFromParams(name => this.route.snapshot.queryParamMap.get(name)));
+
+  selectArea(box: AreaBox | undefined): void {
+    this.area.set(box);
+    this.pageNumber.set(1);
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: boxParams(box),
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  clearArea(): void {
+    this.selectArea(undefined);
+  }
+
+  // What the list shows, as the API's SearchFilterDto: the form's search and the area. Undefined for everyone.
+  private filter = computed(() => {
+    const searchFilter = this.searchFilter();
+    const area = this.area();
+    return searchFilter || area ? { ...searchFilter, ...area } : undefined;
+  });
+
+  // The whole result as CSV (every page, up to the API's Export:MaxRows), for a plain link: the browser streams
+  // the download to disk itself.
+  readonly csvLimit = 50_000;
+  csvUrl = computed(() => {
+    const query = new URLSearchParams();
+    Object.entries(this.filter() ?? {})
+      .filter(([, value]) => value !== null && value !== undefined && value !== '')
+      .forEach(([key, value]) => query.set(key, String(value)));
+    const q = query.toString();
+    return q ? `Api/VotersCsv?${q}` : 'Api/VotersCsv';
+  });
+
   x = resource({
     params: () => ({
       pageSize: this.pageSize(),
       pageNumber: this.pageNumber(),
-      searchFilter: this.searchFilter(),
+      filter: this.filter(),
     }),
     loader: async ({ params, abortSignal }) => {
       const query = new URLSearchParams();
@@ -110,7 +152,7 @@ export class VotersComponent implements OnInit {
         headers: {
           "Content-Type": "application/json",
         },
-        body: params.searchFilter ? JSON.stringify(params.searchFilter) : undefined,
+        body: params.filter ? JSON.stringify(params.filter) : undefined,
         signal: abortSignal,
       });
 
@@ -150,6 +192,9 @@ export class VotersComponent implements OnInit {
       astrology: this.builder.nonNullable.control<string>(''),
     });
     this.searchFilter.set(undefined);
+    if (this.area()) {
+      this.clearArea();
+    }
     this.x.reload();
   }
 

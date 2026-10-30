@@ -356,4 +356,95 @@ public class ApiEndpointTests
             Assert.That(result.Results, Is.Empty);
         });
     }
+
+    // A box drawn on the globe narrows the list to the voters living inside it.
+    [Test]
+    public async Task Voters_FiltersByTheBoxOnTheGlobe()
+    {
+        var filter = new SearchFilterDto { West = -83.6m, East = -83.4m, North = 42.6m, South = 42.4m };
+
+        using var response = await _client.PostAsJsonAsync("/Api/Voters?PageNumber=1&PageSize=10", filter);
+        var result = await response.Content.ReadFromJsonAsync<PaginationResult<VoterGridDto>>();
+
+        Assert.That(result!.Results.Select(v => v.ID), Is.EquivalentTo(new[] { TestData.AdaId, TestData.AdalineId }));
+    }
+
+    [Test]
+    public async Task Voters_BoxCombinesWithTheOtherFilters()
+    {
+        // Oak's box holds Ada Placeholder and Bruno Fakename; only Bruno is a Fakename.
+        var filter = new SearchFilterDto { LastName = "Fakename", West = -84.1m, East = -83.9m, North = 43.1m, South = 42.9m };
+
+        using var response = await _client.PostAsJsonAsync("/Api/Voters?PageNumber=1&PageSize=10", filter);
+        var result = await response.Content.ReadFromJsonAsync<PaginationResult<VoterGridDto>>();
+
+        Assert.That(result!.Results.Select(v => v.ID), Is.EqualTo(new[] { TestData.BrunoId }));
+    }
+
+    [Test]
+    public async Task Voters_BoxCrossingTheDateLine()
+    {
+        // 179 to -179 is two degrees across the date line, not 358 degrees around the world through Michigan.
+        var filter = new SearchFilterDto { West = 179m, East = -179m, North = 11m, South = 9m };
+
+        using var response = await _client.PostAsJsonAsync("/Api/Voters?PageNumber=1&PageSize=10", filter);
+        var result = await response.Content.ReadFromJsonAsync<PaginationResult<VoterGridDto>>();
+
+        Assert.That(result!.Results.Select(v => v.ID), Is.EqualTo(new[] { TestData.CleoId }));
+    }
+
+    [Test]
+    public async Task Voters_PartOfABoxIsIgnored()
+    {
+        var filter = new SearchFilterDto { LastName = "Fakename", West = 179m };
+
+        using var response = await _client.PostAsJsonAsync("/Api/Voters?PageNumber=1&PageSize=10", filter);
+        var result = await response.Content.ReadFromJsonAsync<PaginationResult<VoterGridDto>>();
+
+        Assert.That(result!.TotalCount, Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task VotersCsv_DownloadsEveryMatchingVoter()
+    {
+        using var response = await _client.GetAsync("/Api/VotersCsv?lastName=Fakename");
+        var lines = (await response.Content.ReadAsStringAsync()).Split("\r\n", StringSplitOptions.RemoveEmptyEntries)
+            .SelectMany(l => l.Split('\n', StringSplitOptions.RemoveEmptyEntries)).ToArray();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(response.Content.Headers.ContentType!.MediaType, Is.EqualTo("text/csv"));
+            Assert.That(response.Content.Headers.ContentDisposition!.FileName, Is.EqualTo("voters.csv"));
+            Assert.That(lines, Is.EqualTo(new[]
+            {
+                "Name,Birth Year,Gender,Address,City,Zip,Registration Date",
+                $"Ada Q Fakename,{TestData.ThisYear - 30},X,100 Maple St,Testville,00000,2020-01-15",
+                $"Adaline R Fakename,{TestData.ThisYear - 31},X,100 Maple St,Testville,00000,2020-01-15",
+                $"Bruno T Fakename,{TestData.ThisYear - 50},X,200 Oak Ave,Testburg,00000,2020-01-15",
+            }));
+        });
+    }
+
+    [Test]
+    public async Task VotersCsv_FiltersByABoxAcrossTheDateLine()
+    {
+        var csv = await _client.GetStringAsync("/Api/VotersCsv?west=179&east=-179&north=11&south=9");
+
+        Assert.That(csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1).Select(l => l.Split(',')[0]),
+            Is.EqualTo(new[] { "Cleo U Sample" }));
+    }
+
+    [Test]
+    public async Task VotersCsv_StopsAtExportMaxRows()
+    {
+        using var client = new HeadhunterApiFactory("Production")
+            .WithWebHostBuilder(b => b.UseSetting("Export:MaxRows", "2"))
+            .CreateClient();
+
+        var csv = await client.GetStringAsync("/Api/VotersCsv");
+
+        // The header and two of the five voters.
+        Assert.That(csv.Split('\n', StringSplitOptions.RemoveEmptyEntries), Has.Length.EqualTo(3));
+    }
 }

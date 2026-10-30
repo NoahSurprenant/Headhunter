@@ -1,17 +1,25 @@
-<div id="cesiumContainer">
+<div id="cesiumContainer" [class.drawing]="drawing()">
 </div>
-<button
-  type="button"
-  (click)="copyLink()"
-  class="absolute top-3 left-3 z-10 bg-black/60 hover:bg-black/80 text-white text-sm px-3 py-1.5 rounded cursor-pointer"
->
-  Copy link
-</button>
-@if (copied()) {
-  <div class="absolute top-13 left-3 z-10 bg-black/80 text-white text-xs px-2 py-1 rounded animate-fade-in pointer-events-none">
-    Copied
-  </div>
-}
+<!-- The globe's top-left toolbar: one row of controls, all styled alike. -->
+<div class="globe-toolbar absolute top-3 left-3 z-10 flex items-center gap-2">
+    <button type="button" (click)="copyLink()"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-white/30 bg-black/60 hover:bg-black/80 text-white text-sm font-medium cursor-pointer">
+        Copy link
+    </button>
+    @if (selectable()) {
+        <button type="button" (click)="toggleDrawing()" [attr.aria-pressed]="drawing()"
+            [class]="drawing() ? 'bg-yellow-300 text-gray-900 border-yellow-400' : 'bg-black/60 text-white border-white/30 hover:bg-black/80'"
+            class="area-toggle flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm font-medium cursor-pointer">
+            <svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2" aria-hidden="true">
+                <rect x="2" y="3" width="12" height="10" rx="1"/>
+            </svg>
+            {{ drawing() ? 'Drag on the globe…' : 'Select area' }}
+        </button>
+    }
+    @if (copied()) {
+        <span class="bg-black/80 text-white text-xs px-2 py-1 rounded animate-fade-in pointer-events-none">Copied</span>
+    }
+</div>
 @if (selectedEntity(); as entity) {
     <app-custom-info-box
     #customInfoBox

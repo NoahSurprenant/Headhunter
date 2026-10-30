@@ -1,6 +1,6 @@
 :host {
   display: block;
-  position: relative;
+  position: relative; /* for the top-left toolbar */
   background-color: #000;
   width: 100%;
   height: 100%;
@@ -14,4 +14,8 @@
   height: 100%;
   margin: 0;
   padding: 0;
+}
+
+#cesiumContainer.drawing {
+  cursor: crosshair;
 }
