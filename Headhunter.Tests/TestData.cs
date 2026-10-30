@@ -67,14 +67,20 @@ public static class TestData
         var commonNear = NewAddress(CommonNearAddressId, "20", "Cedar", "Ln", "Fernwood", 41.010000000001m, -85.010000000001m);
         var commonStreet = NewAddress(CommonStreetAddressId, "30", "Elm", "Dr", "Groveport", 5.0m, 5.0m);
 
+        // Districts. Both Maple and Oak are precinct 00001 and ward 01, of different jurisdictions, and Maple and Eastedge
+        // are commissioner district 01 of different counties: those are only unique within their jurisdiction or county.
+        InDistricts(maple, "TESTSHIRE", "CITY OF TESTVILLE", "00001", "01", "TESTVILLE SCHOOLS", "1ST DISTRICT", "DISTRICT 01");
+        InDistricts(oak, "TESTSHIRE", "CITY OF TESTBURG", "00001", "01", "TESTBURG SCHOOLS", "2ND DISTRICT", "DISTRICT 02");
+        InDistricts(datelineEast, "OTHERSHIRE", "TOWNSHIP OF EASTEDGE", "00001", "", "EASTEDGE SCHOOLS", "3RD DISTRICT", "DISTRICT 01");
+
         context.Addresses.AddRange(maple, oak, datelineEast, datelineWest,
             relativeRef, relativeNear, relativeStreet, relativeFar, common, commonNear, commonStreet);
 
-        AddVoter(context, AdaId, maple, "Ada", "Q", "Fakename", ThisYear - 30);
-        AddVoter(context, AdalineId, maple, "Adaline", "R", "Fakename", ThisYear - 31);
-        AddVoter(context, AdaOakId, oak, "Ada", "S", "Placeholder", ThisYear - 50);
-        AddVoter(context, BrunoId, oak, "Bruno", "T", "Fakename", ThisYear - 50);
-        AddVoter(context, CleoId, datelineEast, "Cleo", "U", "Sample", ThisYear - 70);
+        AddVoter(context, AdaId, maple, "Ada", "Q", "Fakename", ThisYear - 30, "F", new DateTime(2020, 1, 15), permanentAbsentee: true);
+        AddVoter(context, AdalineId, maple, "Adaline", "R", "Fakename", ThisYear - 31, "F", new DateTime(2022, 6, 1));
+        AddVoter(context, AdaOakId, oak, "Ada", "S", "Placeholder", ThisYear - 50, "F", new DateTime(2018, 3, 9));
+        AddVoter(context, BrunoId, oak, "Bruno", "T", "Fakename", ThisYear - 50, "M", new DateTime(2024, 10, 2), permanentAbsentee: true);
+        AddVoter(context, CleoId, datelineEast, "Cleo", "U", "Sample", ThisYear - 70, "X", new DateTime(2020, 1, 15));
         AddVoter(context, RelativeRefId, relativeRef, "Kin", "V", "Testkin", ThisYear - 45);
         AddVoter(context, RelativeHouseholdId, relativeRef, "Kin2", "W", "Testkin", ThisYear - 46);
         AddVoter(context, RelativeNearId, relativeNear, "Noor", "X", "Testkin", ThisYear - 40);
@@ -135,16 +141,32 @@ public static class TestData
         return address;
     }
 
-    private static void AddVoter(HeadhunterContext context, Guid id, Address address, string first, string middle, string last, int birthYear)
+    private static void InDistricts(Address address, string county, string jurisdiction, string precinct, string ward,
+        string school, string stateHouse, string commissioner)
+    {
+        address.COUNTY_NAME = county;
+        address.JURISDICTION_NAME = jurisdiction;
+        address.PRECINCT = precinct;
+        address.WARD = ward;
+        address.SCHOOL_DISTRICT_NAME = school;
+        address.STATE_HOUSE_DISTRICT_NAME = stateHouse;
+        address.STATE_SENATE_DISTRICT_NAME = "1ST DISTRICT";
+        address.US_CONGRESS_DISTRICT_NAME = "1ST DISTRICT";
+        address.COUNTY_COMMISSIONER_DISTRICT_NAME = commissioner;
+    }
+
+    private static void AddVoter(HeadhunterContext context, Guid id, Address address, string first, string middle, string last, int birthYear,
+        string gender = "X", DateTime? registered = null, bool permanentAbsentee = false)
     {
         // Voters share their primary key with the raw MichiganVoterRecords row they came from.
+        var registeredOn = registered ?? new DateTime(2020, 1, 15);
         var record = Blank<MichiganVoterRecord>();
         record.ID = id;
         record.FIRST_NAME = first;
         record.MIDDLE_NAME = middle;
         record.LAST_NAME = last;
         record.YEAR_OF_BIRTH = birthYear;
-        record.REGISTRATION_DATE = new DateTime(2020, 1, 15);
+        record.REGISTRATION_DATE = registeredOn;
         record.CITY = address.CITY;
         record.STATE = address.STATE;
         context.MichiganVoterRecords.Add(record);
@@ -155,8 +177,9 @@ public static class TestData
         voter.MIDDLE_NAME = middle;
         voter.LAST_NAME = last;
         voter.YEAR_OF_BIRTH = birthYear;
-        voter.GENDER = "X";
-        voter.REGISTRATION_DATE = new DateTime(2020, 1, 15);
+        voter.GENDER = gender;
+        voter.REGISTRATION_DATE = registeredOn;
+        voter.IS_PERM_AV_BALLOT_VOTER = permanentAbsentee;
         voter.Address = address;
         context.Voters.Add(voter);
     }

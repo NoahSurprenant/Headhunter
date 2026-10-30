@@ -21,6 +21,7 @@ export function createFakeCesium() {
     get values() { return [...this.byId.values()]; }
     getById(id: string) { return this.byId.get(id); }
     removeById(id: string) { return this.byId.delete(id); }
+    removeAll = vi.fn(() => this.byId.clear());
     add = vi.fn((entity: Record<string, unknown>) => {
       this.byId.set(entity['id'] as string, entity);
       return entity;
@@ -102,6 +103,7 @@ export function createFakeCesium() {
       Color: {
         AQUA: 'AQUA', WHITE: 'WHITE', YELLOW: { name: 'YELLOW', withAlpha: (a: number) => `YELLOW@${a}` },
         ORANGE: { withAlpha: (a: number) => `ORANGE@${a}` },
+        GOLD: { toString: () => 'GOLD', withAlpha: (a: number) => `GOLD@${a}` },
       },
       LabelStyle: { FILL_AND_OUTLINE: 'FILL_AND_OUTLINE' },
       VerticalOrigin: { TOP: 'TOP', CENTER: 'CENTER' },

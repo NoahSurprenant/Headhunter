@@ -94,12 +94,18 @@ public class ApiController : ControllerBase
     // else the box split into a grid with each cell's address count and centre, so a zoomed-out view shows where
     // people are instead of an arbitrary sample. Unsorted on purpose: sorting the matches (it used to be by ID) made
     // SQL Server walk all 4M addresses in that order instead of seeking IX_Addresses_Latitude_Longitude.
+    // With a district (districtType, district and, for precincts, wards and commissioner districts, districtWithin), only
+    // its addresses: the globe highlighting one.
     [HttpGet("Area")]
     public async Task<AreaDto> Area(decimal west, decimal east, decimal north, decimal south,
-        [FromServices] IOptions<AreaOptions> options, [FromServices] IMemoryCache cache, CancellationToken ct)
+        [FromServices] IOptions<AreaOptions> options, [FromServices] IMemoryCache cache, CancellationToken ct,
+        DistrictType? districtType = null, string district = "", string districtWithin = "")
     {
         var o = options.Value;
-        var inBox = _context.Addresses.Where(x => x.Latitude <= north && x.Latitude >= south);
+        var source = districtType is { } type && district != ""
+            ? _context.Addresses.InDistrict(type, district, districtWithin)
+            : _context.Addresses;
+        var inBox = source.Where(x => x.Latitude <= north && x.Latitude >= south);
         inBox = west > east // The box crosses the date line.
             ? inBox.Where(x => x.Longitude <= east || x.Longitude >= west)
             : inBox.Where(x => x.Longitude <= east && x.Longitude >= west);
@@ -133,7 +139,7 @@ public class ApiController : ControllerBase
 
         // The same view asks again on every pan back to it, and the data only changes on import: the whole state
         // takes seconds to group (every address), so grids are kept for a while.
-        var key = (west, east, north, south, o.GridCells);
+        var key = (west, east, north, south, o.GridCells, districtType, district, districtWithin);
         var clusters = await cache.GetOrCreateAsync(key, entry =>
         {
             entry.Size = 1;
@@ -522,6 +528,11 @@ public class ApiController : ControllerBase
 
             if (dto.City != string.Empty)
                 x = x.Where(x => x.Address.CITY == dto.City);
+            if (dto.DistrictType is { } districtType && dto.District != string.Empty)
+            {
+                var inDistrict = _context.Addresses.InDistrict(districtType, dto.District, dto.DistrictWithin).Select(a => a.ID);
+                x = x.Where(x => inDistrict.Contains(x.AddressID));
+            }
             if (dto.BirthYear is not null)
                 x = x.Where(x => x.YEAR_OF_BIRTH == dto.BirthYear);
 
@@ -693,6 +704,11 @@ public class SearchFilterDto
     public decimal? East { get; set; }
     public decimal? North { get; set; }
     public decimal? South { get; set; }
+    /// <summary>With <see cref="District"/> (and <see cref="DistrictWithin"/> for precincts, wards and commissioner
+    /// districts): only voters living in it.</summary>
+    public DistrictType? DistrictType { get; set; }
+    public string District { get; set; } = "";
+    public string DistrictWithin { get; set; } = "";
 }
 
 public class VoterGridDto

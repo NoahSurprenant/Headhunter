@@ -4,7 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { API_UNAVAILABLE, stubFetch } from '../../testing/fetch-stub';
-import { voterRow, votersPage } from '../../testing/synthetic-data';
+import { districtStats, voterRow, votersPage } from '../../testing/synthetic-data';
 import { VotersComponent } from './voters.component';
 
 // The page embeds the globe; Cesium itself needs WebGL, which jsdom has not. The shared fake (one per worker).
@@ -88,6 +88,9 @@ describe('VotersComponent', () => {
       birthYear: 1990,
       age: null,
       astrology: 'Leo',
+      districtType: null,
+      district: '',
+      districtWithin: '',
     });
   });
 
@@ -269,6 +272,129 @@ describe('VotersComponent', () => {
       // Empty fields are left out; the API treats them as no filter.
       expect(link().getAttribute('href'))
         .toBe('Api/VotersCsv?lastName=Example&astrology=Leo&west=179&east=-179&north=11&south=9');
+    });
+  });
+
+  describe('district filter', () => {
+    // The voters list, and the district card's stats.
+    const respond = (url: string) => (url.startsWith('api/district?') ? districtStats() : page);
+    const body = (fetchMock: ReturnType<typeof stubFetch>) =>
+      JSON.parse(fetchMock.mock.calls.filter(c => String(c[0]).startsWith('Api/voters')).at(-1)![1]!.body as string);
+
+    it('searches a precinct within its jurisdiction, alongside the other filters, and keeps it in the URL', async () => {
+      const fetchMock = stubFetch(respond);
+      const { fixture, component, el } = await render();
+
+      component.formGroup.patchValue({ lastName: 'Example', districtType: 'Precinct', district: '00012', districtWithin: 'CITY OF TESTVILLE' });
+      component.onSubmit();
+      await settle(fixture);
+
+      expect(body(fetchMock)).toEqual(expect.objectContaining({
+        lastName: 'Example', districtType: 'Precinct', district: '00012', districtWithin: 'CITY OF TESTVILLE',
+      }));
+      expect(TestBed.inject(Router).url).toBe('/?lastName=Example&districtType=Precinct&district=00012&districtWithin=CITY%20OF%20TESTVILLE');
+      expect(component.activeDistrict()).toEqual({ type: 'Precinct', name: '00012', within: 'CITY OF TESTVILLE' });
+      expect(el.querySelector('app-district-card')!.textContent).toContain('1,240');
+    });
+
+    it('drops the jurisdiction for a district that needs none', async () => {
+      const fetchMock = stubFetch(respond);
+      const { fixture, component } = await render();
+
+      component.formGroup.patchValue({ districtType: 'County', district: 'TESTSHIRE', districtWithin: 'leftover' });
+      component.onSubmit();
+      await settle(fixture);
+
+      expect(body(fetchMock)).toEqual(expect.objectContaining({ districtType: 'County', district: 'TESTSHIRE', districtWithin: '' }));
+      expect(TestBed.inject(Router).url).toBe('/?districtType=County&district=TESTSHIRE');
+    });
+
+    it('shows no card while the district is incomplete, and clears the URL with Clear All', async () => {
+      stubFetch(respond);
+      const { fixture, component, el } = await render();
+
+      component.formGroup.patchValue({ districtType: 'Ward', district: '01' });
+      component.onSubmit();
+      await settle(fixture);
+      expect(component.activeDistrict()).toBeUndefined();
+      expect(el.querySelector('app-district-card')).toBeNull();
+
+      component.clearAll();
+      await settle(fixture);
+      expect(TestBed.inject(Router).url).toBe('/');
+    });
+
+    it('restores the search from the URL', async () => {
+      const fetchMock = stubFetch(respond);
+      TestBed.inject(Router).resetConfig([{ path: 'voters', component: VotersComponent }]);
+      const harness = await RouterTestingHarness.create('/voters?firstName=Alex&birthYear=1990&districtType=StateHouse&district=1ST%20DISTRICT');
+      await harness.fixture.whenStable();
+      const component = harness.routeDebugElement!.componentInstance as VotersComponent;
+
+      expect(component.formGroup.getRawValue()).toEqual(expect.objectContaining({ firstName: 'Alex', districtType: 'StateHouse', district: '1ST DISTRICT' }));
+      expect(body(fetchMock)).toEqual(expect.objectContaining({ firstName: 'Alex', birthYear: 1990, districtType: 'StateHouse', district: '1ST DISTRICT' }));
+      expect(harness.routeNativeElement!.querySelector('app-district-card')).not.toBeNull();
+    });
+
+    it('offers a jurisdiction (or county) field only for the districts numbered within one', async () => {
+      stubFetch(() => page);
+      const { fixture, component, el } = await render();
+      const select = el.querySelector('select#districtType') as HTMLSelectElement;
+      expect(Array.from(select.options).map(o => o.textContent!.trim())).toContain('School district');
+
+      expect(el.querySelector('x-input[formcontrolname="district"]')).toBeNull();
+      select.value = 'Ward';
+      select.dispatchEvent(new Event('change'));
+      await settle(fixture);
+      expect(component.districtWithin()).toBe('Jurisdiction');
+      expect(el.querySelector('x-input[formcontrolname="districtWithin"]')).not.toBeNull();
+      expect(el.querySelector('x-input[formcontrolname="district"]')).not.toBeNull();
+
+      component.formGroup.patchValue({ district: '01', districtWithin: 'CITY OF TESTVILLE' });
+      select.value = 'StateSenate';
+      select.dispatchEvent(new Event('change'));
+      await settle(fixture);
+      // A new type starts the district over.
+      expect(component.formGroup.getRawValue()).toEqual(expect.objectContaining({ districtType: 'StateSenate', district: '', districtWithin: '' }));
+      expect(el.querySelector('x-input[formcontrolname="districtWithin"]')).toBeNull();
+    });
+
+    it('suggests district names of the picked type, in the picked jurisdiction or county', async () => {
+      stubFetch(() => page);
+      const { component } = await render();
+      const http = TestBed.inject(HttpTestingController);
+
+      component.formGroup.patchValue({ districtType: 'CountyCommissioner', districtWithin: 'TESTSHIRE' });
+      component.districtSuggestions('DIS').subscribe();
+      let req = http.expectOne(r => r.url === '/api/districtSuggestions');
+      expect(req.request.params.get('type')).toBe('CountyCommissioner');
+      expect(req.request.params.get('query')).toBe('DIS');
+      expect(req.request.params.get('within')).toBe('TESTSHIRE');
+      req.flush(['DISTRICT 01']);
+
+      component.districtWithinSuggestions('TEST').subscribe();
+      req = http.expectOne(r => r.url === '/api/districtSuggestions');
+      expect(req.request.params.get('type')).toBe('County');
+      expect(req.request.params.get('query')).toBe('TEST');
+      req.flush(['TESTSHIRE']);
+
+      component.formGroup.patchValue({ districtType: 'Precinct' });
+      component.districtWithinSuggestions('CITY').subscribe();
+      http.expectOne(r => r.url === '/api/districtSuggestions' && r.params.get('type') === 'Jurisdiction').flush([]);
+      http.verify();
+    });
+
+    it('shows the district on the globe beside the list', async () => {
+      stubFetch(respond);
+      const { fixture, component } = await render();
+      const http = TestBed.inject(HttpTestingController);
+
+      component.formGroup.patchValue({ districtType: 'County', district: 'TESTSHIRE' });
+      component.onSubmit();
+      await settle(fixture);
+
+      const req = http.expectOne(r => r.url === 'api/districtExtent');
+      expect(req.request.params.get('name')).toBe('TESTSHIRE');
     });
   });
 });

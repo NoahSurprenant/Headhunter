@@ -43,11 +43,13 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("COUNTY_COMMISSIONER_DISTRICT_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("COUNTY_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("DIRECTION_PREFIX")
                         .IsRequired()
@@ -72,7 +74,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("JURISDICTION_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<decimal?>("Latitude")
                         .HasPrecision(15, 12)
@@ -87,7 +90,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("PRECINCT")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("SCHOOL_DISTRICT_CODE")
                         .IsRequired()
@@ -95,7 +99,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("SCHOOL_DISTRICT_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("SCHOOL_PRECINCT")
                         .IsRequired()
@@ -111,7 +116,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("STATE_HOUSE_DISTRICT_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("STATE_SENATE_DISTRICT_CODE")
                         .IsRequired()
@@ -119,7 +125,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("STATE_SENATE_DISTRICT_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("STREET_NAME")
                         .IsRequired()
@@ -148,7 +155,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("US_CONGRESS_DISTRICT_NAME")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("VILLAGE_DISTRICT_CODE")
                         .IsRequired()
@@ -164,7 +172,8 @@ namespace Headhunter.Database.Migrations
 
                     b.Property<string>("WARD")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("ZIP_CODE")
                         .IsRequired()
@@ -176,9 +185,37 @@ namespace Headhunter.Database.Migrations
 
                     b.HasIndex("FullStreetAddress");
 
+                    b.HasIndex("SCHOOL_DISTRICT_NAME");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("SCHOOL_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
+
+                    b.HasIndex("STATE_HOUSE_DISTRICT_NAME");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("STATE_HOUSE_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
+
+                    b.HasIndex("STATE_SENATE_DISTRICT_NAME");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("STATE_SENATE_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
+
                     b.HasIndex("STREET_NAME");
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("STREET_NAME"), new[] { "FullStreetAddress" });
+
+                    b.HasIndex("US_CONGRESS_DISTRICT_NAME");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("US_CONGRESS_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
+
+                    b.HasIndex("COUNTY_NAME", "COUNTY_COMMISSIONER_DISTRICT_NAME");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("COUNTY_NAME", "COUNTY_COMMISSIONER_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
+
+                    b.HasIndex("JURISDICTION_NAME", "PRECINCT");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("JURISDICTION_NAME", "PRECINCT"), new[] { "Latitude", "Longitude" });
+
+                    b.HasIndex("JURISDICTION_NAME", "WARD");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("JURISDICTION_NAME", "WARD"), new[] { "Latitude", "Longitude" });
 
                     b.HasIndex("Latitude", "Longitude")
                         .HasDatabaseName("IX_Addresses_Latitude_Longitude");

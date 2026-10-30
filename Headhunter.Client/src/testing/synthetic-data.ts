@@ -1,5 +1,6 @@
 // Synthetic, obviously fake records for unit tests. Never put real voter data here.
 import type { AddressDto } from '../app/cesium/cesium.component';
+import type { DistrictStatsDto } from '../app/districts/districts';
 import type { PaginationResult } from '../app/paginationResult';
 import type { RelativeDto, VoterDetailDto } from '../app/voter/voter.component';
 import type { VoterDto } from '../app/voters/voters.component';
@@ -88,6 +89,33 @@ export function areaAddress(overrides: Partial<AddressDto> = {}): AddressDto {
       { id: 'voter-0001', firstName: 'Alex', lastName: 'Example' },
       { id: 'voter-0002', firstName: 'Jordan', lastName: 'Sample' },
     ],
+    ...overrides,
+  };
+}
+
+export function districtStats(overrides: Partial<DistrictStatsDto> = {}): DistrictStatsDto {
+  return {
+    type: 'Precinct',
+    name: '00012',
+    within: 'CITY OF TESTVILLE',
+    voters: 1240,
+    households: 610,
+    ages: [
+      { label: 'Under 25', count: 120 },
+      { label: '25–34', count: 240 },
+      { label: '35–44', count: 200 },
+      { label: '45–54', count: 180 },
+      { label: '55–64', count: 220 },
+      { label: '65–74', count: 160 },
+      { label: '75+', count: 120 },
+    ],
+    genders: [{ gender: 'F', count: 651 }, { gender: 'M', count: 589 }],
+    permanentAbsenteePercent: 37.5,
+    newestRegistrations: [
+      { id: 'voter-2001', firstName: 'Alex', middleName: '', lastName: 'Example', registrationDate: '2026-09-30T00:00:00' },
+      { id: 'voter-2002', firstName: 'Jordan', middleName: 'Q', lastName: 'Sample', registrationDate: '2026-08-12T00:00:00' },
+    ],
+    extent: { west: -84.6, east: -84.5, south: 42.7, north: 42.8 },
     ...overrides,
   };
 }
