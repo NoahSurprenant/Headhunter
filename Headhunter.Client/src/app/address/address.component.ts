@@ -3,7 +3,8 @@ import { DatePipe } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { VoterDetailDto } from '../voter/voter.component';
 import { MapPreviewComponent } from '../shared/map-preview/map-preview.component';
-import { approximateAge, formatDistance, fullName, genderLabel, globeParams, initials } from '../shared/people/people';
+import { RegistrationTimelineComponent } from '../shared/registration-timeline/registration-timeline.component';
+import { approximateAge, formatDistance, fullName, genderLabel, globeParams, initials, registrationDateOrNull } from '../shared/people/people';
 
 /** One neighbouring house: enough to link to it. */
 export interface WalkNeighborDto {
@@ -32,6 +33,7 @@ export interface WalkDto {
     DatePipe,
     RouterLink,
     MapPreviewComponent,
+    RegistrationTimelineComponent,
   ],
   templateUrl: './address.component.html',
   styleUrl: './address.component.css',
@@ -111,4 +113,5 @@ export class AddressComponent {
   protected readonly genderLabel = genderLabel;
   protected readonly approximateAge = approximateAge;
   protected readonly formatDistance = formatDistance;
+  protected readonly registrationDateOrNull = registrationDateOrNull;
 }

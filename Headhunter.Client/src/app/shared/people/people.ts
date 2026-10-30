@@ -18,6 +18,33 @@ export function fullName(p: { firstName: string; middleName?: string | null; las
   return [p.firstName, p.middleName, p.lastName].filter(x => !!x).join(' ');
 }
 
+/**
+ * Voter files sometimes carry 1900-01-01 (or earlier) as a "we don't actually know" placeholder for a date
+ * field rather than leaving it null. Anything on or before that, unparseable, or in the future isn't a real
+ * registration date.
+ */
+const EARLIEST_PLAUSIBLE_REGISTRATION = new Date(1900, 0, 1);
+
+/** The registration date as a real `Date`, or `null` if it's missing, unparseable, or a known placeholder. */
+export function registrationDateOrNull(value: string | null | undefined, now = new Date()): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  if (date <= EARLIEST_PLAUSIBLE_REGISTRATION || date > now) return null;
+  return date;
+}
+
+/** "3 years ago" / "1 year ago", or `null` if the registration date is missing/unknown (see registrationDateOrNull). */
+export function yearsAgoLabel(value: string | null | undefined, now = new Date()): string | null {
+  const date = registrationDateOrNull(value, now);
+  if (!date) return null;
+  let years = now.getFullYear() - date.getFullYear();
+  const anniversary = new Date(now.getFullYear(), date.getMonth(), date.getDate());
+  if (now < anniversary) years--;
+  years = Math.max(0, years);
+  return years === 0 ? 'less than a year ago' : `${years} year${years === 1 ? '' : 's'} ago`;
+}
+
 export function initials(p: { firstName: string; lastName: string }): string {
   return (p.firstName?.[0] ?? '') + (p.lastName?.[0] ?? '');
 }

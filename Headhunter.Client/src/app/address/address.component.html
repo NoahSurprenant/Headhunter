@@ -63,6 +63,14 @@
             </ul>
         </div>
 
+        @if (voters().length > 1) {
+            <div class="card mb-6">
+                <h2 class="card-title">Registration timeline</h2>
+                <p class="text-sm text-gray-600 mb-2">Who moved in when, earliest registration to latest.</p>
+                <app-registration-timeline [voters]="voters()"></app-registration-timeline>
+            </div>
+        }
+
         <div class="card">
             <h2 class="card-title">Voters</h2>
             <ul class="divide-y divide-gray-300">
@@ -75,7 +83,12 @@
                             <span class="flex-1">
                                 <span class="block font-semibold text-gray-900">{{ fullName(v) }}</span>
                                 <span class="block text-sm text-gray-600">
-                                    About {{ approximateAge(v.birthYear) }}@if (genderLabel(v.gender); as g) {, {{ g }}} · registered {{ v.registrationDate | date:'mediumDate' }}
+                                    About {{ approximateAge(v.birthYear) }}@if (genderLabel(v.gender); as g) {, {{ g }}} ·
+                                    @if (registrationDateOrNull(v.registrationDate); as d) {
+                                        registered {{ v.registrationDate | date:'mediumDate' }}
+                                    } @else {
+                                        registration date unknown
+                                    }
                                 </span>
                             </span>
                         </a>

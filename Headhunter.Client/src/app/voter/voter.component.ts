@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, resource } from '@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MapPreviewComponent } from '../shared/map-preview/map-preview.component';
-import { approximateAge, fullName, genderLabel, globeParams, initials } from '../shared/people/people';
+import { approximateAge, fullName, genderLabel, globeParams, initials, yearsAgoLabel } from '../shared/people/people';
 
 @Component({
   selector: 'app-voter',
@@ -72,6 +72,7 @@ export class VoterComponent {
   protected readonly genderLabel = genderLabel;
   protected readonly approximateAge = approximateAge;
   protected readonly globeParams = globeParams;
+  protected readonly yearsAgoLabel = yearsAgoLabel;
 }
 
 export interface VoterDetailDto {

@@ -88,4 +88,28 @@ describe('VoterComponent', () => {
     expect(el.querySelector('h1')!.textContent).toBe('Voter');
     expect(el.textContent).toContain('No Voter Loaded');
   });
+
+  it('shows how long ago the voter registered alongside the date', async () => {
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    stubFetch(url =>
+      String(url).startsWith('api/address/')
+        ? [voterDetail({ id: 'voter-0001' })]
+        : voterDetail({ id: 'voter-0001', registrationDate: twoYearsAgo.toISOString() }),
+    );
+    const el = await render('voter-0001');
+
+    expect(el.textContent).toContain('2 years ago');
+  });
+
+  it('shows "Registration date unknown" instead of a 1900-01-01 placeholder', async () => {
+    stubFetch(url =>
+      String(url).startsWith('api/address/')
+        ? [voterDetail({ id: 'voter-0001' })]
+        : voterDetail({ id: 'voter-0001', registrationDate: '1900-01-01T00:00:00' }),
+    );
+    const el = await render('voter-0001');
+
+    expect(el.textContent).toContain('Registration date unknown');
+  });
 });
