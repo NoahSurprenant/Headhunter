@@ -1,5 +1,17 @@
 <div id="cesiumContainer">
 </div>
+<button
+  type="button"
+  (click)="copyLink()"
+  class="absolute top-3 left-3 z-10 bg-black/60 hover:bg-black/80 text-white text-sm px-3 py-1.5 rounded cursor-pointer"
+>
+  Copy link
+</button>
+@if (copied()) {
+  <div class="absolute top-13 left-3 z-10 bg-black/80 text-white text-xs px-2 py-1 rounded animate-fade-in pointer-events-none">
+    Copied
+  </div>
+}
 @if (selectedEntity(); as entity) {
     <app-custom-info-box
     #customInfoBox

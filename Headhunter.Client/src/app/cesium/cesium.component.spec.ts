@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
 import { fakeCesium, resetFakeCesium } from '../../testing/fake-cesium';
 import { areaAddress } from '../../testing/synthetic-data';
 import type { AddressDto } from './cesium.component';
@@ -20,6 +21,7 @@ const area = (addresses: AddressDto[] = [], clusters: ClusterDto[] = []) => ({ a
 
 describe('CesiumComponent', () => {
   let http: HttpTestingController;
+  let navigate: ReturnType<typeof vi.spyOn>;
 
   beforeAll(async () => {
     ({ CesiumComponent } = await import('./cesium.component'));
@@ -30,9 +32,12 @@ describe('CesiumComponent', () => {
     cesium.state.rectangle = { west: rad(-85), south: rad(42), east: rad(-84), north: rad(43) };
     TestBed.configureTestingModule({
       imports: [CesiumComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     http = TestBed.inject(HttpTestingController);
+    // persistViewToUrl calls this on every camera stop; stub it so tests don't perform a real
+    // navigation, and so they can assert on what it was asked to do.
+    navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
   });
 
   afterEach(() => http.verify());
@@ -269,6 +274,105 @@ describe('CesiumComponent', () => {
     await fixture.whenStable();
 
     expect(viewer.camera.flyTo).toHaveBeenCalledWith(expect.objectContaining({ destination: { lon: -83.5, lat: 42.5, height: 350 } }));
+  });
+
+  it('restores a bookmarked view (lat/lon/h, no address) instantly instead of flying', () => {
+    const fixture = TestBed.createComponent(CesiumComponent);
+    fixture.componentRef.setInput('lat', 42.3);
+    fixture.componentRef.setInput('lon', -83.1);
+    fixture.componentRef.setInput('h', 1200);
+    fixture.componentRef.setInput('heading', 10);
+    fixture.componentRef.setInput('pitch', -45);
+    fixture.detectChanges();
+    const viewer = cesium.state.viewer!;
+
+    expect(viewer.camera.flyTo).not.toHaveBeenCalled();
+    expect(viewer.camera.setView).toHaveBeenCalledWith({
+      destination: { lon: -83.1, lat: 42.3, height: 1200 },
+      orientation: { heading: rad(10), pitch: rad(-45) },
+    });
+  });
+
+  it('defaults heading/pitch (straight down, north up) when a bookmarked view omits them', () => {
+    const fixture = TestBed.createComponent(CesiumComponent);
+    fixture.componentRef.setInput('lat', 42.3);
+    fixture.componentRef.setInput('lon', -83.1);
+    fixture.componentRef.setInput('h', 1200);
+    fixture.detectChanges();
+    const viewer = cesium.state.viewer!;
+
+    expect(viewer.camera.setView).toHaveBeenCalledWith({
+      destination: { lon: -83.1, lat: 42.3, height: 1200 },
+      orientation: { heading: rad(0), pitch: rad(-90) },
+    });
+  });
+
+  it('writes the settled camera view to the URL (rounded, address cleared) after the camera stops', () => {
+    const { viewer } = render();
+    cesium.state.view = { latitude: rad(42.5), longitude: rad(-83.25), height: 5000, heading: rad(12.4), pitch: rad(-60.6) };
+
+    moveCamera(viewer);
+    expectArea().flush(area([]));
+
+    expect(navigate).toHaveBeenCalledWith([], expect.objectContaining({
+      queryParams: { lat: 42.5, lon: -83.25, h: 5000, heading: 12, pitch: -61, address: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    }));
+  });
+
+  it('does not re-write the URL for a camera stop with the same (rounded) view as the last one', () => {
+    const { viewer } = render();
+    cesium.state.view = { latitude: rad(42.5), longitude: rad(-83.25), height: 5000, heading: 0, pitch: rad(-90) };
+
+    moveCamera(viewer);
+    expectArea().flush(area([]));
+    navigate.mockClear();
+
+    // Same rectangle too, so computeBounds also skips its request (covered by the "ignores a camera
+    // stop with the same bounds" test above); nothing left to flush here.
+    moveCamera(viewer);
+    http.expectNone(req => req.url === 'api/area');
+
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('does not loop: feeding the just-written view back in as inputs does not setView again', () => {
+    const { fixture, viewer } = render();
+    cesium.state.view = { latitude: rad(42.5), longitude: rad(-83.25), height: 5000, heading: rad(12), pitch: rad(-60) };
+
+    moveCamera(viewer);
+    expectArea().flush(area([]));
+    viewer.camera.setView.mockClear();
+
+    // What withComponentInputBinding would do once the URL above is live: feed the same (rounded)
+    // view straight back in as inputs.
+    fixture.componentRef.setInput('lat', 42.5);
+    fixture.componentRef.setInput('lon', -83.25);
+    fixture.componentRef.setInput('h', 5000);
+    fixture.componentRef.setInput('heading', 12);
+    fixture.componentRef.setInput('pitch', -60);
+
+    expect(viewer.camera.setView).not.toHaveBeenCalled();
+  });
+
+  it('copies the current URL and shows a brief "Copied" toast', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const { component } = render();
+
+    vi.useFakeTimers();
+    try {
+      component.copyLink();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(writeText).toHaveBeenCalledWith(window.location.href);
+      expect(component.copied()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(component.copied()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('escapes names in the info box description', () => {
