@@ -85,3 +85,24 @@ for (const { name, path, ready, controls } of PAGES) {
     expect(problems).toEqual([]);
   });
 }
+
+// Desktop: the globe and the voters split view fill the window under the nav. Only the voters list
+// scrolls (in its own column); the page and <main> never scroll down, so the globe stays put.
+for (const { name, path, ready } of PAGES.filter(p => ['globe', 'voters', 'voters-district'].includes(p.name))) {
+  test(`the ${name} page fills a desktop window without scrolling`, async ({ page }) => {
+    await page.route(url => url.hostname !== '127.0.0.1', route => route.abort());
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(path);
+    await expect(page.locator(ready).first()).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `screenshots/${name}-desktop.png` });
+    const scroll = await page.evaluate(() => {
+      const main = document.querySelector('main')!;
+      return {
+        page: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+        main: main.scrollHeight - main.clientHeight,
+      };
+    });
+    expect(scroll).toEqual({ page: 0, main: 0 });
+  });
+}
