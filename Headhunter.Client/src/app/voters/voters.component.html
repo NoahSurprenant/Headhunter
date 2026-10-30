@@ -1,7 +1,8 @@
 <div class="flex h-full">
-    <!-- The search and its results; on wide screens the globe is beside them and follows the picked row. -->
-    <section class="flex flex-col min-h-0 w-full lg:w-1/2 lg:max-w-3xl border-r border-gray-200">
-        <form [formGroup]="formGroup" (ngSubmit)="onSubmit()" class="p-4 bg-gray-50 border-b border-gray-200">
+    <!-- The search and its results; on wide screens the globe is beside them and follows the picked row. The list
+         scrolls on its own; when the form is tall (advanced conditions), the whole column scrolls instead. -->
+    <section class="flex flex-col min-h-0 overflow-y-auto w-full lg:w-1/2 lg:max-w-3xl border-r border-gray-200">
+        <form [formGroup]="formGroup" (ngSubmit)="onSubmit()" class="shrink-0 p-4 bg-gray-50 border-b border-gray-200">
             <div class="grid grid-cols-2 xl:grid-cols-3 gap-x-3 gap-y-1">
                 <div>
                     <label class="text-xs">First Name</label>
@@ -64,6 +65,79 @@
                     </label>
                 </div>
             </div>
+            <!-- Advanced: conditions with other operators (is not, before, between, ...), ANDed with the fields above. -->
+            <button type="button" (click)="toggleAdvanced()" [attr.aria-expanded]="advanced()" aria-controls="advanced-conditions"
+                    class="advanced-toggle mt-2 inline-flex items-center gap-1 py-1 text-sm font-medium text-purple-700 hover:underline cursor-pointer">
+                <svg class="w-3 h-3 transition-transform" [class.rotate-90]="advanced()" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                    <path d="M4 2l5 4-5 4z"/>
+                </svg>
+                Advanced
+                @if (conditions().length) {
+                    <span class="rounded-full bg-purple-100 px-2 text-xs">{{ conditions().length }}</span>
+                }
+            </button>
+            @if (advanced()) {
+                <fieldset id="advanced-conditions" class="@container mt-1 flex flex-col gap-3">
+                    <legend class="sr-only">Advanced conditions, all of which must match</legend>
+                    @for (row of conditions(); track row.id) {
+                        <div class="cond-row pb-3 border-b border-gray-200 @lg:pb-0 @lg:border-0 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] @lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.6fr)_auto] gap-2 items-center">
+                            <select aria-label="Field" (change)="setConditionField(row.id, $any($event.target).value)"
+                                    class="cond-field border border-gray-300 bg-white text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full min-w-0 p-2.5">
+                                @for (f of conditionFields; track f.name) {
+                                    <option [value]="f.name" [selected]="f.name === row.field">{{ f.label }}</option>
+                                }
+                            </select>
+                            <select aria-label="Operator" (change)="setConditionOperator(row.id, $any($event.target).value)"
+                                    class="cond-op border border-gray-300 bg-white text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full min-w-0 p-2.5">
+                                @for (o of operatorsFor(row.field); track o.value) {
+                                    <option [value]="o.value" [selected]="o.value === row.op">{{ o.label }}</option>
+                                }
+                            </select>
+                            <div class="cond-value col-span-3 @lg:col-span-1 order-last @lg:order-none flex items-center gap-2 min-w-0">
+                                @switch (fieldOf(row.field)?.kind) {
+                                    @case ('choice') {
+                                        <select aria-label="Value" (change)="setConditionValue(row.id, 'value', $any($event.target).value)"
+                                                class="border border-gray-300 bg-white text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full min-w-0 p-2.5">
+                                            @for (c of choicesFor(row); track c.value) {
+                                                <option [value]="c.value" [selected]="c.value === row.value">{{ c.label }}</option>
+                                            }
+                                        </select>
+                                    }
+                                    @default {
+                                        <input [type]="fieldOf(row.field)?.kind === 'text' ? 'text' : fieldOf(row.field)?.kind"
+                                               [attr.aria-label]="row.op === 'between' ? 'From' : 'Value'" [value]="row.value"
+                                               [attr.placeholder]="fieldOf(row.field)?.kind === 'number' ? (row.field === 'age' ? '30' : '1990') : null"
+                                               (input)="setConditionValue(row.id, 'value', $any($event.target).value)"
+                                               class="border border-gray-300 bg-white text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full min-w-0 p-2.5" />
+                                        @if (row.op === 'between') {
+                                            <span class="text-sm text-gray-600">and</span>
+                                            <input [type]="fieldOf(row.field)?.kind === 'text' ? 'text' : fieldOf(row.field)?.kind"
+                                                   aria-label="To" [value]="row.value2"
+                                                   [attr.placeholder]="fieldOf(row.field)?.kind === 'number' ? (row.field === 'age' ? '39' : '1999') : null"
+                                                   (input)="setConditionValue(row.id, 'value2', $any($event.target).value)"
+                                                   class="border border-gray-300 bg-white text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full min-w-0 p-2.5" />
+                                        }
+                                    }
+                                }
+                            </div>
+                            <button type="button" (click)="removeCondition(row.id)" aria-label="Remove this condition" title="Remove this condition"
+                                    class="cond-remove w-10 h-10 rounded-lg text-xl leading-none text-gray-600 hover:bg-gray-200 hover:text-gray-900 cursor-pointer">&times;</button>
+                            @if (isSlow(row)) {
+                                <span class="slow-hint col-span-3 @lg:col-span-4 order-last -mt-1 text-xs text-amber-800"
+                                      title="This can't use an index, so it reads every voter; add a name, city or birth year to narrow it">
+                                    May be slow
+                                </span>
+                            }
+                        </div>
+                    }
+                    <div>
+                        <button type="button" (click)="addCondition()" [disabled]="conditions().length >= maxConditions"
+                                class="add-condition inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-100 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50">
+                            + Add condition
+                        </button>
+                    </div>
+                </fieldset>
+            }
             <div class="flex gap-2 mt-3">
                 <x-button type="submit" [disabled]="!formGroup.valid">Search</x-button>
                 <x-button (clicked)="clearAll()">Clear All</x-button>
@@ -87,7 +161,10 @@
             }
         </form>
 
-        <div class="flex-1 min-h-0 overflow-auto">
+        <div class="flex-1 min-h-64 overflow-auto">
+            @if (searchProblem(); as problem) {
+                <p role="alert" class="search-problem m-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{{ problem }}</p>
+            }
             @if (activeDistrict(); as d) {
                 <app-district-card [district]="d" class="block m-3"></app-district-card>
             }
@@ -123,7 +200,7 @@
             </ul>
         </div>
 
-        <x-paginator [paginationResult]="current()" class="p-2 border-t border-gray-200" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize"></x-paginator>
+        <x-paginator [paginationResult]="current()" class="shrink-0 p-2 border-t border-gray-200" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize"></x-paginator>
     </section>
 
     <section class="hidden lg:block flex-1 min-w-0 relative">

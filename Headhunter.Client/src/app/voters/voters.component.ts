@@ -14,6 +14,10 @@ import { AreaBox, boxFromParams, boxParams } from '../cesium/area-selection';
 import { approximateAge, fullName, genderLabel } from '../shared/people/people';
 import { DistrictCardComponent } from '../districts/district-card/district-card.component';
 import { DISTRICT_TYPES, districtRef, districtTypeOption } from '../districts/districts';
+import {
+  appendConditionParams, Choice, CONDITION_FIELDS, ConditionRow, decodeConditions, encodeConditions, fieldOf, MAX_CONDITIONS,
+  newRow, operatorsFor, SearchConditionDto, SearchProblem, SLOW_OPERATORS, toDto, TOO_BROAD_MESSAGE, withField,
+} from './advanced-search';
 
 @Component({
   selector: 'app-voters',
@@ -62,6 +66,9 @@ export class VotersComponent implements OnInit {
       // value() throws while the resource is in an error state (Angular 20+), so guard with hasValue().
       if (this.x.hasValue())
         this.current.set(this.x.value());
+      // A search the API turned down: its rows would be the last search's, not this one's.
+      else if (this.x.error() instanceof SearchProblem)
+        this.current.set({ totalCount: 0, results: [] });
     });
   }
 
@@ -126,9 +133,12 @@ export class VotersComponent implements OnInit {
   readonly csvLimit = 50_000;
   csvUrl = computed(() => {
     const query = new URLSearchParams();
-    Object.entries(this.filter() ?? {})
-      .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    const filter = this.filter();
+    Object.entries(filter ?? {})
+      .filter(([key, value]) => key !== 'conditions' && value !== null && value !== undefined && value !== '')
       .forEach(([key, value]) => query.set(key, String(value)));
+    // As conditions[0].field=..&conditions[0].operator=.., which the API's [FromQuery] binds to the list.
+    appendConditionParams(query, filter?.conditions ?? []);
     if (this.mailingAddressDiffers())
       query.set('mailingAddressDiffers', 'true');
     const q = query.toString();
@@ -167,11 +177,96 @@ export class VotersComponent implements OnInit {
         signal: abortSignal,
       });
 
+      // Ran out of the API's Search:CommandTimeout, or a condition it can't use.
+      if (response.status === 422)
+        throw new SearchProblem(TOO_BROAD_MESSAGE);
+      if (response.status === 400) {
+        const problem = await response.json().catch(() => undefined) as { detail?: string } | undefined;
+        throw new SearchProblem(problem?.detail ?? 'The API could not use this search.');
+      }
       return response.json() as Promise<PaginationResult<VoterDto>>;
     },
   });
 
   current = signal<PaginationResult<VoterDto>>({ totalCount: 0, results: []});
+
+  // Why the last search has no results: too broad to finish, or a bad condition.
+  searchProblem = computed(() => {
+    const error = this.x.error();
+    return error instanceof SearchProblem ? error.message : undefined;
+  });
+
+  // The advanced search: rows of field, operator and value, ANDed with the form above. Sent with Search, like
+  // the form, and kept in ?cond= (advanced-search.ts encodes it).
+  advanced = signal(false);
+  conditions = signal<ConditionRow[]>([]);
+  voterStatuses = signal<string[]>([]);
+  private voterStatusesRequested = false;
+
+  protected readonly conditionFields = CONDITION_FIELDS;
+  protected readonly maxConditions = MAX_CONDITIONS;
+  protected readonly fieldOf = fieldOf;
+  protected readonly operatorsFor = operatorsFor;
+
+  isSlow(row: ConditionRow): boolean {
+    return SLOW_OPERATORS.has(row.op);
+  }
+
+  /** A choice field's options; the voter statuses are whatever the voter file has (plus one from a link). */
+  choicesFor(row: ConditionRow): Choice[] {
+    if (row.field !== 'voterStatus')
+      return fieldOf(row.field)?.choices ?? [];
+    const codes = this.voterStatuses();
+    return [...codes, ...(row.value && !codes.includes(row.value) ? [row.value] : [])].map(c => ({ value: c, label: c }));
+  }
+
+  toggleAdvanced(): void {
+    const open = !this.advanced();
+    this.advanced.set(open);
+    if (open) {
+      this.loadVoterStatuses();
+      if (this.conditions().length === 0)
+        this.addCondition();
+    }
+  }
+
+  addCondition(): void {
+    if (this.conditions().length >= MAX_CONDITIONS) return;
+    this.conditions.update(rows => [...rows, newRow()]);
+  }
+
+  removeCondition(id: number): void {
+    this.conditions.update(rows => rows.filter(r => r.id !== id));
+  }
+
+  setConditionField(id: number, field: string): void {
+    this.updateCondition(id, row => withField(row, field, this.choicesFor({ ...row, field, value: '' })));
+  }
+
+  setConditionOperator(id: number, op: string): void {
+    this.updateCondition(id, row => ({ ...row, op }));
+  }
+
+  setConditionValue(id: number, which: 'value' | 'value2', value: string): void {
+    this.updateCondition(id, row => ({ ...row, [which]: value }));
+  }
+
+  private updateCondition(id: number, change: (row: ConditionRow) => ConditionRow): void {
+    this.conditions.update(rows => rows.map(r => (r.id === id ? change(r) : r)));
+  }
+
+  private loadVoterStatuses(): void {
+    if (this.voterStatusesRequested) return;
+    this.voterStatusesRequested = true;
+    this.http.get<string[]>('/api/voterStatuses').subscribe({
+      next: codes => {
+        this.voterStatuses.set(codes);
+        // A voter status row added before the list came has no value yet: the first code.
+        this.conditions.update(rows => rows.map(r => (r.field === 'voterStatus' && !r.value ? { ...r, value: codes[0] ?? '' } : r)));
+      },
+      error: () => (this.voterStatusesRequested = false),
+    });
+  }
 
   onSubmit() {
     if (!this.formGroup.valid) {
@@ -187,7 +282,10 @@ export class VotersComponent implements OnInit {
 
   private filterFromForm(): SearchFilterDto {
     const rawValues = this.formGroup.getRawValue();
+    const conditions = toDto(this.conditions());
     return {
+      // Only rows filled in; none leaves the body as it was before the advanced search.
+      ...(conditions.length ? { conditions } : {}),
       ...rawValues,
       birthYear: rawValues.birthYear !== null ? Number(rawValues.birthYear) : null,
       age: rawValues.age !== null ? Number(rawValues.age) : null,
@@ -204,6 +302,8 @@ export class VotersComponent implements OnInit {
     this.formGroup = this.newForm();
     this.searchFilter.set(undefined);
     this.mailingAddressDiffers.set(false);
+    this.conditions.set([]);
+    this.advanced.set(false);
     // The area too, in the same navigation: two in a row would each merge into the URL as it was.
     this.area.set(undefined);
     this.pageNumber.set(1);
@@ -288,13 +388,21 @@ export class VotersComponent implements OnInit {
       const value = (filter as Record<string, unknown> | undefined)?.[key];
       queryParams[key] = value !== null && value !== undefined && value !== '' ? String(value) : null;
     }
+    // Every row, even one still without a value, so the page comes back as it was left.
+    queryParams['cond'] = filter && this.conditions().length ? encodeConditions(this.conditions()) : null;
     this.router.navigate([], { relativeTo: this.route, queryParams, queryParamsHandling: 'merge' });
   }
 
   private restoreFromUrl(): void {
     const params = this.route.snapshot.queryParamMap;
     const keys = Object.keys(this.formGroup.controls).filter(k => params.has(k));
-    if (keys.length === 0) return;
+    const conditions = decodeConditions(params.get('cond'));
+    if (conditions.length) {
+      this.conditions.set(conditions);
+      this.advanced.set(true);
+      this.loadVoterStatuses();
+    }
+    if (keys.length === 0 && conditions.length === 0) return;
     for (const key of keys) {
       this.formGroup.get(key)!.setValue(params.get(key));
     }
@@ -359,4 +467,6 @@ export interface SearchFilterDto
   districtType: string | null,
   district: string,
   districtWithin: string,
+  /** The advanced search's rows that are filled in; left out when there are none. */
+  conditions?: SearchConditionDto[],
 }

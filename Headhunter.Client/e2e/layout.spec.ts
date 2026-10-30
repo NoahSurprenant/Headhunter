@@ -29,6 +29,12 @@ const PAGES: PageCase[] = [
   // A district searched for: its card above the results
   { name: 'voters-district', path: '/voters?districtType=Precinct&district=00012&districtWithin=MOCKINGHAM%20TOWNSHIP',
     ready: 'app-district-card .grid', controls: [...NAV, 'app-district-card .card', 'app-district-card a', 'x-paginator button'] },
+  // The advanced search open with a few conditions: a "between" (two inputs), a slow one with its hint, a choice
+  { name: 'voters-advanced',
+    path: '/voters?lastName=SAMPLE&cond=birthYear.between.1960.1999~city.contains.LAN~registrationDate.ge.2020-01-01~gender.isNot.M',
+    ready: 'ul li a[href^="/voter/"]',
+    controls: [...NAV, '.cond-row select', '.cond-row input', '.cond-remove', '.slow-hint', '.add-condition',
+      'form x-button button', 'x-paginator button'] },
   { name: 'not-on-the-map', path: '/not-on-the-map', ready: 'ul li a[href^="/address/"]',
     controls: [...NAV, 'h1', 'app-not-on-map ul li button', 'x-paginator select', 'x-paginator button', 'x-paginator p'] },
   { name: 'voter', path: `/voter/${id('voter', 12)}`, ready: 'h1', controls: [...NAV, 'h1', '.btn-secondary', '.btn-primary'] },
@@ -88,7 +94,7 @@ for (const { name, path, ready, controls } of PAGES) {
 
 // Desktop: the globe and the voters split view fill the window under the nav. Only the voters list
 // scrolls (in its own column); the page and <main> never scroll down, so the globe stays put.
-for (const { name, path, ready } of PAGES.filter(p => ['globe', 'voters', 'voters-district'].includes(p.name))) {
+for (const { name, path, ready } of PAGES.filter(p => ['globe', 'voters', 'voters-district', 'voters-advanced'].includes(p.name))) {
   test(`the ${name} page fills a desktop window without scrolling`, async ({ page }) => {
     await page.route(url => url.hostname !== '127.0.0.1', route => route.abort());
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -128,4 +134,18 @@ test('the voters globe fills the window with a short list, and after a resize', 
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'screenshots/voters-short-list-resized.png' });
   expect(await globeBottomGap()).toBe(0);
+});
+
+// Many advanced conditions make the form taller than a phone: the voters column scrolls (not <main>), down to
+// the list and the paginator.
+test('the voters column scrolls to the paginator under a tall advanced search', async ({ page }) => {
+  await page.route(url => url.hostname !== '127.0.0.1', route => route.abort());
+  await page.setViewportSize({ width: 390, height: HEIGHT });
+  const cond = Array.from({ length: 8 }, (_, i) => `birthYear.between.19${50 + i}.1999`).join('~');
+  await page.goto(`/voters?cond=${cond}`);
+  await expect(page.locator('ul li a[href^="/voter/"]').first()).toBeAttached({ timeout: 30_000 });
+  await page.locator('x-paginator button').last().scrollIntoViewIfNeeded();
+  await expect(page.locator('x-paginator button').last()).toBeInViewport();
+  await expect(page.locator('ul li a[href^="/voter/"]').first()).toBeInViewport();
+  await page.screenshot({ path: 'screenshots/voters-advanced-tall-390.png' });
 });
