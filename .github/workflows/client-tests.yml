@@ -96,7 +96,7 @@ jobs:
 
   # Lighthouse on the production build with the mocked API, with the mobile and the desktop
   # settings (lighthouserc.cjs). Accessibility, best practices and SEO must score 90 on every page;
-  # performance has a lower floor (Cesium, CI runners are noisy) and none on the globe, and warns
+  # performance has a lower floor (Cesium, CI runners are noisy) and none where the globe shows, and warns
   # under 90.
   lighthouse:
     name: Lighthouse
