@@ -85,3 +85,47 @@ for (const { name, path, ready, controls } of PAGES) {
     expect(problems).toEqual([]);
   });
 }
+
+// Desktop: the globe and the voters split view fill the window under the nav. Only the voters list
+// scrolls (in its own column); the page and <main> never scroll down, so the globe stays put.
+for (const { name, path, ready } of PAGES.filter(p => ['globe', 'voters', 'voters-district'].includes(p.name))) {
+  test(`the ${name} page fills a desktop window without scrolling`, async ({ page }) => {
+    await page.route(url => url.hostname !== '127.0.0.1', route => route.abort());
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(path);
+    await expect(page.locator(ready).first()).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `screenshots/${name}-desktop.png` });
+    const scroll = await page.evaluate(() => {
+      const main = document.querySelector('main')!;
+      return {
+        page: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+        main: main.scrollHeight - main.clientHeight,
+      };
+    });
+    expect(scroll).toEqual({ page: 0, main: 0 });
+  });
+}
+
+// A short list (two results) must not shrink the globe to the list's height, and the globe follows the
+// window when it grows (e.g. closing the browser's dev tools).
+test('the voters globe fills the window with a short list, and after a resize', async ({ page }) => {
+  await page.route(url => url.hostname !== '127.0.0.1', route => route.abort());
+  await page.route(url => url.pathname.toLowerCase() === '/api/voters', async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, totalCount: 2, results: body.results.slice(0, 2) } });
+  });
+  const globeBottomGap = () => page.evaluate(() => {
+    const globe = document.querySelector('app-voters app-cesium')!.getBoundingClientRect();
+    return Math.round(document.documentElement.clientHeight - globe.bottom);
+  });
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.goto('/voters');
+  await expect(page.locator('ul li a[href^="/voter/"]').first()).toBeVisible({ timeout: 30_000 });
+  expect(await globeBottomGap()).toBe(0);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'screenshots/voters-short-list-resized.png' });
+  expect(await globeBottomGap()).toBe(0);
+});
