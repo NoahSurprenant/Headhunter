@@ -19,6 +19,50 @@
             }
         </div>
 
+        <div class="card mb-6">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="card-title mb-0">Walk the street</h2>
+                <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                    <input type="checkbox" [checked]="!sameSideOnly()" (change)="toggleSameSide()" />
+                    Both sides of the street
+                </label>
+            </div>
+            <div class="flex gap-3">
+                @if (previousHouse(); as p) {
+                    <a [routerLink]="['/address', p.id]" class="btn-secondary flex-1 text-center" title="Keyboard: ←">
+                        ← {{ p.fullStreetAddress }}
+                    </a>
+                } @else {
+                    <span class="btn-secondary flex-1 text-center opacity-50">← No previous house</span>
+                }
+                @if (nextHouse(); as n) {
+                    <a [routerLink]="['/address', n.id]" class="btn-secondary flex-1 text-center" title="Keyboard: →">
+                        {{ n.fullStreetAddress }} →
+                    </a>
+                } @else {
+                    <span class="btn-secondary flex-1 text-center opacity-50">No next house →</span>
+                }
+            </div>
+        </div>
+
+        <div class="card mb-6">
+            <h2 class="card-title">Nearby households</h2>
+            <ul class="divide-y divide-gray-300">
+                @for (n of nearby(); track n.id) {
+                    <li>
+                        <a [routerLink]="['/address', n.id]" class="flex items-center justify-between gap-4 py-2 hover:bg-white/60 rounded px-2 -mx-2">
+                            <span class="text-gray-900">{{ n.fullStreetAddress }}</span>
+                            <span class="shrink-0 text-sm text-gray-600">
+                                {{ formatDistance(n.distanceMeters) }} · {{ n.voterCount }} {{ n.voterCount === 1 ? 'voter' : 'voters' }}
+                            </span>
+                        </a>
+                    </li>
+                } @empty {
+                    <li class="text-gray-500 text-sm py-2">No nearby addresses found.</li>
+                }
+            </ul>
+        </div>
+
         <div class="card">
             <h2 class="card-title">Voters</h2>
             <ul class="divide-y divide-gray-300">

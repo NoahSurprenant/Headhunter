@@ -28,3 +28,10 @@ export function globeParams(latitude: number | null | undefined, longitude: numb
   if (latitude === null || latitude === undefined || longitude === null || longitude === undefined) return null;
   return { lat: latitude, lon: longitude, address: addressId };
 }
+
+/** "420 ft" under a mile, "1.3 mi" past it: the walking-distance units US addresses are read in. */
+export function formatDistance(meters: number): string {
+  const feet = meters * 3.28084;
+  if (feet < 1000) return `${Math.round(feet)} ft`;
+  return `${(meters / 1609.344).toFixed(1)} mi`;
+}
