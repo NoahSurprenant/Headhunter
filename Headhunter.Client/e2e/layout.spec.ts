@@ -94,7 +94,7 @@ for (const { name, path, ready, controls } of PAGES) {
 
 // Desktop: the globe and the voters split view fill the window under the nav. Only the voters list
 // scrolls (in its own column); the page and <main> never scroll down, so the globe stays put.
-for (const { name, path, ready } of PAGES.filter(p => ['globe', 'voters', 'voters-district'].includes(p.name))) {
+for (const { name, path, ready } of PAGES.filter(p => ['globe', 'voters', 'voters-district', 'voters-advanced'].includes(p.name))) {
   test(`the ${name} page fills a desktop window without scrolling`, async ({ page }) => {
     await page.route(url => url.hostname !== '127.0.0.1', route => route.abort());
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -134,4 +134,18 @@ test('the voters globe fills the window with a short list, and after a resize', 
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'screenshots/voters-short-list-resized.png' });
   expect(await globeBottomGap()).toBe(0);
+});
+
+// Many advanced conditions make the form taller than a phone: the voters column scrolls (not <main>), down to
+// the list and the paginator.
+test('the voters column scrolls to the paginator under a tall advanced search', async ({ page }) => {
+  await page.route(url => url.hostname !== '127.0.0.1', route => route.abort());
+  await page.setViewportSize({ width: 390, height: HEIGHT });
+  const cond = Array.from({ length: 8 }, (_, i) => `birthYear.between.19${50 + i}.1999`).join('~');
+  await page.goto(`/voters?cond=${cond}`);
+  await expect(page.locator('ul li a[href^="/voter/"]').first()).toBeAttached({ timeout: 30_000 });
+  await page.locator('x-paginator button').last().scrollIntoViewIfNeeded();
+  await expect(page.locator('x-paginator button').last()).toBeInViewport();
+  await expect(page.locator('ul li a[href^="/voter/"]').first()).toBeInViewport();
+  await page.screenshot({ path: 'screenshots/voters-advanced-tall-390.png' });
 });

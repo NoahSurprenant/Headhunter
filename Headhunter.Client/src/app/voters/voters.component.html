@@ -1,7 +1,8 @@
 <div class="flex h-full">
-    <!-- The search and its results; on wide screens the globe is beside them and follows the picked row. -->
-    <section class="flex flex-col min-h-0 w-full lg:w-1/2 lg:max-w-3xl border-r border-gray-200">
-        <form [formGroup]="formGroup" (ngSubmit)="onSubmit()" class="p-4 bg-gray-50 border-b border-gray-200">
+    <!-- The search and its results; on wide screens the globe is beside them and follows the picked row. The list
+         scrolls on its own; when the form is tall (advanced conditions), the whole column scrolls instead. -->
+    <section class="flex flex-col min-h-0 overflow-y-auto w-full lg:w-1/2 lg:max-w-3xl border-r border-gray-200">
+        <form [formGroup]="formGroup" (ngSubmit)="onSubmit()" class="shrink-0 p-4 bg-gray-50 border-b border-gray-200">
             <div class="grid grid-cols-2 xl:grid-cols-3 gap-x-3 gap-y-1">
                 <div>
                     <label class="text-xs">First Name</label>
@@ -160,7 +161,7 @@
             }
         </form>
 
-        <div class="flex-1 min-h-0 overflow-auto">
+        <div class="flex-1 min-h-64 overflow-auto">
             @if (searchProblem(); as problem) {
                 <p role="alert" class="search-problem m-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{{ problem }}</p>
             }
@@ -199,7 +200,7 @@
             </ul>
         </div>
 
-        <x-paginator [paginationResult]="current()" class="p-2 border-t border-gray-200" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize"></x-paginator>
+        <x-paginator [paginationResult]="current()" class="shrink-0 p-2 border-t border-gray-200" [(pageNumber)]="pageNumber" [(pageSize)]="pageSize"></x-paginator>
     </section>
 
     <section class="hidden lg:block flex-1 min-w-0 relative">
