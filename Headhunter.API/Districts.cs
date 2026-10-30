@@ -195,10 +195,19 @@ public class DistrictController : ControllerBase
         // Households: the district's addresses with at least one voter, not a DISTINCT over every voter.
         var households = await addresses.CountAsync(a => a.Voters.Any(), ct);
 
-        var newest = await voters
+        // Newest registrations in two steps: the five IDs from IX_Voters_AddressID alone (it includes
+        // REGISTRATION_DATE), then their names. Asking for the names in the same query looked them up for every
+        // voter in the district before sorting: 15-20 s and ~390k reads for a county.
+        var newestIds = await voters
             .OrderByDescending(v => v.REGISTRATION_DATE)
             .ThenBy(v => v.ID)
             .Take(5)
+            .Select(v => v.ID)
+            .ToArrayAsync(ct);
+        var newest = await _context.Voters
+            .Where(v => newestIds.Contains(v.ID))
+            .OrderByDescending(v => v.REGISTRATION_DATE)
+            .ThenBy(v => v.ID)
             .Select(v => new RegistrationDto
             {
                 Id = v.ID,
