@@ -1,7 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { API_UNAVAILABLE, stubFetch } from '../../testing/fetch-stub';
 import { voterRow, votersPage } from '../../testing/synthetic-data';
 import { VotersComponent } from './voters.component';
@@ -52,7 +53,7 @@ describe('VotersComponent', () => {
     expect(text).toContain('Jordan Sample');
     expect(text).toContain('N Pretend Ave');
     expect(text).toContain('Items 1 - 2 of 42');
-    const links = Array.from(el.querySelectorAll('a')).map(a => a.getAttribute('href'));
+    const links = Array.from(el.querySelectorAll('li a')).map(a => a.getAttribute('href'));
     expect(links).toEqual(['/voter/voter-1001', '/voter/voter-1002']);
   });
 
@@ -186,5 +187,109 @@ describe('VotersComponent', () => {
     expect(component.selected()?.id).toBe('voter-1001');
     expect(el.querySelector('li')!.classList).toContain('bg-purple-100');
     expect(viewer.camera.flyTo).toHaveBeenCalledWith(expect.objectContaining({ destination: { lon: -83.1, lat: 42.3, height: 350 } }));
+  });
+
+  describe('selected area', () => {
+    const box = { west: -84, east: -83, north: 43, south: 42 };
+    const body = (fetchMock: ReturnType<typeof stubFetch>) => {
+      const sent = lastCall(fetchMock)[1]?.body;
+      return sent === undefined ? undefined : JSON.parse(sent as string);
+    };
+
+    it('lists only the voters inside a box drawn on the globe, from the first page, and keeps it in the URL', async () => {
+      const fetchMock = stubFetch(() => page);
+      const { fixture, component, el } = await render();
+      const router = TestBed.inject(Router);
+      component.pageNumber.set(3);
+
+      // Through the globe: Select area, then a drag (the fake's screen positions are { x: longitude, y: latitude }).
+      const { fakeCesium } = await import('../../testing/fake-cesium');
+      const handlers = fakeCesium().state.handlers;
+      (el.querySelector('app-cesium button.area-toggle') as HTMLButtonElement).click();
+      handlers['LEFT_DOWN']({ position: { x: -84, y: 43 } });
+      handlers['LEFT_UP']({ position: { x: -83, y: 42 } });
+      await settle(fixture);
+
+      expect(component.area()).toEqual(box);
+      expect(lastCall(fetchMock)[0]).toBe('Api/voters?pageSize=10&pageNumber=1');
+      expect(body(fetchMock)).toEqual(box);
+      expect(router.url).toBe('/?west=-84&east=-83&north=43&south=42');
+      expect(el.querySelector('.area-chip')!.textContent).toContain('In selected area');
+    });
+
+    it('combines the box with the search form', async () => {
+      const fetchMock = stubFetch(() => page);
+      const { fixture, component } = await render();
+      component.formGroup.patchValue({ lastName: 'Example' });
+      component.onSubmit();
+      component.selectArea(box);
+      await settle(fixture);
+
+      expect(body(fetchMock)).toEqual(expect.objectContaining({ lastName: 'Example', firstName: '', ...box }));
+    });
+
+    it('removes the box with the chip\'s ×', async () => {
+      const fetchMock = stubFetch(() => page);
+      const { fixture, component, el } = await render();
+      component.selectArea(box);
+      await settle(fixture);
+
+      (el.querySelector('.area-chip button') as HTMLButtonElement).click();
+      await settle(fixture);
+
+      expect(component.area()).toBeUndefined();
+      expect(body(fetchMock)).toBeUndefined();
+      expect(el.querySelector('.area-chip')).toBeNull();
+      expect(TestBed.inject(Router).url).toBe('/');
+    });
+
+    it('is cleared by Clear All too', async () => {
+      stubFetch(() => page);
+      const { fixture, component } = await render();
+      component.selectArea(box);
+      await settle(fixture);
+
+      component.clearAll();
+      await settle(fixture);
+      expect(component.area()).toBeUndefined();
+    });
+
+    it('links Export CSV to the whole current result', async () => {
+      stubFetch(() => page);
+      const { fixture, component, el } = await render();
+      const link = () => el.querySelector('a[download]') as HTMLAnchorElement;
+      expect(link().getAttribute('href')).toBe('Api/VotersCsv');
+      expect(link().textContent).toContain('Export CSV');
+
+      component.formGroup.patchValue({ lastName: 'Example', astrology: 'Leo' });
+      component.onSubmit();
+      component.selectArea({ west: 179, east: -179, north: 11, south: 9 });
+      await settle(fixture);
+
+      // Empty fields are left out; the API treats them as no filter.
+      expect(link().getAttribute('href'))
+        .toBe('Api/VotersCsv?lastName=Example&astrology=Leo&west=179&east=-179&north=11&south=9');
+    });
+  });
+});
+
+describe('VotersComponent opened with an area in the URL', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [VotersComponent],
+      providers: [provideRouter([{ path: '', component: VotersComponent }]), provideHttpClient(), provideHttpClientTesting()],
+    });
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('lists the voters inside it straight away and outlines it on the globe', async () => {
+    const fetchMock = stubFetch(() => votersPage([voterRow()]));
+    const harness = await RouterTestingHarness.create('/?west=-84&east=-83&north=43&south=42');
+    await harness.fixture.whenStable();
+
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1]!.body as string)).toEqual({ west: -84, east: -83, north: 43, south: 42 });
+    const { fakeCesium } = await import('../../testing/fake-cesium');
+    expect(fakeCesium().state.viewer!.entities.getById('selected-area')).toBeDefined();
   });
 });

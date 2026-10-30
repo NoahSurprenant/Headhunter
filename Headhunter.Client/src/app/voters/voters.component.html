@@ -39,7 +39,24 @@
             <div class="flex gap-2 mt-3">
                 <x-button type="submit" [disabled]="!formGroup.valid">Search</x-button>
                 <x-button (clicked)="clearAll()">Clear All</x-button>
+                <a [href]="csvUrl()" download="voters.csv"
+                   [title]="'Every voter matching this search, up to ' + (csvLimit | number) + ' rows'"
+                   class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-purple-600 px-4 py-2.5 text-sm font-medium text-purple-700 hover:bg-purple-50">
+                    <svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <path d="M8 2v8m0 0-3-3m3 3 3-3M3 12v2h10v-2"/>
+                    </svg>
+                    Export CSV
+                </a>
             </div>
+            @if (area()) {
+                <div class="flex flex-wrap gap-2 mt-3">
+                    <span class="area-chip inline-flex items-center gap-1 rounded-full bg-yellow-100 border border-yellow-300 pl-3 pr-1 py-0.5 text-sm text-gray-800">
+                        In selected area
+                        <button type="button" (click)="clearArea()" aria-label="Remove the selected area" title="Remove the selected area"
+                                class="w-5 h-5 rounded-full leading-none text-gray-600 hover:bg-yellow-200 hover:text-gray-900 cursor-pointer">&times;</button>
+                    </span>
+                </div>
+            }
         </form>
 
         <div class="flex-1 min-h-0 overflow-auto">
@@ -71,10 +88,11 @@
     </section>
 
     <section class="hidden lg:block flex-1 min-w-0 relative">
-        <app-cesium [lat]="selected()?.latitude ?? undefined" [lon]="selected()?.longitude ?? undefined" [address]="selected()?.addressId"></app-cesium>
-        @if (!selected()) {
-            <div class="absolute top-3 left-1/2 -translate-x-1/2 bg-black/60 text-white text-sm px-3 py-1 rounded pointer-events-none">
-                Pick a voter to see where they live
+        <app-cesium [lat]="selected()?.latitude ?? undefined" [lon]="selected()?.longitude ?? undefined" [address]="selected()?.addressId"
+                     [selectable]="true" [selectedArea]="area()" (areaSelected)="selectArea($event)"></app-cesium>
+        @if (!selected() && !area()) {
+            <div class="absolute top-14 left-3 max-w-xs bg-black/60 text-white text-sm px-3 py-1 rounded pointer-events-none">
+                Pick a voter to see where they live, or select an area
             </div>
         }
     </section>

@@ -33,6 +33,8 @@ export function createFakeCesium() {
   const state = {
     viewer: undefined as FakeViewer | undefined,
     clickHandler: undefined as ((movement: { position: unknown }) => void) | undefined,
+    // Every ScreenSpaceEventHandler action by event type (LEFT_DOWN, MOUSE_MOVE, LEFT_UP for drawing an area).
+    handlers: {} as Record<string, (movement: Record<string, unknown>) => void>,
     rectangle: { west: 0, south: 0, east: 0, north: 0 } as { west: number; south: number; east: number; north: number } | undefined,
     picked: undefined as { id?: unknown } | undefined,
     // Where the (fake) camera currently sits, read by persistViewToUrl; tests move it by assignment,
@@ -46,14 +48,23 @@ export function createFakeCesium() {
     trackedEntityChanged = new FakeEvent();
     camera = {
       flyTo: vi.fn(),
+      flyToBoundingSphere: vi.fn(),
       setView: vi.fn(),
       get positionCartographic() { return { height: state.view.height, latitude: state.view.latitude, longitude: state.view.longitude }; },
       get heading() { return state.view.heading; },
       get pitch() { return state.view.pitch; },
       moveEnd: new FakeEvent(),
       computeViewRectangle: vi.fn(() => state.rectangle),
+      // Screen positions in specs are { x: longitude, y: latitude }; anything else is off the globe.
+      pickEllipsoid: vi.fn((position: { x?: number; y?: number } | undefined) =>
+        position?.x === undefined ? undefined : { lon: position.x, lat: position.y!, height: 0 }),
     };
-    scene = { canvas: {}, globe: { ellipsoid: {} }, pick: vi.fn(() => state.picked) };
+    scene = {
+      canvas: {},
+      globe: { ellipsoid: {} },
+      pick: vi.fn(() => state.picked),
+      screenSpaceCameraController: { enableInputs: true },
+    };
     constructor(public container: string, public options: Record<string, unknown>) {
       state.viewer = this;
     }
@@ -65,9 +76,12 @@ export function createFakeCesium() {
     module: {
       Viewer: FakeViewer,
       ScreenSpaceEventHandler: class {
-        setInputAction(fn: (movement: { position: unknown }) => void) { state.clickHandler = fn; }
+        setInputAction(fn: (movement: Record<string, unknown>) => void, type: string) {
+          state.handlers[type] = fn;
+          if (type === 'LEFT_CLICK') state.clickHandler = fn;
+        }
       },
-      ScreenSpaceEventType: { LEFT_CLICK: 'LEFT_CLICK' },
+      ScreenSpaceEventType: { LEFT_CLICK: 'LEFT_CLICK', LEFT_DOWN: 'LEFT_DOWN', MOUSE_MOVE: 'MOUSE_MOVE', LEFT_UP: 'LEFT_UP' },
       ProviderViewModel: class {
         name: string;
         creationFunction: () => unknown;
@@ -80,8 +94,15 @@ export function createFakeCesium() {
       buildModuleUrl: (path: string) => `/assets/cesium/${path}`,
       Cartesian2: class { constructor(public x: number, public y: number) {} },
       Cartesian3: { fromDegrees: (lon: number, lat: number, height = 0) => ({ lon, lat, height }) },
+      Cartographic: { fromCartesian: (c: { lon: number; lat: number }) => ({ longitude: (c.lon * Math.PI) / 180, latitude: (c.lat * Math.PI) / 180 }) },
+      Rectangle: { fromDegrees: (west: number, south: number, east: number, north: number) => ({ west, south, east, north }) },
+      BoundingSphere: { fromRectangle3D: (rectangle: object) => ({ sphereAround: rectangle }) },
+      HeadingPitchRange: class { constructor(public heading: number, public pitch: number, public range: number) {} },
       Math: { toRadians: radians, toDegrees: degrees },
-      Color: { AQUA: 'AQUA', WHITE: 'WHITE', ORANGE: { withAlpha: (a: number) => `ORANGE@${a}` } },
+      Color: {
+        AQUA: 'AQUA', WHITE: 'WHITE', YELLOW: { name: 'YELLOW', withAlpha: (a: number) => `YELLOW@${a}` },
+        ORANGE: { withAlpha: (a: number) => `ORANGE@${a}` },
+      },
       LabelStyle: { FILL_AND_OUTLINE: 'FILL_AND_OUTLINE' },
       VerticalOrigin: { TOP: 'TOP', CENTER: 'CENTER' },
       DistanceDisplayCondition: class { constructor(public near: number, public far: number) {} },
@@ -106,6 +127,7 @@ export function fakeCesium(): FakeCesium {
 export function resetFakeCesium(fake: FakeCesium) {
   fake.state.viewer = undefined;
   fake.state.clickHandler = undefined;
+  fake.state.handlers = {};
   fake.state.picked = undefined;
   fake.state.rectangle = undefined;
   fake.state.view = { latitude: (43.333202 * Math.PI) / 180, longitude: (-84.557916 * Math.PI) / 180, height: 400000, heading: 0, pitch: (-90 * Math.PI) / 180 };

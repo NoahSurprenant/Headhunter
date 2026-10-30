@@ -382,4 +382,171 @@ describe('CesiumComponent', () => {
     const description = (viewer.entities.getById('addr-0001') as Record<string, any>)['description'] as string;
     expect(description).toContain('<a href="/voter/v%3C1">&lt;b&gt;Al&lt;/b&gt; O&#39;Brien</a>');
   });
+
+  describe('Select area', () => {
+    // Screen positions in the fake are { x: longitude, y: latitude }; {} is off the globe.
+    const at = (longitude: number, latitude: number) => ({ x: longitude, y: latitude });
+    const down = (position: object) => cesium.state.handlers['LEFT_DOWN']({ position });
+    const move = (endPosition: object) => cesium.state.handlers['MOUSE_MOVE']({ endPosition });
+    const up = (position: object) => cesium.state.handlers['LEFT_UP']({ position });
+    const areaEntity = (viewer: NonNullable<typeof cesium.state.viewer>) =>
+      viewer.entities.getById('selected-area') as Record<string, any> | undefined;
+
+    async function renderSelectable() {
+      const fixture = TestBed.createComponent(CesiumComponent);
+      fixture.componentRef.setInput('selectable', true);
+      await fixture.whenStable();
+      const emitted: unknown[] = [];
+      fixture.componentInstance.areaSelected.subscribe(box => emitted.push(box));
+      const toggle = () => (fixture.nativeElement.querySelector('button.area-toggle') as HTMLButtonElement);
+      return { fixture, component: fixture.componentInstance, viewer: cesium.state.viewer!, emitted, toggle };
+    }
+
+    it('has no toggle unless the page asks for one', async () => {
+      const { fixture } = render();
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('button.area-toggle')).toBeNull();
+    });
+
+    it('sits beside "Copy link" in the one top-left toolbar', async () => {
+      const { fixture } = await renderSelectable();
+      const toolbar = fixture.nativeElement.querySelector('.globe-toolbar') as HTMLElement;
+      expect([...toolbar.querySelectorAll('button')].map(b => b.textContent!.trim()))
+        .toEqual(['Copy link', 'Select area']);
+    });
+
+    it('stops the camera moving while the toggle is on, and starts it again when it goes off', async () => {
+      const { fixture, viewer, toggle } = await renderSelectable();
+      expect(toggle().textContent).toContain('Select area');
+
+      toggle().click();
+      await fixture.whenStable();
+      expect(viewer.scene.screenSpaceCameraController.enableInputs).toBe(false);
+      expect(toggle().getAttribute('aria-pressed')).toBe('true');
+      expect(toggle().textContent).toContain('Drag on the globe');
+
+      toggle().click();
+      await fixture.whenStable();
+      expect(viewer.scene.screenSpaceCameraController.enableInputs).toBe(true);
+    });
+
+    it('ignores a drag while the toggle is off', async () => {
+      const { viewer, emitted } = await renderSelectable();
+      down(at(-84, 43));
+      move(at(-83, 42));
+      up(at(-83, 42));
+      expect(areaEntity(viewer)).toBeUndefined();
+      expect(emitted).toEqual([]);
+    });
+
+    it('draws the box while dragging and hands it to the page when let go', async () => {
+      const { fixture, component, viewer, emitted } = await renderSelectable();
+      component.toggleDrawing();
+
+      down(at(-84, 43));
+      move(at(-83.5, 42.5));
+      const entity = areaEntity(viewer)!;
+      expect(entity['rectangle'].coordinates).toEqual({ west: -84, south: 42.5, east: -83.5, north: 43 });
+      expect(entity['rectangle'].material).toBe('YELLOW@0.2');
+
+      move({}); // Over space: the box stays as it was.
+      move(at(-83, 42));
+      expect(areaEntity(viewer)).toBe(entity);
+      expect(entity['rectangle'].coordinates).toEqual({ west: -84, south: 42, east: -83, north: 43 });
+
+      up(at(-83, 42));
+      await fixture.whenStable();
+      expect(emitted).toEqual([{ west: -84, east: -83, north: 43, south: 42 }]);
+      expect(component.drawing()).toBe(false);
+      expect(viewer.scene.screenSpaceCameraController.enableInputs).toBe(true);
+    });
+
+    it('selects a box across the date line', async () => {
+      const { component, emitted } = await renderSelectable();
+      component.toggleDrawing();
+      down(at(179, 11));
+      up(at(-179, 9));
+      expect(emitted).toEqual([{ west: 179, east: -179, north: 11, south: 9 }]);
+    });
+
+    it('selects nothing for a click without a drag, and that click opens nothing', async () => {
+      const { fixture, component, viewer, emitted } = await renderSelectable();
+      component.toggleDrawing();
+      down(at(-84, 43));
+      up(at(-84, 43));
+      cesium.state.picked = { id: { id: 'addr-0001' } };
+      cesium.state.clickHandler!({ position: at(-84, 43) });
+      await fixture.whenStable();
+
+      expect(emitted).toEqual([]);
+      expect(areaEntity(viewer)).toBeUndefined();
+      expect(component.selectedEntity()).toBeUndefined();
+      expect(component.drawing()).toBe(false);
+
+      // Later clicks work again.
+      await new Promise(resolve => setTimeout(resolve));
+      cesium.state.clickHandler!({ position: at(-84, 43) });
+      expect(component.selectedEntity()).toEqual({ id: 'addr-0001' });
+    });
+
+    it('does not start a box off the globe', async () => {
+      const { component, viewer, emitted } = await renderSelectable();
+      component.toggleDrawing();
+      down({});
+      move(at(-83, 42));
+      up(at(-83, 42));
+      expect(areaEntity(viewer)).toBeUndefined();
+      expect(emitted).toEqual([]);
+      expect(component.drawing()).toBe(true);
+    });
+
+    it('puts the selected area back when drawing is switched off mid-drag', async () => {
+      const { fixture, component, viewer } = await renderSelectable();
+      fixture.componentRef.setInput('selectedArea', { west: -84, east: -83, north: 43, south: 42 });
+      await fixture.whenStable();
+      component.toggleDrawing();
+      down(at(-90, 40));
+      move(at(-89, 41));
+      component.toggleDrawing();
+      expect(areaEntity(viewer)!['rectangle'].coordinates).toEqual({ west: -84, south: 42, east: -83, north: 43 });
+      move(at(-88, 39)); // No longer dragging.
+      expect(areaEntity(viewer)!['rectangle'].coordinates).toEqual({ west: -84, south: 42, east: -83, north: 43 });
+    });
+
+    it('shows the selected area, keeps it when the view refreshes, and removes it when cleared', async () => {
+      const { fixture, viewer } = await renderSelectable();
+      fixture.componentRef.setInput('selectedArea', { west: -84, east: -83, north: 43, south: 42 });
+      await fixture.whenStable();
+      expect(areaEntity(viewer)!['rectangle'].coordinates).toEqual({ west: -84, south: 42, east: -83, north: 43 });
+
+      moveCamera(viewer);
+      expectArea().flush(area([areaAddress()]));
+      expect(viewer.entities.values.map(e => e['id']).sort()).toEqual(['addr-0001', 'selected-area']);
+
+      fixture.componentRef.setInput('selectedArea', undefined);
+      await fixture.whenStable();
+      expect(areaEntity(viewer)).toBeUndefined();
+    });
+
+    it('starts at the selected area (a reloaded page) when there is no place to show', () => {
+      const fixture = TestBed.createComponent(CesiumComponent);
+      fixture.componentRef.setInput('selectedArea', { west: -84, east: -83, north: 43, south: 42 });
+      fixture.detectChanges();
+      const viewer = cesium.state.viewer!;
+      expect(viewer.camera.flyTo).not.toHaveBeenCalled();
+      expect(viewer.camera.flyToBoundingSphere).toHaveBeenCalledWith(
+        { sphereAround: { west: -84, south: 42, east: -83, north: 43 } },
+        { offset: expect.objectContaining({ heading: 0, pitch: -Math.PI / 2, range: 0 }) });
+      expect(areaEntity(viewer)).toBeDefined();
+    });
+
+    it('treats a click on the selected area as a click on the globe', async () => {
+      const { fixture, component, viewer } = await renderSelectable();
+      fixture.componentRef.setInput('selectedArea', { west: -84, east: -83, north: 43, south: 42 });
+      await fixture.whenStable();
+      cesium.state.picked = { id: areaEntity(viewer) };
+      cesium.state.clickHandler!({ position: at(-83.5, 42.5) });
+      expect(component.selectedEntity()).toBeUndefined();
+    });
+  });
 });

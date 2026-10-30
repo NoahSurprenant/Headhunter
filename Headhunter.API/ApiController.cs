@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using System.Globalization;
+using System.Text;
 
 namespace Headhunter.API;
 
@@ -488,8 +490,8 @@ public class ApiController : ControllerBase
 
     private static double ToRadians(double degrees) => degrees * Math.PI / 180;
 
-    [HttpPost("Voters")]
-    public async Task<PaginationResult<VoterGridDto>> Voters([FromQuery] PaginationFilter filter, [FromBody] SearchFilterDto? dto, CancellationToken ct)
+    // The voters list's filters, shared by the page (Voters) and its download (VotersCsv).
+    private IQueryable<Voter> Search(SearchFilterDto? dto)
     {
         var x = _context.Voters.AsQueryable();
 
@@ -523,6 +525,15 @@ public class ApiController : ControllerBase
             if (dto.BirthYear is not null)
                 x = x.Where(x => x.YEAR_OF_BIRTH == dto.BirthYear);
 
+            // A box drawn on the globe, date-line safe like Area: west > east means it crosses it.
+            if (dto.West is { } west && dto.East is { } east && dto.North is { } north && dto.South is { } south)
+            {
+                x = x.Where(x => x.Address.Latitude <= north && x.Address.Latitude >= south);
+                x = west > east
+                    ? x.Where(x => x.Address.Longitude <= east || x.Address.Longitude >= west)
+                    : x.Where(x => x.Address.Longitude <= east && x.Address.Longitude >= west);
+            }
+
             if (dto.Age is not null)
             {
                 var now = DateTime.Now;
@@ -551,7 +562,13 @@ public class ApiController : ControllerBase
             }
         }
 
-        var final = x.OrderBy(x => x.ID).Select(x => new VoterGridDto()
+        return x;
+    }
+
+    [HttpPost("Voters")]
+    public async Task<PaginationResult<VoterGridDto>> Voters([FromQuery] PaginationFilter filter, [FromBody] SearchFilterDto? dto, CancellationToken ct)
+    {
+        var final = Search(dto).OrderBy(x => x.ID).Select(x => new VoterGridDto()
         {
             ID = x.ID,
             FirstName = x.FIRST_NAME,
@@ -576,6 +593,40 @@ public class ApiController : ControllerBase
         });
 
         return await final.PaginationResult(filter, ct);
+    }
+
+    // The voters list as a file: every page of the current search, written row by row as SQL Server reads them,
+    // so a big area never sits in memory. A GET, so the browser downloads it itself. At most Export:MaxRows rows.
+    [HttpGet("VotersCsv")]
+    public async Task VotersCsv([FromQuery] SearchFilterDto dto, [FromServices] IOptions<ExportOptions> options, CancellationToken ct)
+    {
+        var rows = Search(dto)
+            .OrderBy(x => x.ID)
+            .Take(options.Value.MaxRows)
+            .Select(x => new
+            {
+                x.FIRST_NAME,
+                x.MIDDLE_NAME,
+                x.LAST_NAME,
+                x.YEAR_OF_BIRTH,
+                x.GENDER,
+                x.Address.FullStreetAddress,
+                x.Address.CITY,
+                x.Address.ZIP_CODE,
+                x.REGISTRATION_DATE,
+            })
+            .AsAsyncEnumerable();
+
+        Response.ContentType = "text/csv; charset=utf-8";
+        Response.Headers.ContentDisposition = "attachment; filename=\"voters.csv\"";
+        await using var writer = new StreamWriter(Response.Body, new UTF8Encoding(false), bufferSize: 64 * 1024);
+        await writer.WriteLineAsync(Csv.Row("Name", "Birth Year", "Gender", "Address", "City", "Zip", "Registration Date"));
+        await foreach (var v in rows.WithCancellation(ct))
+        {
+            var name = string.Join(' ', new[] { v.FIRST_NAME, v.MIDDLE_NAME, v.LAST_NAME }.Where(n => !string.IsNullOrEmpty(n)));
+            await writer.WriteLineAsync(Csv.Row(name, v.YEAR_OF_BIRTH.ToString(CultureInfo.InvariantCulture), v.GENDER,
+                v.FullStreetAddress, v.CITY, v.ZIP_CODE, v.REGISTRATION_DATE.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        }
     }
 
     private static (DateTime Start, DateTime End) GetAstrologySignDates(string astrologySign)
@@ -637,6 +688,11 @@ public class SearchFilterDto
     public int? BirthYear { get; set; }
     public int? Age { get; set; }
     public string Astrology { get; set; } = "";
+    // The area drawn on the globe, in degrees; ignored unless all four are set. West > east crosses the date line.
+    public decimal? West { get; set; }
+    public decimal? East { get; set; }
+    public decimal? North { get; set; }
+    public decimal? South { get; set; }
 }
 
 public class VoterGridDto
@@ -686,6 +742,13 @@ public class AreaOptions
     /// <summary>The cluster grid: this many cells across and down the box. 20 leaves the globe's bubbles room.</summary>
     public int GridCells { get; set; } = 20;
     public TimeSpan ClusterCacheDuration { get; set; } = TimeSpan.FromHours(1);
+}
+
+/// <summary>The voters list's CSV download (configuration section "Export").</summary>
+public class ExportOptions
+{
+    /// <summary>The most rows one download writes.</summary>
+    public int MaxRows { get; set; } = 50_000;
 }
 
 public class AddressDto

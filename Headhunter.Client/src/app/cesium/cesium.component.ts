@@ -1,5 +1,5 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, effect, inject, input, OnInit, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input, OnInit, output, signal, untracked, viewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { buildModuleUrl,
   Math as CesiumMath, Cartesian3, ProviderViewModel, UrlTemplateImageryProvider, Viewer,
@@ -10,11 +10,16 @@ import { buildModuleUrl,
   ScreenSpaceEventType,
   DistanceDisplayCondition,
   defined,
-  Entity
+  Entity,
+  Cartographic,
+  Rectangle,
+  BoundingSphere,
+  HeadingPitchRange,
 } from 'cesium';
 import { distinctUntilChanged, Subject, switchMap, takeUntil, tap } from 'rxjs';
 import { CustomInfoBoxComponent } from '../custom-info-box/custom-info-box.component';
 import { AreaDto, ClusterDto, clusterId, clusterSize, shortCount } from './clusters';
+import { AreaBox, boxFromCorners, Corner, isEmptyBox, SELECTED_AREA_ID } from './area-selection';
 
 // Every base layer comes from this site's /tiles/ (Headhunter.API, Tiles/), which fetches it from the
 // provider: visitors only talk to this site, provider keys stay on the server, and Cloudflare caches the
@@ -71,6 +76,17 @@ export class CesiumComponent implements OnInit {
   copied = signal(false);
   private copiedTimeout?: ReturnType<typeof setTimeout>;
 
+  // The voters page's "Select area": a toggle, then a click-drag draws a box, which goes to areaSelected. The page
+  // keeps it and hands it back in selectedArea, which the globe shows.
+  selectable = input(false);
+  selectedArea = input<AreaBox | undefined>(undefined);
+  areaSelected = output<AreaBox>();
+  drawing = signal(false);
+  private dragStart: Corner | undefined;
+  // Cesium follows the LEFT_UP of a drag that barely moved with a LEFT_CLICK, in the same pointerup; that click
+  // must not open or close an info box.
+  private ignoreClick = false;
+
   constructor() {
     effect(() => {
       const lat = this.lat();
@@ -86,6 +102,13 @@ export class CesiumComponent implements OnInit {
             this.focus(lat, lon, address);
           }
         });
+      }
+    });
+    effect(() => {
+      const box = this.selectedArea();
+      // Before ngOnInit has made the viewer, ngOnInit shows it.
+      if (this.viewer) {
+        untracked(() => this.showArea(box));
       }
     });
   }
@@ -115,15 +138,23 @@ export class CesiumComponent implements OnInit {
       terrainProviderViewModels: [],
     });
 
-    // Fly the camera to the place asked for, restore a bookmarked view, or else start over Michigan.
+    // Fly the camera to the place asked for, restore a bookmarked view, else to the selected area, or else start
+    // over Michigan.
     const lat = this.lat();
     const lon = this.lon();
     const h = this.h();
     const address = this.address();
+    const area = this.selectedArea();
+    this.showArea(area);
     if (lat !== undefined && lon !== undefined && h !== undefined && address === undefined) {
       this.restoreView(lat, lon, h, this.heading(), this.pitch());
     } else if (lat !== undefined && lon !== undefined) {
       this.focus(lat, lon, address);
+    } else if (area) {
+      // The whole box, looking straight down; a range of 0 lets Cesium fit it to the panel either way round.
+      this.viewer.camera.flyToBoundingSphere(
+        BoundingSphere.fromRectangle3D(Rectangle.fromDegrees(area.west, area.south, area.east, area.north)),
+        { offset: new HeadingPitchRange(0, CesiumMath.toRadians(-90), 0) });
     } else {
       this.viewer.camera.flyTo({
         destination: Cartesian3.fromDegrees(-84.557916, 43.333202, 1000000),
@@ -164,7 +195,7 @@ export class CesiumComponent implements OnInit {
         // Only remove entities that are not in the new result set
         const all = this.viewer.entities.values.map(x => x.id);
         const current = [...area.addresses.map(x => x.id), ...this.clusters.keys()];
-        const remove = all.filter(x => !current.includes(x));
+        const remove = all.filter(x => !current.includes(x) && x !== SELECTED_AREA_ID);
         remove.forEach(x => {
           this.viewer.entities.removeById(x);
         });
@@ -252,7 +283,14 @@ export class CesiumComponent implements OnInit {
 
     const handler = new ScreenSpaceEventHandler(this.viewer.scene.canvas);
     handler.setInputAction((movement: { position: Cartesian2 }) => {
-      const pickedObject = this.viewer.scene.pick(movement.position);
+      if (this.ignoreClick) {
+        return;
+      }
+      let pickedObject = this.viewer.scene.pick(movement.position);
+      // The selected area is a backdrop, not something to open: a click on it is a click on the globe.
+      if (defined(pickedObject) && (pickedObject.id as Entity | undefined)?.id === SELECTED_AREA_ID) {
+        pickedObject = undefined;
+      }
       const cluster = defined(pickedObject) && pickedObject.id ? this.clusters.get((pickedObject.id as Entity).id) : undefined;
       if (cluster) {
         // A cluster: zoom in on it, a quarter of the way down, until its addresses are few enough to draw.
@@ -272,6 +310,40 @@ export class CesiumComponent implements OnInit {
       }
     }, ScreenSpaceEventType.LEFT_CLICK);
 
+    handler.setInputAction((movement: { position: Cartesian2 }) => {
+      if (!this.drawing()) {
+        return;
+      }
+      this.dragStart = this.cornerAt(movement.position);
+      if (this.dragStart) {
+        this.drawBox(boxFromCorners(this.dragStart, this.dragStart));
+      }
+    }, ScreenSpaceEventType.LEFT_DOWN);
+
+    handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
+      const corner = this.dragStart && this.cornerAt(movement.endPosition);
+      if (this.dragStart && corner) {
+        this.drawBox(boxFromCorners(this.dragStart, corner));
+      }
+    }, ScreenSpaceEventType.MOUSE_MOVE);
+
+    handler.setInputAction((movement: { position: Cartesian2 }) => {
+      if (!this.dragStart) {
+        return;
+      }
+      // Let go off the globe (in space), the box ends at the drag's start: nothing selected.
+      const box = boxFromCorners(this.dragStart, this.cornerAt(movement.position) ?? this.dragStart);
+      this.dragStart = undefined;
+      this.setDrawing(false);
+      this.ignoreClick = true;
+      setTimeout(() => this.ignoreClick = false);
+      if (isEmptyBox(box)) {
+        this.showArea(this.selectedArea());
+      } else {
+        this.areaSelected.emit(box);
+      }
+    }, ScreenSpaceEventType.LEFT_UP);
+
     this.viewer.trackedEntityChanged.addEventListener(() => {
       this.trackedEntity.set(this.viewer.trackedEntity);
     });
@@ -279,6 +351,61 @@ export class CesiumComponent implements OnInit {
 
   closeInfoBox(): void {
     this.selectedEntity.set(undefined);
+  }
+
+  toggleDrawing(): void {
+    this.setDrawing(!this.drawing());
+  }
+
+  // While drawing, a drag draws the box instead of moving the camera.
+  private setDrawing(drawing: boolean): void {
+    this.drawing.set(drawing);
+    this.viewer.scene.screenSpaceCameraController.enableInputs = !drawing;
+    if (!drawing && this.dragStart) {
+      this.dragStart = undefined;
+      this.showArea(this.selectedArea());
+    }
+  }
+
+  /** The point on the globe under the pointer, or undefined over space. */
+  private cornerAt(position: Cartesian2): Corner | undefined {
+    const cartesian = this.viewer.camera.pickEllipsoid(position, this.viewer.scene.globe.ellipsoid);
+    if (!cartesian) {
+      return undefined;
+    }
+    const c = Cartographic.fromCartesian(cartesian);
+    return { longitude: CesiumMath.toDegrees(c.longitude), latitude: CesiumMath.toDegrees(c.latitude) };
+  }
+
+  /** The selected area, outlined on the globe; none removes it. */
+  private showArea(box: AreaBox | undefined): void {
+    if (box) {
+      this.drawBox(box);
+    } else {
+      this.viewer.entities.removeById(SELECTED_AREA_ID);
+    }
+  }
+
+  private drawBox(box: AreaBox): void {
+    const coordinates = Rectangle.fromDegrees(box.west, box.south, box.east, box.north);
+    const existing = this.viewer.entities.getById(SELECTED_AREA_ID);
+    if (existing?.rectangle) {
+      // Assigning a value wraps it in a ConstantProperty; the same entity follows the drag.
+      (existing.rectangle as { coordinates: unknown }).coordinates = coordinates;
+      return;
+    }
+    this.viewer.entities.add({
+      id: SELECTED_AREA_ID,
+      name: 'Selected area',
+      rectangle: {
+        coordinates,
+        material: Color.YELLOW.withAlpha(0.2),
+        height: 0, // An outline needs a height.
+        outline: true,
+        outlineColor: Color.YELLOW,
+        outlineWidth: 2,
+      },
+    });
   }
 
   /** Straight down on a point, a block or two across (labels show), and the address's info box when it loads. */
