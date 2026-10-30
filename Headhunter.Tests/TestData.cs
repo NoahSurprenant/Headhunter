@@ -14,7 +14,7 @@ public static class TestData
     public static readonly Guid DatelineEastAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a003");
     public static readonly Guid DatelineWestAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a004");
     // Outside every Area test's box, so voters with a mailing address don't show up there too.
-    public static readonly Guid PineAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a005");
+    public static readonly Guid PineAddressId = Guid.Parse("00000000-0000-0000-0000-00000000a020");
 
     // A block of Elm St, Elmville, in a line 11m apart (by latitude) for "walk the street": house numbers
     // 101-107 in order, so ElmAddressIds[i] is house "10{i+1}", and far enough from Maple/Oak/Meridian to
@@ -31,9 +31,9 @@ public static class TestData
     public static readonly Guid BrunoId = Guid.Parse("00000000-0000-0000-0000-00000000b004");
     public static readonly Guid CleoId = Guid.Parse("00000000-0000-0000-0000-00000000b005");
     // Mail to a PO box out of state - "Lives elsewhere" and "Out of state".
-    public static readonly Guid DanaId = Guid.Parse("00000000-0000-0000-0000-00000000b006");
+    public static readonly Guid DanaId = Guid.Parse("00000000-0000-0000-0000-00000000b020");
     // Mail to a different address, same state - "Lives elsewhere" only.
-    public static readonly Guid EmersonId = Guid.Parse("00000000-0000-0000-0000-00000000b007");
+    public static readonly Guid EmersonId = Guid.Parse("00000000-0000-0000-0000-00000000b021");
 
     // Possible relatives (ApiController.Relatives): RelativeRef's household (same address, excluded), a match
     // ~1.4 km away on a different street, a match on the same street far away, and a negative control (same

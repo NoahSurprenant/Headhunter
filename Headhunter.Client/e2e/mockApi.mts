@@ -46,6 +46,7 @@ function voterRow(n: number) {
     state: 'MI',
     zipCode: String(48001 + (address * 11) % 1900),
     latitude: 42.3 + (address % 50) * 0.02,
+    longitude: -83.2 - (address % 40) * 0.03,
     // Every fourth voter's mail goes elsewhere, a third of those out of state
     hasMailingAddress: n % 4 === 0,
     mailingAddressOutOfState: n % 12 === 0,
