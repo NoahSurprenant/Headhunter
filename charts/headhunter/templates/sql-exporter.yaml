@@ -21,6 +21,8 @@ data:
     {{- tpl (.Files.Get "files/sql_exporter.yml") . | nindent 4 }}
   mssql_standard.collector.yml: |
     {{- .Files.Get "files/mssql_standard.collector.yml" | nindent 4 }}
+  mssql_io_writes.collector.yml: |
+    {{- .Files.Get "files/mssql_io_writes.collector.yml" | nindent 4 }}
   mssql_query_stats.collector.yml: |
     {{- .Files.Get "files/mssql_query_stats.collector.yml" | nindent 4 }}
   {{- range $name, $content := $x.extraCollectorFiles }}
@@ -51,7 +53,7 @@ spec:
         {{- end }}
       annotations:
         # Restart on a config change: the exporter reads it only at start.
-        checksum/config: {{ list (tpl (.Files.Get "files/sql_exporter.yml") .) (.Files.Get "files/mssql_standard.collector.yml") (.Files.Get "files/mssql_query_stats.collector.yml") $x.extraCollectorFiles | toJson | sha256sum }}
+        checksum/config: {{ list (tpl (.Files.Get "files/sql_exporter.yml") .) (.Files.Get "files/mssql_standard.collector.yml") (.Files.Get "files/mssql_io_writes.collector.yml") (.Files.Get "files/mssql_query_stats.collector.yml") $x.extraCollectorFiles | toJson | sha256sum }}
         {{- with $x.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

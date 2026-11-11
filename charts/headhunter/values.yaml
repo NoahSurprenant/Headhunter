@@ -250,9 +250,10 @@ sqlExporter:
     secretName: ""
     key: ""
   dsnOptions: "encrypt=true&TrustServerCertificate=true"
-  # mssql_standard: server-wide (memory, I/O, connections...). mssql_query_stats: the plan cache's top
-  # 20 statements per database and the top wait types.
-  collectors: [mssql_standard, mssql_query_stats]
+  # mssql_standard: server-wide (memory, I/O, connections...), sql_exporter's example kept byte-for-byte
+  # (CI compares it with upstream). mssql_io_writes: writes and write stall per database and file
+  # type. mssql_query_stats: the plan cache's top 20 statements per database and the top wait types.
+  collectors: [mssql_standard, mssql_io_writes, mssql_query_stats]
   # More collector files (name.collector.yml: content), beside the chart's.
   extraCollectorFiles: {}
   port: 9399

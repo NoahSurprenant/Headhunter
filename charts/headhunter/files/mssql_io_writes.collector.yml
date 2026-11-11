@@ -1,0 +1,38 @@
+# Writes and their stall by database and file type (LOG, ROWS), beside mssql_standard (which is
+# upstream's example kept byte-for-byte, so additions live here). Stall per write is the disk's
+# latency. A total stall grows with the number of writes (a bulk import) even when each is quick; a
+# commit waits on the log's writes, so its latency is what makes saves slow.
+#
+# Needs VIEW SERVER STATE and VIEW ANY DEFINITION (sys.master_files), as mssql_standard does.
+collector_name: mssql_io_writes
+
+metrics:
+  - metric_name: mssql_io_file_writes
+    type: counter
+    help: 'Writes per database and file type (LOG, ROWS).'
+    key_labels:
+      - db
+      - file_type
+    values: [writes]
+    query_ref: mssql_io_file_writes
+  - metric_name: mssql_io_file_write_stall_seconds
+    type: counter
+    help: 'Write stall time in seconds per database and file type (LOG, ROWS).'
+    key_labels:
+      - db
+      - file_type
+    values: [write_stall]
+    query_ref: mssql_io_file_writes
+
+queries:
+  - query_name: mssql_io_file_writes
+    query: |
+      SELECT
+        cast(DB_Name(a.database_id) as varchar) AS [db],
+        b.type_desc AS [file_type],
+        sum(a.num_of_writes) AS [writes],
+        sum(a.io_stall_write_ms) / 1000.0 AS [write_stall]
+      FROM
+        sys.dm_io_virtual_file_stats(null, null) a
+      INNER JOIN sys.master_files b ON a.database_id = b.database_id AND a.file_id = b.file_id
+      GROUP BY a.database_id, b.type_desc

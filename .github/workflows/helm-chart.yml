@@ -52,6 +52,16 @@ jobs:
           helm plugin install https://github.com/helm-unittest/helm-unittest $verify
           helm unittest "$CHART"
 
+      # files/mssql_standard.collector.yml is sql_exporter's examples/mssql, byte-for-byte: neither its
+      # binary nor its image ships it. Compared at the exporter version values.yaml pins, so a bump
+      # that changes upstream's file fails here instead of drifting; additions go in their own file.
+      - name: mssql_standard matches upstream
+        run: |
+          set -euo pipefail
+          tag=$(sed -n '/^sqlExporter:/,/^[a-z]/s/^ *tag: *\([^@ ]*\).*/\1/p' "$CHART/values.yaml")
+          curl --proto =https -fsSL "https://raw.githubusercontent.com/burningalchemist/sql_exporter/$tag/examples/mssql/mssql_standard.collector.yml" \
+            | diff -u - "$CHART/files/mssql_standard.collector.yml"
+
       - name: Schema check
         run: |
           set -euo pipefail

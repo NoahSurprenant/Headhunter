@@ -120,7 +120,8 @@ kill "$pf_exp"
 grep -q '^mssql_query_executions_total{database="Headhunter"' <<<"$metrics" || fail "No per-statement metrics for Headhunter"
 grep -q '^mssql_wait_seconds_total' <<<"$metrics" || fail "No wait metrics"
 grep -q '^mssql_page_life_expectancy_seconds' <<<"$metrics" || fail "No mssql_standard metrics"
-echo "Both collectors report."
+grep -q '^mssql_io_file_writes{' <<<"$metrics" || fail "No mssql_io_writes metrics"
+echo "All three collectors report."
 
 step "3. NetworkPolicies"
 probe() {
