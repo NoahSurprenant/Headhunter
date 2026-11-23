@@ -152,12 +152,15 @@ metadata:
   labels:
     {{- include "headhunter.labels" . | nindent 4 }}
     app.kubernetes.io/component: mssql
+    {{- with include "headhunter.onDemandLabels" . | trim }}{{ . | nindent 4 }}{{ end }}
   annotations:
     # Before the migration Job (-1) and the app.
     argocd.argoproj.io/sync-wave: "-2"
 spec:
   serviceName: {{ $m.headlessServiceName }}
-  replicas: 1
+  {{- with include "headhunter.replicas" (dict "root" . "replicas" 1) }}
+  {{ . }}
+  {{- end }}
   selector:
     matchLabels:
       app: {{ $m.name }}

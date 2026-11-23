@@ -87,3 +87,14 @@ policy is `Retain` by default.
   header lists what it covers.
 - Pull requests also lint and schema-check every `ci/*-values.yaml`, and run the end-to-end test on
   k3s.
+
+## On demand
+
+`onDemand.enabled` runs the release only while someone visits, through [Sablier](https://github.com/sablierapp/sablier):
+a Traefik Middleware on the IngressRoute's route starts the app, SQL Server and sql-exporter (labelled into one
+Sablier group, by default the release's namespace) on a request and stops them `sessionDuration` after the last one.
+Their manifests carry no replica count, so Helm and Argo CD leave Sablier's alone. The migration Job pokes Sablier
+before it waits for the database, so a deploy starts the group too (`onDemand.networkPolicy.sablierNamespace` limits
+its egress to Sablier's namespace). Sablier needs a Role that may scale the Deployments and the SQL Server
+StatefulSet by name. While stopped, SQL Server's LoadBalancer and sql-exporter's metrics are down;
+`onDemand.ignoreUserAgent` keeps an uptime monitor from waking it. `ci/on-demand-values.yaml` is an example.

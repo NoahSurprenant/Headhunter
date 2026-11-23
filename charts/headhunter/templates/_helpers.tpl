@@ -164,6 +164,22 @@ skipped. Takes dict "name" (prefix, "" at the top) and "value".
 {{- end }}
 
 {{/*
+With onDemand and the chart's SQL Server, asks Sablier to start the group (its poke strategy answers at once), as a
+visit would, so the migration Job, run while nobody visits, finds the database up. It retries for a minute: a network
+policy may drop the first tries. Nothing otherwise. The app's own wait needs none: Sablier started it with the group.
+*/}}
+{{- define "headhunter.pokeSablierScript" -}}
+{{- if include "headhunter.onDemandWakesDatabase" . }}
+{{- $url := printf "%s/api/strategies/poke?group=%s&session_duration=%s" (include "headhunter.sablierUrl" .) (include "headhunter.onDemandGroup" . | urlquery) (urlquery .Values.onDemand.sessionDuration) }}
+poke_end=$(( $(date +%s) + 60 ))
+until timeout 12 wget -q -T 10 -O /dev/null {{ $url | squote }}; do
+  if [ "$(date +%s)" -ge "$poke_end" ]; then echo "Sablier didn't answer ({{ include "headhunter.sablierUrl" . }}): waiting for the database anyway."; break; fi
+  sleep 2
+done
+{{- end }}
+{{- end }}
+
+{{/*
 Until SQL Server accepts a login and the database, if it exists, is ONLINE (SQL Server accepts logins
 before it has finished recovering its databases after a restart). Fails after WAIT_SECONDS. Needs
 headhunter.dbEnv.
@@ -211,4 +227,47 @@ imagePullPolicy: {{ .Values.app.image.pullPolicy }}
 securityContext:
   {{- toYaml . | nindent 2 }}
 {{- end }}
+{{- end }}
+
+{{/* Sablier's API (onDemand): onDemand.sablierUrl, else a Service named sablier in namespace sablier. No trailing slash. */}}
+{{- define "headhunter.sablierUrl" -}}
+{{- .Values.onDemand.sablierUrl | default "http://sablier.sablier.svc:10000" | trimSuffix "/" -}}
+{{- end }}
+
+{{/* The release's Sablier group (onDemand): onDemand.group, else the release's namespace. */}}
+{{- define "headhunter.onDemandGroup" -}}
+{{- .Values.onDemand.group | default .Release.Namespace -}}
+{{- end }}
+
+{{/*
+The labels of a workload in the onDemand group: Sablier stops it while nobody visits and starts it on a
+visit. Both key forms (sablier.* and sablierapp.dev/*), the same values. Nothing while onDemand is off.
+*/}}
+{{- define "headhunter.onDemandLabels" -}}
+{{- if .Values.onDemand.enabled }}
+{{- $group := include "headhunter.onDemandGroup" . }}
+{{- range $prefix := list "sablier." "sablierapp.dev/" }}
+{{ $prefix }}enable: "true"
+{{ $prefix }}group: {{ $group | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/* A workload's replicas line: none in the onDemand group, where Sablier sets the count (one here would be
+   set back by every Helm upgrade or Argo CD sync). Takes a dict "root", "replicas". */}}
+{{- define "headhunter.replicas" -}}
+{{- if not .root.Values.onDemand.enabled }}replicas: {{ .replicas }}{{ end -}}
+{{- end }}
+
+{{/* "true" when the release's own SQL Server is in the onDemand group: the migration Job starts the group first. */}}
+{{- define "headhunter.onDemandWakesDatabase" -}}
+{{- if and .Values.onDemand.enabled .Values.mssql.enabled (not .Values.database.host) }}true{{ end -}}
+{{- end }}
+
+{{/* The port of a URL (80 or 443 by scheme when it names none). */}}
+{{- define "headhunter.urlPort" -}}
+{{- $u := . -}}
+{{- if regexMatch ":[0-9]+(/|$)" (trimPrefix "https://" (trimPrefix "http://" $u)) -}}
+{{- regexFind ":[0-9]+" (trimPrefix "https://" (trimPrefix "http://" $u)) | trimPrefix ":" -}}
+{{- else if hasPrefix "https://" $u }}443{{ else }}80{{ end -}}
 {{- end }}

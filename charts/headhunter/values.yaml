@@ -363,3 +363,35 @@ networkPolicy:
 
 # Any other objects to deploy with the release, as they are (templates allowed).
 extraObjects: []
+
+# Run only while someone visits: Sablier (a Traefik plugin and a controller that scales Deployments and
+# StatefulSets) stops the app, SQL Server and sql-exporter sessionDuration after the last request to the
+# IngressRoute and starts them on the next one. They carry no replicas in their manifests, so Helm and Argo
+# CD leave Sablier's count alone. Needs ingressRoute.enabled and a Sablier that may scale them (a Role on
+# these names). The migration Job starts the group first, as a visit does. While stopped, SQL Server's
+# LoadBalancer and sql-exporter's metrics are down.
+onDemand:
+  enabled: false
+  # Sablier's API. Empty: http://sablier.sablier.svc:10000.
+  sablierUrl: ""
+  # The Sablier group. Empty: the release's namespace.
+  group: ""
+  sessionDuration: 30m
+  # How the plugin renews a session while a connection stays open; empty: its own default.
+  keepAliveInterval: ""
+  # dynamic: a starting page that reloads itself until the app is up. blocking: each request held until then.
+  strategy: dynamic
+  blocking:
+    # Under 60s behind Traefik v3's default readTimeout.
+    timeout: 55s
+  dynamic:
+    displayName: ""
+    theme: ""
+    # Unset: Sablier's own default.
+    showDetails: null
+    refreshFrequency: 5s
+  # User-Agents that never start or renew the group (an uptime monitor or probe).
+  ignoreUserAgent: []
+  networkPolicy:
+    # The namespace Sablier runs in, for the migration Job's egress (networkPolicy.enabled). Empty: anywhere.
+    sablierNamespace: ""

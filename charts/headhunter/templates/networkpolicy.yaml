@@ -75,6 +75,16 @@ spec:
   egress:
     {{- $dnsRule | nindent 4 }}
     {{- $dbRule | nindent 4 }}
+    {{- if include "headhunter.onDemandWakesDatabase" . }}
+    # Sablier (onDemand), to start the database before waiting for it.
+    - {{- with $.Values.onDemand.networkPolicy.sablierNamespace }}
+      to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ . }} } }
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ include "headhunter.urlPort" (include "headhunter.sablierUrl" .) }}
+    {{- end }}
     {{- with $np.migrations.extraEgress }}
     {{- tpl (toYaml .) $ | nindent 4 }}
     {{- end }}
