@@ -58,6 +58,7 @@ spec:
       args:
         - |
           set -u
+          {{- with include "headhunter.pokeSablierScript" . }}{{ . | nindent 10 }}{{ end }}
           {{- include "headhunter.waitForDatabaseScript" . | nindent 10 }}
       env:
         {{- include "headhunter.migrationStepEnv" . | nindent 8 }}

@@ -37,8 +37,11 @@ metadata:
   labels:
     {{- include "headhunter.labels" . | nindent 4 }}
     app.kubernetes.io/component: sql-exporter
+    {{- with include "headhunter.onDemandLabels" . | trim }}{{ . | nindent 4 }}{{ end }}
 spec:
-  replicas: 1
+  {{- with include "headhunter.replicas" (dict "root" . "replicas" 1) }}
+  {{ . }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: sql-exporter

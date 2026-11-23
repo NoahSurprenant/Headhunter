@@ -55,7 +55,9 @@ spec:
   routes:
     - match: Host(`{{ required "ingressRoute.host is required when ingressRoute.enabled" .host }}`)
       kind: Rule
-      {{- with .middlewares }}
+      {{- $middlewares := .middlewares | default list }}
+      {{- if $.Values.onDemand.enabled }}{{ $middlewares = append $middlewares (dict "name" (printf "%s-on-demand" $.Values.app.name)) }}{{ end }}
+      {{- with $middlewares }}
       middlewares:
         {{- toYaml . | nindent 8 }}
       {{- end }}

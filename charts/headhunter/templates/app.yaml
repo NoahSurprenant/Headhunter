@@ -6,8 +6,11 @@ metadata:
   labels:
     {{- include "headhunter.labels" . | nindent 4 }}
     app.kubernetes.io/component: app
+    {{- with include "headhunter.onDemandLabels" . | trim }}{{ . | nindent 4 }}{{ end }}
 spec:
-  replicas: {{ $a.replicas }}
+  {{- with include "headhunter.replicas" (dict "root" . "replicas" $a.replicas) }}
+  {{ . }}
+  {{- end }}
   selector:
     matchLabels:
       app: {{ $a.name }}

@@ -1,0 +1,185 @@
+suite: on demand
+templates:
+  - templates/app.yaml
+  - templates/mssql.yaml
+  - templates/sql-exporter.yaml
+  - templates/on-demand.yaml
+  - templates/ingress.yaml
+  - templates/migrations.yaml
+  - templates/networkpolicy.yaml
+release:
+  namespace: headhunter
+set:
+  mssql.acceptEula: true
+  database.host: ""
+  ingressRoute.enabled: true
+  ingressRoute.host: hh.example.com
+  ingressRoute.middlewares: [{ name: security-headers, namespace: traefik }]
+  sqlExporter.enabled: true
+  networkPolicy.enabled: true
+tests:
+  - it: renders nothing and keeps every replica count while off
+    asserts:
+      - hasDocuments: { count: 0 }
+        template: templates/on-demand.yaml
+      - equal: { path: spec.replicas, value: 1 }
+        template: templates/app.yaml
+        documentSelector: { path: kind, value: Deployment }
+      - notExists: { path: "metadata.labels['sablier.enable']" }
+        template: templates/app.yaml
+        documentSelector: { path: kind, value: Deployment }
+
+  - it: puts the app, SQL Server and sql-exporter in the namespace's group, with no replicas
+    set:
+      onDemand.enabled: true
+    asserts:
+      - equal: { path: "metadata.labels['sablier.enable']", value: "true" }
+        template: templates/app.yaml
+        documentSelector: { path: kind, value: Deployment }
+      - equal: { path: "metadata.labels['sablier.group']", value: headhunter }
+        template: templates/app.yaml
+        documentSelector: { path: kind, value: Deployment }
+      - equal: { path: "metadata.labels['sablierapp.dev/group']", value: headhunter }
+        template: templates/app.yaml
+        documentSelector: { path: kind, value: Deployment }
+      - notExists: { path: spec.replicas }
+        template: templates/app.yaml
+        documentSelector: { path: kind, value: Deployment }
+      - equal: { path: "metadata.labels['sablier.group']", value: headhunter }
+        template: templates/mssql.yaml
+        documentSelector: { path: kind, value: StatefulSet }
+      - notExists: { path: spec.replicas }
+        template: templates/mssql.yaml
+        documentSelector: { path: kind, value: StatefulSet }
+      - equal: { path: "metadata.labels['sablier.group']", value: headhunter }
+        template: templates/sql-exporter.yaml
+        documentSelector: { path: kind, value: Deployment }
+      - notExists: { path: spec.replicas }
+        template: templates/sql-exporter.yaml
+        documentSelector: { path: kind, value: Deployment }
+
+  - it: names the group by onDemand.group when set
+    set:
+      onDemand.enabled: true
+      onDemand.group: hh-group
+    asserts:
+      - equal: { path: "metadata.labels['sablier.group']", value: hh-group }
+        template: templates/app.yaml
+        documentSelector: { path: kind, value: Deployment }
+      - equal: { path: spec.plugin.sablier.group, value: hh-group }
+        template: templates/on-demand.yaml
+
+  - it: renders the Sablier middleware, a starting page by default
+    set:
+      onDemand.enabled: true
+      onDemand.sablierUrl: http://sablier.sablier.svc.cluster.local:10000
+      onDemand.dynamic.theme: starting
+    asserts:
+      - equal: { path: kind, value: Middleware }
+        template: templates/on-demand.yaml
+      - equal: { path: metadata.name, value: headhunter-on-demand }
+        template: templates/on-demand.yaml
+      - equal: { path: spec.plugin.sablier.sablierUrl, value: "http://sablier.sablier.svc.cluster.local:10000" }
+        template: templates/on-demand.yaml
+      - equal: { path: spec.plugin.sablier.sessionDuration, value: 30m }
+        template: templates/on-demand.yaml
+      - equal: { path: spec.plugin.sablier.dynamic.theme, value: starting }
+        template: templates/on-demand.yaml
+      - notExists: { path: spec.plugin.sablier.blocking }
+        template: templates/on-demand.yaml
+
+  - it: holds the request while it starts with the blocking strategy
+    set:
+      onDemand.enabled: true
+      onDemand.strategy: blocking
+      onDemand.blocking.timeout: 55s
+    asserts:
+      - equal: { path: spec.plugin.sablier.blocking.timeout, value: 55s }
+        template: templates/on-demand.yaml
+      - notExists: { path: spec.plugin.sablier.dynamic }
+        template: templates/on-demand.yaml
+
+  - it: passes ignoreUserAgent on
+    set:
+      onDemand.enabled: true
+      onDemand.ignoreUserAgent: [kube-probe]
+    asserts:
+      - equal: { path: spec.plugin.sablier.ignoreUserAgent, value: [kube-probe] }
+        template: templates/on-demand.yaml
+
+  - it: adds the middleware after the route's own
+    set:
+      onDemand.enabled: true
+    asserts:
+      - equal:
+          path: spec.routes[0].middlewares
+          value:
+            - { name: security-headers, namespace: traefik }
+            - { name: headhunter-on-demand }
+        template: templates/ingress.yaml
+        documentSelector: { path: kind, value: IngressRoute }
+
+  - it: leaves the route's middlewares alone while off
+    asserts:
+      - equal:
+          path: spec.routes[0].middlewares
+          value: [{ name: security-headers, namespace: traefik }]
+        template: templates/ingress.yaml
+        documentSelector: { path: kind, value: IngressRoute }
+
+  - it: needs the IngressRoute, which carries the middleware
+    set:
+      onDemand.enabled: true
+      ingressRoute.enabled: false
+    asserts:
+      - failedTemplate: { errorMessage: "onDemand.enabled needs ingressRoute.enabled: Sablier starts the release from the Traefik Middleware on the IngressRoute's route" }
+        template: templates/on-demand.yaml
+
+  - it: has the migration Job poke Sablier before it waits for the database
+    set:
+      onDemand.enabled: true
+      onDemand.sessionDuration: 30m
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].args[0]
+          pattern: "api/strategies/poke\\?group=headhunter&session_duration=30m"
+        template: templates/migrations.yaml
+
+  - it: does not poke while off
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[0].args[0]
+          pattern: "strategies/poke"
+        template: templates/migrations.yaml
+
+  - it: lets the migration Job reach Sablier, and nothing else new
+    set:
+      onDemand.enabled: true
+      onDemand.networkPolicy.sablierNamespace: sablier
+    asserts:
+      - contains:
+          path: spec.egress
+          content:
+            to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: sablier } } }]
+            ports: [{ protocol: TCP, port: 10000 }]
+        template: templates/networkpolicy.yaml
+        documentSelector: { path: metadata.name, value: headhunter-migrate }
+
+  - it: adds no Sablier egress while off
+    asserts:
+      - notContains:
+          path: spec.egress
+          content:
+            ports: [{ protocol: TCP, port: 10000 }]
+        template: templates/networkpolicy.yaml
+        documentSelector: { path: metadata.name, value: headhunter-migrate }
+
+  - it: does not have the app's own wait poke Sablier (Sablier started it)
+    set:
+      onDemand.enabled: true
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[0].args[0]
+          pattern: "strategies/poke"
+        template: templates/app.yaml
+        documentSelector: { path: kind, value: Deployment }

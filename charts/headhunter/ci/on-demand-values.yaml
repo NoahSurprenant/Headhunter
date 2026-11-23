@@ -1,0 +1,34 @@
+# onDemand on: Sablier's Middleware on the IngressRoute, the group's labels, no replicas, and the migration
+# Job's poke.
+defaultServiceAccount:
+  manage: true
+
+database:
+  password: { key: Password }
+  connectionString: { key: ConnectionString }
+
+app:
+  image:
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+ingressRoute:
+  enabled: true
+  host: headhunter.example.com
+
+mssql:
+  acceptEula: true
+  saPassword: { key: Password }
+  persistence:
+    size: 30Gi
+
+sqlExporter:
+  enabled: true
+
+networkPolicy:
+  enabled: true
+
+onDemand:
+  enabled: true
+  sablierUrl: http://sablier.sablier.svc.cluster.local:10000
+  networkPolicy:
+    sablierNamespace: sablier

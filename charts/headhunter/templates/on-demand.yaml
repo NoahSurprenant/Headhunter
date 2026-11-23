@@ -1,0 +1,41 @@
+{{- $o := .Values.onDemand -}}
+{{- if $o.enabled }}
+{{- if not .Values.ingressRoute.enabled }}
+{{- fail "onDemand.enabled needs ingressRoute.enabled: Sablier starts the release from the Traefik Middleware on the IngressRoute's route" }}
+{{- end }}
+# On demand (onDemand): Sablier's Traefik plugin, on the IngressRoute's route ({{ $o.strategy }}). A visit starts the
+# group (the app, SQL Server and sql-exporter, labelled headhunter.onDemandLabels) and renews its session;
+# sessionDuration after the last one, Sablier stops them all.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ printf "%s-on-demand" .Values.app.name }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+spec:
+  plugin:
+    sablier:
+      sablierUrl: {{ include "headhunter.sablierUrl" . | quote }}
+      group: {{ include "headhunter.onDemandGroup" . | quote }}
+      sessionDuration: {{ $o.sessionDuration | quote }}
+      {{- with $o.keepAliveInterval }}
+      keepAliveInterval: {{ . | quote }}
+      {{- end }}
+      {{- with $o.ignoreUserAgent }}
+      ignoreUserAgent:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if eq $o.strategy "blocking" }}
+      blocking:
+        timeout: {{ required "onDemand.blocking.timeout is required with the blocking strategy" $o.blocking.timeout | quote }}
+      {{- else }}
+      {{- $d := $o.dynamic }}
+      {{- /* Never an empty dynamic: the plugin picks its strategy by which one is set. */}}
+      {{- $dynamic := dict "displayName" ($d.displayName | default "Headhunter") }}
+      {{- if not (kindIs "invalid" $d.showDetails) }}{{ $_ := set $dynamic "showDetails" $d.showDetails }}{{ end }}
+      {{- with $d.theme }}{{ $_ := set $dynamic "theme" . }}{{ end }}
+      {{- with $d.refreshFrequency }}{{ $_ := set $dynamic "refreshFrequency" . }}{{ end }}
+      dynamic:
+        {{- toYaml $dynamic | nindent 8 }}
+      {{- end }}
+{{- end }}
