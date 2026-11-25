@@ -280,7 +280,7 @@ public class SearchConditionTests
             b.ConfigureTestServices(s => s.ConfigureDbContext<HeadhunterContext>(o => o.AddInterceptors(new SlowQueries())));
         });
 
-    // A search that runs out of Search:CommandTimeout (SQL Server's timeout, a SqlException -2) is a 422 the page shows.
+    // A search that runs out of Search:CommandTimeout (SQL Server's timeout, a SqlException -2; Postgres's, a cancelled statement) is a 422 the page shows.
     [Test]
     public async Task Voters_SearchThatTimesOut_Is422TooBroad()
     {
@@ -317,7 +317,7 @@ public class SearchConditionTests
     /// <summary>The SQL a condition becomes (no database needed). Printed, for a look in the test log.</summary>
     private static string Sql(params SearchConditionDto[] conditions)
     {
-        using var context = SqlServerFixture.CreateContext();
+        using var context = DatabaseFixture.CreateContext();
         var sql = SearchConditions.Apply(context.Voters, conditions, 10, new DateTime(2026, 10, 30)).ToQueryString();
         TestContext.Progress.WriteLine($"--- {string.Join(" AND ", conditions.Select(c => $"{c.Field} {c.Operator} {c.Value} {c.Value2}"))}\n{sql}\n");
         return sql;

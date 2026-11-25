@@ -60,7 +60,7 @@ public class RetryGeocodeTests
     {
         _upstream?.Dispose();
 
-        await using var context = SqlServerFixture.CreateContext();
+        await using var context = DatabaseFixture.CreateContext();
         var address = await context.Addresses.FirstAsync(a => a.ID == TestData.PineFailedAddressId);
         address.Matched = false;
         address.Latitude = null;
@@ -85,7 +85,7 @@ public class RetryGeocodeTests
             Assert.That(result.Longitude, Is.EqualTo(-84.55m));
         });
 
-        await using var context = SqlServerFixture.CreateContext();
+        await using var context = DatabaseFixture.CreateContext();
         var address = await context.Addresses.SingleAsync(a => a.ID == TestData.PineFailedAddressId);
         Assert.Multiple(() =>
         {

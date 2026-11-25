@@ -15,10 +15,15 @@ concurrency:
 
 jobs:
   test:
-    name: API and EF Core tests
+    name: API and EF Core tests (${{ matrix.database }})
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [SqlServer, Postgres]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      HEADHUNTER_TEST_DATABASE: ${{ matrix.database }}
       DOTNET_NOLOGO: "1"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
@@ -35,9 +40,14 @@ jobs:
           global-json-file: global.json
 
       # Pulled up front so the image download isn't charged to the first test's timeout.
-      # Keep in sync with SqlServerFixture.SqlServerImage.
+      # Keep in sync with DatabaseFixture.SqlServerImage and PostgresImage.
       - name: Pull SQL Server 2025 image
+        if: matrix.database == 'SqlServer'
         run: docker pull mcr.microsoft.com/mssql/server:2025-CU8-ubuntu-24.04@sha256:4bab24f36c1ecd48e85f7d37df26e6bf301641d84c3fe652f9a0dcc947d512e1
+
+      - name: Pull PostgreSQL 18 image
+        if: matrix.database == 'Postgres'
+        run: docker pull postgres:18@sha256:c699303802144847d238196173655dbbecf7a96aeca1565f2b02eb671a1f0b6b
 
       # Every C# project, not just what the tests reference, so the console tools keep compiling.
       # (Headhunter.sln also contains the Angular .esproj, which the client-tests workflow covers.)
@@ -47,6 +57,6 @@ jobs:
             dotnet build "$project/$project.csproj" -c Release
           done
 
-      # Testcontainers starts SQL Server 2025 on the runner's Docker; data is synthetic only.
+      # Testcontainers starts SQL Server 2025 or PostgreSQL 18 (HEADHUNTER_TEST_DATABASE) on the runner's Docker; data is synthetic only.
       - name: Test
         run: dotnet test Headhunter.Tests/Headhunter.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"

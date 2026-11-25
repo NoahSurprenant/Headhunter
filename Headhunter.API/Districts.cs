@@ -54,15 +54,15 @@ public static class Districts
     public static string InDistrictSql(DistrictType type) =>
         type switch
         {
-            DistrictType.County => "COUNTY_NAME = @district",
-            DistrictType.Jurisdiction => "JURISDICTION_NAME = @district",
-            DistrictType.Precinct => "JURISDICTION_NAME = @districtWithin AND PRECINCT = @district",
-            DistrictType.Ward => "JURISDICTION_NAME = @districtWithin AND WARD = @district",
-            DistrictType.SchoolDistrict => "SCHOOL_DISTRICT_NAME = @district",
-            DistrictType.StateHouse => "STATE_HOUSE_DISTRICT_NAME = @district",
-            DistrictType.StateSenate => "STATE_SENATE_DISTRICT_NAME = @district",
-            DistrictType.UsCongress => "US_CONGRESS_DISTRICT_NAME = @district",
-            DistrictType.CountyCommissioner => "COUNTY_NAME = @districtWithin AND COUNTY_COMMISSIONER_DISTRICT_NAME = @district",
+            DistrictType.County => "\"COUNTY_NAME\" = @district",
+            DistrictType.Jurisdiction => "\"JURISDICTION_NAME\" = @district",
+            DistrictType.Precinct => "\"JURISDICTION_NAME\" = @districtWithin AND \"PRECINCT\" = @district",
+            DistrictType.Ward => "\"JURISDICTION_NAME\" = @districtWithin AND \"WARD\" = @district",
+            DistrictType.SchoolDistrict => "\"SCHOOL_DISTRICT_NAME\" = @district",
+            DistrictType.StateHouse => "\"STATE_HOUSE_DISTRICT_NAME\" = @district",
+            DistrictType.StateSenate => "\"STATE_SENATE_DISTRICT_NAME\" = @district",
+            DistrictType.UsCongress => "\"US_CONGRESS_DISTRICT_NAME\" = @district",
+            DistrictType.CountyCommissioner => "\"COUNTY_NAME\" = @districtWithin AND \"COUNTY_COMMISSIONER_DISTRICT_NAME\" = @district",
             _ => throw new ArgumentOutOfRangeException(nameof(type)),
         };
 

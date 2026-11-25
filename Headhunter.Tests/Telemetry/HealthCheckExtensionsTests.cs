@@ -30,7 +30,7 @@ public class HealthCheckExtensionsTests
             builder.Configuration.AddInMemoryCollection(settings);
 
         // As Program.cs registers it: the factory also registers the context itself, which the check resolves.
-        builder.Services.AddDbContextFactory<HeadhunterContext>(options => options.UseSqlServer(connectionString));
+        builder.Services.AddDbContextFactory<HeadhunterContext>(options => options.UseHeadhunterDatabase(DatabaseFixture.Provider, connectionString));
         builder.Services.AddAppHealthChecks(builder.Configuration);
 
         var app = builder.Build();
@@ -49,7 +49,7 @@ public class HealthCheckExtensionsTests
     [Test]
     public async Task AllHealthy()
     {
-        await using var app = await StartApp(SqlServerFixture.ConnectionString);
+        await using var app = await StartApp(DatabaseFixture.ConnectionString);
 
         Assert.Multiple(async () =>
         {
@@ -75,7 +75,7 @@ public class HealthCheckExtensionsTests
     [Test]
     public async Task HighMemory_OnlyDegrades_AndNeverGatesReadiness()
     {
-        await using var app = await StartApp(SqlServerFixture.ConnectionString, maxAllocatedMegabytes: 1);
+        await using var app = await StartApp(DatabaseFixture.ConnectionString, maxAllocatedMegabytes: 1);
 
         Assert.Multiple(async () =>
         {
@@ -148,7 +148,7 @@ public class HealthCheckExtensionsTests
     [Test]
     public async Task ConfiguredPaths_AreMapped_AndRecognised()
     {
-        await using var app = await StartApp(SqlServerFixture.ConnectionString, settings: new Dictionary<string, string?>
+        await using var app = await StartApp(DatabaseFixture.ConnectionString, settings: new Dictionary<string, string?>
         {
             ["HealthChecks:Path"] = "/healthz",
             ["HealthChecks:LivePath"] = "/livez",

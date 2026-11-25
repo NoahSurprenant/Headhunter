@@ -28,7 +28,7 @@ internal class AddressConfiguration : IEntityTypeConfiguration<Address>
         builder.Property(x => x.FullStreetAddress).HasMaxLength(100);
         builder.Property(x => x.STREET_NAME).HasMaxLength(100);
         builder.HasIndex(x => x.FullStreetAddress);
-        builder.HasIndex(x => x.STREET_NAME).IncludeProperties(x => x.FullStreetAddress);
+        builder.HasIndex(x => x.STREET_NAME).IncludeColumns(x => x.FullStreetAddress);
 
         // The districts (Headhunter.API/Districts.cs): their suggestions' prefix searches, and the voter search, the
         // globe and the district stats filtering on one. Precincts and wards are numbered within a jurisdiction and
@@ -45,12 +45,12 @@ internal class AddressConfiguration : IEntityTypeConfiguration<Address>
         builder.Property(x => x.STATE_HOUSE_DISTRICT_NAME).HasMaxLength(100);
         builder.Property(x => x.STATE_SENATE_DISTRICT_NAME).HasMaxLength(100);
         builder.Property(x => x.US_CONGRESS_DISTRICT_NAME).HasMaxLength(100);
-        builder.HasIndex(x => new { x.COUNTY_NAME, x.COUNTY_COMMISSIONER_DISTRICT_NAME }).IncludeProperties(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => new { x.JURISDICTION_NAME, x.PRECINCT }).IncludeProperties(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => new { x.JURISDICTION_NAME, x.WARD }).IncludeProperties(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => x.SCHOOL_DISTRICT_NAME).IncludeProperties(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => x.STATE_HOUSE_DISTRICT_NAME).IncludeProperties(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => x.STATE_SENATE_DISTRICT_NAME).IncludeProperties(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => x.US_CONGRESS_DISTRICT_NAME).IncludeProperties(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => new { x.COUNTY_NAME, x.COUNTY_COMMISSIONER_DISTRICT_NAME }).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => new { x.JURISDICTION_NAME, x.PRECINCT }).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => new { x.JURISDICTION_NAME, x.WARD }).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.SCHOOL_DISTRICT_NAME).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.STATE_HOUSE_DISTRICT_NAME).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.STATE_SENATE_DISTRICT_NAME).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.US_CONGRESS_DISTRICT_NAME).IncludeColumns(x => new { x.Latitude, x.Longitude });
     }
 }

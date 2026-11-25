@@ -4,6 +4,8 @@ using Headhunter.Database;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.SqlClient;
+using Npgsql;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
@@ -204,48 +206,57 @@ public class ApiController : ControllerBase
         int gridCells, ClusterMetric metric, DistrictType? districtType, string district, string districtWithin,
         CancellationToken ct)
     {
+        var postgres = _context.Database.IsNpgsql();
         var value = metric switch
         {
-            // Unknown birth years (0) are left out of the median.
-            ClusterMetric.MedianAge => "@year - APPROX_PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY NULLIF(v.YEAR_OF_BIRTH, 0))",
-            ClusterMetric.PermanentAbsentee => "AVG(CASE WHEN v.IS_PERM_AV_BALLOT_VOTER = 1 THEN 100.0 ELSE 0 END)",
-            ClusterMetric.RecentlyRegistered => "AVG(CASE WHEN v.REGISTRATION_DATE >= @since THEN 100.0 ELSE 0 END)",
-            ClusterMetric.Female => "AVG(CASE WHEN v.GENDER = N'F' THEN 100.0 ELSE 0 END)",
+            // Unknown birth years (0) are left out of the median. SQL Server's median is approximate (its exact one is a window
+            // function, not an aggregate); Postgres's is exact.
+            ClusterMetric.MedianAge => postgres
+                ? "@year - percentile_cont(0.5) WITHIN GROUP (ORDER BY NULLIF(v.\"YEAR_OF_BIRTH\", 0))"
+                : "@year - APPROX_PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY NULLIF(v.\"YEAR_OF_BIRTH\", 0))",
+            ClusterMetric.PermanentAbsentee => "AVG(CASE WHEN CAST(v.\"IS_PERM_AV_BALLOT_VOTER\" AS int) = 1 THEN 100.0 ELSE 0 END)",
+            ClusterMetric.RecentlyRegistered => "AVG(CASE WHEN v.\"REGISTRATION_DATE\" >= @since THEN 100.0 ELSE 0 END)",
+            ClusterMetric.Female => "AVG(CASE WHEN v.\"GENDER\" = 'F' THEN 100.0 ELSE 0 END)",
             _ => throw new ArgumentOutOfRangeException(nameof(metric)),
         };
         var westEdge = (double)west;
         var width = west > east ? (double)(east - west) + 360 : (double)(east - west);
-        var longitude = west > east ? "(Longitude <= @east OR Longitude >= @west)" : "Longitude <= @east AND Longitude >= @west";
+        var longitude = west > east ? "(\"Longitude\" <= @east OR \"Longitude\" >= @west)" : "\"Longitude\" <= @east AND \"Longitude\" >= @west";
         // A district, as SQL over the same Addresses columns InDistrict filters on (the column names come from the enum).
         var inDistrict = districtType is { } type ? " AND " + Districts.InDistrictSql(type) : "";
 
+        // Quoted identifiers, which both SQL Server and Postgres take.
         var sql = $"""
             WITH a AS (
-                SELECT ID, CAST(Latitude AS float) AS Lat,
-                    CASE WHEN CAST(Longitude AS float) >= @westEdge THEN CAST(Longitude AS float) - @westEdge
-                        ELSE CAST(Longitude AS float) + 360 - @westEdge END AS X
-                FROM Addresses
-                WHERE Latitude <= @north AND Latitude >= @south AND {longitude}{inDistrict}
+                SELECT "ID", CAST("Latitude" AS float) AS Lat,
+                    CASE WHEN CAST("Longitude" AS float) >= @westEdge THEN CAST("Longitude" AS float) - @westEdge
+                        ELSE CAST("Longitude" AS float) + 360 - @westEdge END AS X
+                FROM "Addresses"
+                WHERE "Latitude" <= @north AND "Latitude" >= @south AND {longitude}{inDistrict}
             ), c AS (
-                SELECT ID, Lat, X, FLOOR(X / @cellWidth) AS Col, FLOOR((Lat - @southEdge) / @cellHeight) AS Row FROM a
+                SELECT "ID", Lat, X, FLOOR(X / @cellWidth) AS GridCol, FLOOR((Lat - @southEdge) / @cellHeight) AS GridRow FROM a
             ), cells AS (
-                SELECT Col, Row, AVG(Lat) AS Latitude, AVG(X) AS X, COUNT(*) AS Count FROM c GROUP BY Col, Row
+                SELECT GridCol, GridRow, AVG(Lat) AS "Latitude", AVG(X) AS "X", COUNT(*) AS "Count" FROM c GROUP BY GridCol, GridRow
             ), metric AS (
-                SELECT c.Col, c.Row, CAST({value} AS float) AS Value
-                FROM c JOIN Voters v ON v.AddressID = c.ID
-                GROUP BY c.Col, c.Row
+                SELECT c.GridCol, c.GridRow, CAST({value} AS float) AS "Value"
+                FROM c JOIN "Voters" v ON v."AddressID" = c."ID"
+                GROUP BY c.GridCol, c.GridRow
             )
-            SELECT cells.Latitude, cells.X, cells.Count, metric.Value
-            FROM cells LEFT JOIN metric ON metric.Col = cells.Col AND metric.Row = cells.Row
+            SELECT cells."Latitude", cells."X", cells."Count", metric."Value"
+            FROM cells LEFT JOIN metric ON metric.GridCol = cells.GridCol AND metric.GridRow = cells.GridRow
             """;
+        DbParameter Parameter(string name, object value) =>
+            postgres ? new NpgsqlParameter(name, value) : new SqlParameter(name, value);
+        // Npgsql's timestamptz takes only UTC.
+        var since = DateTime.SpecifyKind(DateTime.Today.AddYears(-1), postgres ? DateTimeKind.Utc : DateTimeKind.Unspecified);
         object[] parameters =
         [
-            new SqlParameter("@west", west), new SqlParameter("@east", east),
-            new SqlParameter("@north", north), new SqlParameter("@south", south),
-            new SqlParameter("@westEdge", westEdge), new SqlParameter("@southEdge", (double)south),
-            new SqlParameter("@cellWidth", width / gridCells), new SqlParameter("@cellHeight", (double)(north - south) / gridCells),
-            new SqlParameter("@year", DateTime.Now.Year), new SqlParameter("@since", DateTime.Today.AddYears(-1)),
-            new SqlParameter("@district", district), new SqlParameter("@districtWithin", districtWithin),
+            Parameter("@west", west), Parameter("@east", east),
+            Parameter("@north", north), Parameter("@south", south),
+            Parameter("@westEdge", westEdge), Parameter("@southEdge", (double)south),
+            Parameter("@cellWidth", width / gridCells), Parameter("@cellHeight", (double)(north - south) / gridCells),
+            Parameter("@year", DateTime.Now.Year), Parameter("@since", since),
+            Parameter("@district", district), Parameter("@districtWithin", districtWithin),
         ];
         // Every voter in the box joins in: Michigan took 8 to 11 s on 8M synthetic voters (1 to 2 s for a city), against
         // 1 to 2 s uncoloured, so past the default 30 s on a slower server. Once per view, then cached like the rest.
@@ -776,7 +787,9 @@ public class ApiController : ControllerBase
     public const string TooBroadMessage = "This search is too broad to finish; add a narrower condition (e.g. a city or birth year)";
 
     // SqlClient's "Execution Timeout Expired".
-    private static bool IsTimeout(Exception ex) => ex is SqlException { Number: -2 };
+    private static bool IsTimeout(Exception ex) => ex is SqlException { Number: -2 }
+        or NpgsqlException { InnerException: TimeoutException }
+        or PostgresException { SqlState: PostgresErrorCodes.QueryCanceled };
 
     private ObjectResult TooBroad() => Problem(title: "Search too broad", detail: TooBroadMessage,
         statusCode: StatusCodes.Status422UnprocessableEntity);

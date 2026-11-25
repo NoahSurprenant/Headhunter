@@ -20,6 +20,7 @@ ARG SOURCE_REVISION=
 WORKDIR /src
 COPY ["Headhunter.API/Headhunter.API.csproj", "Headhunter.API/"]
 COPY ["Headhunter.Database/Headhunter.Database.csproj", "Headhunter.Database/"]
+COPY ["Headhunter.Migrations.Postgres/Headhunter.Migrations.Postgres.csproj", "Headhunter.Migrations.Postgres/"]
 RUN dotnet restore "./Headhunter.API/Headhunter.API.csproj"
 COPY . .
 WORKDIR "/src/Headhunter.API"
@@ -44,6 +45,10 @@ WORKDIR /src
 RUN dotnet ef migrations bundle \
       --project Headhunter.Database --startup-project Headhunter.Database \
       --configuration Release --target-runtime linux-musl-x64 -o /app/efbundle
+# The same for PostgreSQL (Database:Provider=Postgres), which has its own migrations project: /app/efbundle-postgres.
+RUN dotnet ef migrations bundle \
+      --project Headhunter.Migrations.Postgres --startup-project Headhunter.Migrations.Postgres \
+      --configuration Release --target-runtime linux-musl-x64 -o /app/efbundle-postgres
 
 # The bundle's migration IDs, one per line: /app/migrations.txt. The migration Job and the app's wait
 # for it compare them with the database's __EFMigrationsHistory. The build fails if the list is empty
@@ -54,6 +59,12 @@ RUN dotnet ef migrations list --no-connect --prefix-output \
  && test -s /app/migrations.txt \
  && ! grep -v -E '^[0-9]{14}_[A-Za-z0-9_]+$' /app/migrations.txt \
  && echo "Migrations in this build:" && cat /app/migrations.txt
+RUN dotnet ef migrations list --no-connect --prefix-output \
+      --project Headhunter.Migrations.Postgres --startup-project Headhunter.Migrations.Postgres --configuration Release \
+    | sed -n 's/^data:[[:space:]]*//p' > /app/migrations-postgres.txt \
+ && test -s /app/migrations-postgres.txt \
+ && ! grep -v -E '^[0-9]{14}_[A-Za-z0-9_]+$' /app/migrations-postgres.txt \
+ && echo "Postgres migrations in this build:" && cat /app/migrations-postgres.txt
 
 # sqlcmd (Microsoft's go-sqlcmd), for the migration Job's checks and backup and the app's wait for it.
 # One static binary, pinned by checksum: a new version needs the checksum updated.
@@ -80,6 +91,8 @@ COPY --from=publish /app/publish .
 COPY --from=angular /usr/angular/dist/headhunter.client/browser wwwroot
 COPY --from=migrations /app/efbundle /app/efbundle
 COPY --from=migrations /app/migrations.txt /app/migrations.txt
+COPY --from=migrations /app/efbundle-postgres /app/efbundle-postgres
+COPY --from=migrations /app/migrations-postgres.txt /app/migrations-postgres.txt
 # The bundle is a single-file app that unpacks itself before it runs, into $HOME by default, which a
 # read-only root filesystem doesn't allow. The migration Job has /tmp writable.
 ENV DOTNET_BUNDLE_EXTRACT_BASE_DIR=/tmp
