@@ -1,6 +1,7 @@
 using Headhunter.CSVDump;
 using Headhunter.Database;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -118,8 +119,8 @@ public class CsvImportTests
         var create = await DatabaseFixture.CreateScratchDatabaseAsync("import_csv");
         var services = new ServiceCollection();
         services.AddScoped(_ => create());
-        services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+        services.AddSingleton<IConfiguration>(
+            new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?> { ["CSVPath"] = _path })
                 .Build());
         var worker = new Worker(NullLogger<Worker>.Instance, services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
