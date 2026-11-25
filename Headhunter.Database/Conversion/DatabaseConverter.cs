@@ -104,9 +104,8 @@ public sealed class DatabaseConverter(ILogger<DatabaseConverter> logger)
 
     public static HeadhunterContext NewContext(DatabaseEndpoint endpoint)
     {
-        var options = new DbContextOptionsBuilder<HeadhunterContext>()
-            .UseHeadhunterDatabase(endpoint.Provider, endpoint.ConnectionString, TimeSpan.FromHours(1))
-            .Options;
-        return new HeadhunterContext(options);
+        var builder = new DbContextOptionsBuilder<HeadhunterContext>();
+        builder.UseHeadhunterDatabase(endpoint.Provider, endpoint.ConnectionString, TimeSpan.FromHours(1));
+        return new HeadhunterContext(builder.Options);
     }
 }
