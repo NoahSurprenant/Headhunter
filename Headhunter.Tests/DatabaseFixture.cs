@@ -31,8 +31,12 @@ public class DatabaseFixture
 
     public static string ConnectionString { get; private set; } = "";
 
-    public static HeadhunterContext CreateContext() =>
-        new(new DbContextOptionsBuilder<HeadhunterContext>().UseHeadhunterDatabase(Provider, ConnectionString).Options);
+    public static HeadhunterContext CreateContext()
+    {
+        var builder = new DbContextOptionsBuilder<HeadhunterContext>();
+        builder.UseHeadhunterDatabase(Provider, ConnectionString);
+        return new HeadhunterContext(builder.Options);
+    }
 
     [OneTimeSetUp]
     public async Task StartDatabase()
