@@ -786,10 +786,16 @@ public class ApiController : ControllerBase
     // What the client shows for a search that ran out of Search:CommandTimeout (a 422).
     public const string TooBroadMessage = "This search is too broad to finish; add a narrower condition (e.g. a city or birth year)";
 
-    // SqlClient's "Execution Timeout Expired".
-    private static bool IsTimeout(Exception ex) => ex is SqlException { Number: -2 }
-        or NpgsqlException { InnerException: TimeoutException }
-        or PostgresException { SqlState: PostgresErrorCodes.QueryCanceled };
+    // SqlClient's "Execution Timeout Expired", or Npgsql's timeout or cancelled query. Npgsql's execution strategy wraps a
+    // timeout in an InvalidOperationException ("likely due to a transient failure").
+    private static bool IsTimeout(Exception ex) => ex switch
+    {
+        SqlException { Number: -2 } => true,
+        NpgsqlException { InnerException: TimeoutException } => true,
+        PostgresException { SqlState: PostgresErrorCodes.QueryCanceled } => true,
+        InvalidOperationException { InnerException: { } inner } => IsTimeout(inner),
+        _ => false,
+    };
 
     private ObjectResult TooBroad() => Problem(title: "Search too broad", detail: TooBroadMessage,
         statusCode: StatusCodes.Status422UnprocessableEntity);
