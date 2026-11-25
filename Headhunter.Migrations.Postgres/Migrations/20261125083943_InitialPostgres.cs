@@ -11,6 +11,17 @@ namespace Headhunter.Migrations.Postgres.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // LIKE on the case-insensitive (nondeterministic) collation needs PostgreSQL 18; older servers migrate fine and then fail every name and city search.
+            migrationBuilder.Sql("""
+                DO $$
+                BEGIN
+                    IF current_setting('server_version_num')::int < 180000 THEN
+                        RAISE EXCEPTION 'Headhunter needs PostgreSQL 18 or newer (server is %)', current_setting('server_version');
+                    END IF;
+                END
+                $$;
+                """);
+
             migrationBuilder.AlterDatabase()
                 .Annotation("Npgsql:CollationDefinition:case_insensitive", "und-u-ks-level2,und-u-ks-level2,icu,False");
 
