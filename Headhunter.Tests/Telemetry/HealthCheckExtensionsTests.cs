@@ -16,8 +16,10 @@ namespace Headhunter.Tests.Telemetry;
 [TestFixture]
 public class HealthCheckExtensionsTests
 {
-    // Refused at once: no SQL Server listens on port 9.
-    private const string UnreachableDatabase = "Server=127.0.0.1,9;Database=nope;User Id=sa;Password=x;Connect Timeout=2;TrustServerCertificate=True";
+    // Refused at once: nothing listens on port 9.
+    private static readonly string UnreachableDatabase = DatabaseFixture.Provider == DatabaseProvider.Postgres
+        ? "Host=127.0.0.1;Port=9;Database=nope;Username=u;Password=x;Timeout=2"
+        : "Server=127.0.0.1,9;Database=nope;User Id=sa;Password=x;Connect Timeout=2;TrustServerCertificate=True";
 
     private static async Task<WebApplication> StartApp(string connectionString, int? maxAllocatedMegabytes = null,
         IDictionary<string, string?>? settings = null)

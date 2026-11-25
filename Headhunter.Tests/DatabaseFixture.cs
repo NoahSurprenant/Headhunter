@@ -24,10 +24,16 @@ public class DatabaseFixture
     private static MsSqlContainer? _sqlServer;
     private static PostgreSqlContainer? _postgres;
 
-    public static DatabaseProvider Provider { get; } =
-        Enum.TryParse<DatabaseProvider>(Environment.GetEnvironmentVariable("HEADHUNTER_TEST_DATABASE"), ignoreCase: true, out var p)
+    public static DatabaseProvider Provider { get; } = ReadProvider();
+
+    private static DatabaseProvider ReadProvider()
+    {
+        var value = Environment.GetEnvironmentVariable("HEADHUNTER_TEST_DATABASE");
+        if (string.IsNullOrEmpty(value)) return DatabaseProvider.SqlServer;
+        return Enum.TryParse<DatabaseProvider>(value, ignoreCase: true, out var p)
             ? p
-            : DatabaseProvider.SqlServer;
+            : throw new InvalidOperationException($"HEADHUNTER_TEST_DATABASE=\"{value}\" is not a database provider (SqlServer or Postgres).");
+    }
 
     public static string ConnectionString { get; private set; } = "";
 

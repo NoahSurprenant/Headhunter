@@ -53,7 +53,7 @@ jobs:
       # (Headhunter.sln also contains the Angular .esproj, which the client-tests workflow covers.)
       - name: Build
         run: |
-          for project in Headhunter.Tests Headhunter.Seeder Headhunter.Geocoding Headhunter.CSVDump; do
+          for project in Headhunter.Tests Headhunter.Seeder Headhunter.Geocoding Headhunter.CSVDump Headhunter.Migrations.Postgres; do
             dotnet build "$project/$project.csproj" -c Release
           done
 
