@@ -31,6 +31,7 @@ public static class MetricsAndTracingExtensions
                     .AddRuntimeInstrumentation()
                     .AddProcessInstrumentation()
                     .AddSqlClientInstrumentation()
+                    .AddNpgsqlInstrumentation()
                     .AddMeter(AdditionalMeters);
 
                 if (telemetry.SignalEndpoint("metrics") is { } endpoint)
@@ -48,6 +49,7 @@ public static class MetricsAndTracingExtensions
                     .AddAspNetCoreInstrumentation(options => options.Filter = context => !healthPaths.IsHealthPath(context.Request.Path))
                     .AddHttpClientInstrumentation()
                     .AddSqlClientInstrumentation()
+                    .AddNpgsql()
                     .AddEntityFrameworkCoreInstrumentation();
 
                 if (telemetry.SignalEndpoint("traces") is { } endpoint)
