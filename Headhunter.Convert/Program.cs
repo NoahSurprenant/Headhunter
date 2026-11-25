@@ -10,7 +10,7 @@ var configuration = new ConfigurationBuilder().AddEnvironmentVariables().AddComm
 
 DatabaseEndpoint Endpoint(string section)
 {
-    var provider = Enum.TryParse<DatabaseProvider>(configuration[$"{section}:Provider"], ignoreCase: true, out var p)
+    var provider = Enum.TryParse<DatabaseProvider>(configuration[$"{section}:Provider"], ignoreCase: true, out var p) && Enum.IsDefined(p)
         ? p
         : throw new ConversionException($"{section}:Provider must be one of: {string.Join(", ", Enum.GetNames<DatabaseProvider>())}.");
     var connectionString = configuration[$"{section}:ConnectionString"];

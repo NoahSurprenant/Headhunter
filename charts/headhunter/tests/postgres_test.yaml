@@ -32,9 +32,9 @@ tests:
   - it: backs up with pg_dump onto the backup volume
     template: templates/migrations.yaml
     asserts:
-      - equal: { path: "spec.template.spec.initContainers[2].name", value: backup }
-      - matchRegex: { path: "spec.template.spec.initContainers[2].args[0]", pattern: "pg_dump" }
-      - matchRegex: { path: "spec.template.spec.initContainers[2].args[0]", pattern: "\\.partial" }
+      - equal: { path: "spec.template.spec.initContainers[3].name", value: backup }
+      - matchRegex: { path: "spec.template.spec.initContainers[3].args[0]", pattern: "pg_dump" }
+      - matchRegex: { path: "spec.template.spec.initContainers[3].args[0]", pattern: "\\.partial" }
       - contains:
           path: spec.template.spec.volumes
           content: { name: backup, persistentVolumeClaim: { claimName: postgres-backup-pvc } }
@@ -76,3 +76,35 @@ tests:
           content: { ports: [{ port: 5432, protocol: TCP }] }
           any: true
         documentIndex: 0
+
+  - it: makes the backup volume writable by the migration user before pg_dump
+    template: templates/migrations.yaml
+    asserts:
+      - equal: { path: "spec.template.spec.initContainers[2].name", value: fix-permissions-backup }
+      - equal: { path: "spec.template.spec.initContainers[2].securityContext.runAsUser", value: 0 }
+      - matchRegex: { path: "spec.template.spec.initContainers[2].command[2]", pattern: "chown 1654:1654 /backup" }
+      - equal: { path: "spec.template.spec.initContainers[3].name", value: backup }
+
+  - it: refuses to back up with no backup volume to write to
+    template: templates/migrations.yaml
+    set:
+      postgres.backup.enabled: false
+    asserts:
+      - failedTemplate: { errorPattern: "migrations.backup.enabled needs" }
+
+  - it: refuses to back up an external server
+    template: templates/migrations.yaml
+    set:
+      postgres.enabled: false
+      database.host: db.example.com
+    asserts:
+      - failedTemplate: { errorPattern: "migrations.backup.enabled needs" }
+
+  - it: backs up nothing, and mounts nothing, when backups are off
+    template: templates/migrations.yaml
+    set:
+      migrations.backup.enabled: false
+      postgres.enabled: false
+      database.host: db.example.com
+    asserts:
+      - lengthEqual: { path: spec.template.spec.initContainers, count: 2 }

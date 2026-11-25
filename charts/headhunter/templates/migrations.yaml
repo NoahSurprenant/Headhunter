@@ -126,6 +126,28 @@ spec:
         {{- include "headhunter.migrationMounts" . | nindent 8 }}
     {{- if $m.backup.enabled }}
     {{- if include "headhunter.postgres" . }}
+    {{- if not (and .Values.postgres.enabled (or .Values.postgres.backup.enabled .Values.postgres.backup.existingClaim)) }}
+    {{- fail "migrations.backup.enabled needs the chart's own PostgreSQL with postgres.backup (or an existingClaim) to write to: set migrations.backup.enabled false for an external server" }}
+    {{- end }}
+    # The backup volume's root may be root-owned (a new volume, an NFS export): the dump runs as the app's user.
+    - name: fix-permissions-backup
+      image: {{ include "headhunter.image" .Values.postgres.image }}
+      imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+      command: ["sh", "-c", "chown {{ $m.backup.pgOwner }} {{ $m.backup.pgDirectory }}"]
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        readOnlyRootFilesystem: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      volumeMounts:
+        - name: backup
+          mountPath: {{ $m.backup.pgDirectory }}
     # Before changing an existing database: a pg_dump archive (custom format, checked by reading it back) on
     # postgres.backup's volume, written as .partial and moved into place once complete.
     - name: backup

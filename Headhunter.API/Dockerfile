@@ -5,6 +5,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS base
 
 # postgresql-client: psql and pg_dump, for the chart's migration steps on PostgreSQL.
 RUN apk add --no-cache icu-libs postgresql-client
+# pg_dump refuses a server newer than itself: fail the build if the client falls behind the chart's PostgreSQL (postgres.image).
+RUN pg_dump --version | grep -q "(PostgreSQL) 18\."
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 USER $APP_UID

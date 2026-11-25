@@ -388,6 +388,8 @@ migrations:
     # With provider Postgres: where the Job mounts postgres.backup's volume, and writes a pg_dump archive,
     # <prefix>-<UTC time>.dump (the prefix as above).
     pgDirectory: /backup
+    # Who owns the backup volume's root for pg_dump: the app image's user (APP_UID), as user:group.
+    pgOwner: "1654:1654"
   # How long the steps wait for SQL Server, in seconds.
   waitSeconds: 600
   # A failed migration waits for a person, not a retry.
