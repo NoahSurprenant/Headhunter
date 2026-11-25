@@ -64,7 +64,7 @@ public class ImportTests
         builder.UseHeadhunterDatabase(DatabaseProvider.Postgres, old.GetConnectionString());
         await using var context = new HeadhunterContext(builder.Options);
 
-        var ex = Assert.ThrowsAsync<PostgresException>(() => context.Database.MigrateAsync());
+        var ex = await Assert.ThrowsAsync<PostgresException>(() => context.Database.MigrateAsync());
         Assert.That(ex!.MessageText, Does.Contain("PostgreSQL 18 or newer"));
     }
 }
