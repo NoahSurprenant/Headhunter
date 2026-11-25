@@ -38,7 +38,7 @@ public class ConversionTests
         var endpoint = new DatabaseEndpoint(DatabaseFixture.Provider, targetContext.Database.GetConnectionString()!);
         await Converter.ConvertAsync(Source, endpoint);
 
-        var error = Assert.ThrowsAsync<ConversionException>(() => Converter.ConvertAsync(Source, endpoint));
+        var error = await Assert.ThrowsAsync<ConversionException>(() => Converter.ConvertAsync(Source, endpoint));
 
         Assert.That(error!.Message, Does.Contain("already has rows"));
     }
@@ -54,7 +54,7 @@ public class ConversionTests
             ? new Npgsql.NpgsqlConnectionStringBuilder(DatabaseFixture.ConnectionString) { Database = name }.ConnectionString
             : new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(DatabaseFixture.ConnectionString) { InitialCatalog = name }.ConnectionString;
 
-        var error = Assert.ThrowsAsync<ConversionException>(() => Converter.ConvertAsync(
+        var error = await Assert.ThrowsAsync<ConversionException>(() => Converter.ConvertAsync(
             new DatabaseEndpoint(DatabaseFixture.Provider, empty), Source));
 
         Assert.That(error!.Message, Does.Contain("missing migrations"));
