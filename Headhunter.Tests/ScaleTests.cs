@@ -43,7 +43,7 @@ public class ScaleTests
 
         await using var db = create();
         Assert.That(await db.Voters.CountAsync(), Is.EqualTo(Voters));
-        Assert.That(await db.Addresses.CountAsync(), Is.EqualTo((Voters - 1) / 2 + 1));
+        Assert.That(await db.Addresses.CountAsync(), Is.EqualTo(Voters / 2 + 1));
 
         var searchBudget = TimeSpan.FromSeconds(2);
         // Same shapes as ApiController's suggestion endpoints.

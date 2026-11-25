@@ -42,13 +42,13 @@ public class ImportTests
         await using var check = create();
         Assert.Multiple(async () =>
         {
-            // Voters 1..20 form households n/2 = 0..10.
+            // Voters 1..20 form households n/2 = 0..10: nine pairs, with voters 1 and 20 alone.
             Assert.That(await check.Addresses.CountAsync(), Is.EqualTo(11));
             Assert.That(await check.Voters.CountAsync(), Is.EqualTo(20));
             var sizes = await check.Voters.GroupBy(v => v.AddressID).Select(g => g.Count()).ToListAsync();
-            Assert.That(sizes.Count(s => s == 2), Is.EqualTo(10));
-            Assert.That(sizes.Count(s => s == 1), Is.EqualTo(1));
-            Assert.That(await check.Addresses.CountAsync(a => a.FullStreetAddress == "2 Street0"), Is.EqualTo(1));
+            Assert.That(sizes.Count(s => s == 2), Is.EqualTo(9));
+            Assert.That(sizes.Count(s => s == 1), Is.EqualTo(2));
+            Assert.That(await check.Addresses.CountAsync(a => a.FullStreetAddress == "2 Street0 St"), Is.EqualTo(1));
         });
     }
 
@@ -138,7 +138,7 @@ public class CsvImportTests
             Assert.That(await check.Voters.CountAsync(v => v.IS_PERM_AV_BALLOT_VOTER), Is.EqualTo(voters / 3));
             var voter = await check.Voters.Include(v => v.Address).SingleAsync(v => v.VOTER_IDENTIFICATION_NUMBER == "7");
             Assert.That(voter.REGISTRATION_DATE, Is.EqualTo(new DateTime(2019, 5, 12)));
-            Assert.That(voter.Address.FullStreetAddress, Is.EqualTo("4 Street0").IgnoreCase);
+            Assert.That(voter.Address.FullStreetAddress, Is.EqualTo("4 Street0 St").IgnoreCase);
         });
     }
 }

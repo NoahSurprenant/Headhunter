@@ -337,6 +337,19 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
 """;
         using var scope = _serviceScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<HeadhunterContext>();
+        if (context.Database.IsNpgsql())
+        {
+            // Postgres cannot hash-join on the case-insensitive (nondeterministic) collation, so 31 "=" columns
+            // become a nested loop (256 s for 300k voters, hopeless for 8.5M). Join on a key that compares
+            // deterministically instead; lower() is how this collation folds case.
+            var columns = rawSql[rawSql.IndexOf("\nON AL.", StringComparison.Ordinal)..]
+                .Split("AL.\"")[1..]
+                .Select(part => part[..part.IndexOf('"')])
+                .ToList();
+            string Key(string alias) =>
+                $"md5(lower(concat_ws(chr(31), {string.Join(", ", columns.Select(c => $"{alias}.\"{c}\""))})))";
+            rawSql = rawSql[..rawSql.IndexOf("\nON AL.", StringComparison.Ordinal)] + $"\nON {Key("AL")} = {Key("MR")};";
+        }
         context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
         await context.Database.ExecuteSqlRawAsync(rawSql, ct);
     }
