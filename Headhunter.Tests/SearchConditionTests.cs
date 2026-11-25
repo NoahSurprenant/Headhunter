@@ -256,7 +256,8 @@ public class SearchConditionTests
     /// <summary>Every query takes longer than the one-second Search:CommandTimeout of <see cref="SlowSearchClient"/>.</summary>
     private sealed class SlowQueries : DbCommandInterceptor
     {
-        private static void Slow(DbCommand command) => command.CommandText = "WAITFOR DELAY '00:00:03';\n" + command.CommandText;
+        private static void Slow(DbCommand command) => command.CommandText =
+            (DatabaseFixture.Provider == DatabaseProvider.Postgres ? "SELECT pg_sleep(3);\n" : "WAITFOR DELAY '00:00:03';\n") + command.CommandText;
 
         public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData,
             InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
