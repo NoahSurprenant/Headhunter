@@ -43,38 +43,67 @@ repository:tag, repository:tag@digest, or repository@digest. tag may itself carr
 {{- .secretName | default .root.Values.secret.name -}}
 {{- end }}
 
+{{/* "true" when the database is PostgreSQL (database.provider Postgres); nothing for SQL Server. */}}
+{{- define "headhunter.postgres" -}}
+{{- $p := .Values.database.provider | default "SqlServer" -}}
+{{- if not (has $p (list "SqlServer" "Postgres")) }}{{ fail "database.provider must be SqlServer or Postgres" }}{{ end -}}
+{{- if eq $p "Postgres" }}true{{ end -}}
+{{- end }}
+
+{{/* One value per provider. Takes dict "root", "sql", "pg". */}}
+{{- define "headhunter.byProvider" -}}
+{{- if include "headhunter.postgres" .root }}{{ .pg }}{{ else }}{{ .sql }}{{ end -}}
+{{- end }}
+
+{{/* The chart's own database server is on: the chart's PostgreSQL or SQL Server, by provider. */}}
+{{- define "headhunter.ownDatabase" -}}
+{{- if include "headhunter.postgres" . }}{{ if .Values.postgres.enabled }}true{{ end }}{{ else }}{{ if .Values.mssql.enabled }}true{{ end }}{{ end -}}
+{{- end }}
+
 {{- define "headhunter.dbHost" -}}
 {{- if .Values.database.host -}}
 {{- .Values.database.host -}}
-{{- else if .Values.mssql.enabled -}}
-{{- .Values.mssql.service.name -}}
+{{- else if include "headhunter.ownDatabase" . -}}
+{{- include "headhunter.byProvider" (dict "root" . "sql" .Values.mssql.service.name "pg" .Values.postgres.service.name) -}}
 {{- else -}}
-{{- fail "database.host is required with mssql.enabled false" -}}
+{{- fail (printf "database.host is required with %s false" (include "headhunter.byProvider" (dict "root" . "sql" "mssql.enabled" "pg" "postgres.enabled"))) -}}
 {{- end -}}
 {{- end }}
 
 {{- define "headhunter.dbPort" -}}
 {{- if .Values.database.port -}}
 {{- .Values.database.port -}}
-{{- else if and .Values.mssql.enabled (not .Values.database.host) -}}
-{{- .Values.mssql.service.port -}}
+{{- else if and (include "headhunter.ownDatabase" .) (not .Values.database.host) -}}
+{{- include "headhunter.byProvider" (dict "root" . "sql" .Values.mssql.service.port "pg" .Values.postgres.service.port) -}}
 {{- else -}}
-1433
+{{- include "headhunter.byProvider" (dict "root" . "sql" "1433" "pg" "5432") -}}
 {{- end -}}
 {{- end }}
 
-{{/* The administrator's password: database.password, else (the chart's SQL Server) mssql.saPassword. */}}
+{{/* The administrator: database.user, else sa (SQL Server) or postgres. */}}
+{{- define "headhunter.dbUser" -}}
+{{- .Values.database.user | default (include "headhunter.byProvider" (dict "root" . "sql" "sa" "pg" "postgres")) -}}
+{{- end }}
+
+{{/* The connection string's options: database.options, else the provider's default. */}}
+{{- define "headhunter.dbOptions" -}}
+{{- .Values.database.options | default (include "headhunter.byProvider" (dict "root" . "sql" "Encrypt=True;TrustServerCertificate=True" "pg" "SSL Mode=Prefer")) | trimSuffix ";" -}}
+{{- end }}
+
+{{/* The administrator's password: database.password, else the chart's database's own (mssql.saPassword, postgres.password). */}}
 {{- define "headhunter.dbPasswordRef" -}}
 {{- $p := .Values.database.password -}}
-{{- $secretName := $p.secretName | default .Values.mssql.saPassword.secretName -}}
-{{- $key := $p.key | default .Values.mssql.saPassword.key -}}
+{{- $own := include "headhunter.byProvider" (dict "root" . "sql" "mssql" "pg" "postgres") -}}
+{{- $secretName := $p.secretName | default (ternary .Values.postgres.password.secretName .Values.mssql.saPassword.secretName (eq $own "postgres")) -}}
+{{- $key := $p.key | default (ternary .Values.postgres.password.key .Values.mssql.saPassword.key (eq $own "postgres")) -}}
 name: {{ include "headhunter.secretName" (dict "secretName" $secretName "root" .) }}
 key: {{ $key }}
 {{- end }}
 
 {{/*
-The administrator's connection for sqlcmd: DB_HOST, DB_PORT, DB_NAME, DB_USER and SQLCMDPASSWORD, which
-sqlcmd reads, so the password never goes on a command line.
+The administrator's connection for sqlcmd or psql: DB_HOST, DB_PORT, DB_NAME, DB_USER and the password in
+SQLCMDPASSWORD (sqlcmd) or PGPASSWORD (libpq, which also reads PGHOST, PGPORT and PGUSER), so it never goes
+on a command line.
 */}}
 {{- define "headhunter.dbEnv" -}}
 - name: DB_HOST
@@ -84,11 +113,41 @@ sqlcmd reads, so the password never goes on a command line.
 - name: DB_NAME
   value: {{ .Values.database.name | quote }}
 - name: DB_USER
-  value: {{ .Values.database.user | quote }}
+  value: {{ include "headhunter.dbUser" . | quote }}
+{{- if include "headhunter.postgres" . }}
+- name: PGHOST
+  value: {{ include "headhunter.dbHost" . | quote }}
+- name: PGPORT
+  value: {{ include "headhunter.dbPort" . | quote }}
+- name: PGUSER
+  value: {{ include "headhunter.dbUser" . | quote }}
+- name: PGCONNECT_TIMEOUT
+  value: "5"
+- name: PGPASSWORD
+{{- else }}
 - name: SQLCMDPASSWORD
+{{- end }}
   valueFrom:
     secretKeyRef:
       {{- include "headhunter.dbPasswordRef" . | nindent 6 }}
+{{- end }}
+
+{{/* The connection string for the administrator; $(DB_PASSWORD) is expanded by Kubernetes. Takes dict "root" and "suffix". */}}
+{{- define "headhunter.builtConnectionString" -}}
+{{- $r := .root -}}
+{{- if include "headhunter.postgres" $r -}}
+{{- printf "Host=%s;Port=%s;Database=%s;Username=%s;Password=\"$(DB_PASSWORD)\";%s%s" (include "headhunter.dbHost" $r) (include "headhunter.dbPort" $r) $r.Values.database.name (include "headhunter.dbUser" $r) (include "headhunter.dbOptions" $r) .suffix -}}
+{{- else -}}
+{{- printf "Server=%s,%s;Database=%s;User Id=%s;Password=\"$(DB_PASSWORD)\";%s%s" (include "headhunter.dbHost" $r) (include "headhunter.dbPort" $r) $r.Values.database.name (include "headhunter.dbUser" $r) (include "headhunter.dbOptions" $r) .suffix -}}
+{{- end -}}
+{{- end }}
+
+{{/* Database__Provider, for PostgreSQL (SQL Server is the app's default). */}}
+{{- define "headhunter.providerEnv" -}}
+{{- if include "headhunter.postgres" . }}
+- name: Database__Provider
+  value: Postgres
+{{- end }}
 {{- end }}
 
 {{/*
@@ -98,6 +157,8 @@ quoted, so it may contain ';' but not '"'.
 */}}
 {{- define "headhunter.connectionEnv" -}}
 {{- $cs := .Values.database.connectionString -}}
+{{- with include "headhunter.providerEnv" . }}{{ . | trim }}
+{{ end -}}
 {{- if $cs.key -}}
 - name: ConnectionStrings__Headhunter
   valueFrom:
@@ -110,7 +171,7 @@ quoted, so it may contain ';' but not '"'.
     secretKeyRef:
       {{- include "headhunter.dbPasswordRef" . | nindent 6 }}
 - name: ConnectionStrings__Headhunter
-  value: {{ printf "Server=%s,%s;Database=%s;User Id=%s;Password=\"$(DB_PASSWORD)\";%s" (include "headhunter.dbHost" .) (include "headhunter.dbPort" .) .Values.database.name .Values.database.user .Values.database.options | quote }}
+  value: {{ include "headhunter.builtConnectionString" (dict "root" . "suffix" "") | quote }}
 {{- end -}}
 {{- end }}
 
@@ -119,12 +180,14 @@ The migrations always connect as the administrator (they change the schema), wha
 database.connectionString gives the app.
 */}}
 {{- define "headhunter.migrationConnectionEnv" -}}
+{{- with include "headhunter.providerEnv" . }}{{ . | trim }}
+{{ end -}}
 - name: DB_PASSWORD
   valueFrom:
     secretKeyRef:
       {{- include "headhunter.dbPasswordRef" . | nindent 6 }}
 - name: ConnectionStrings__Headhunter
-  value: {{ printf "Server=%s,%s;Database=%s;User Id=%s;Password=\"$(DB_PASSWORD)\";%s;Command Timeout=%d" (include "headhunter.dbHost" .) (include "headhunter.dbPort" .) .Values.database.name .Values.database.user (.Values.database.options | trimSuffix ";") (int .Values.migrations.activeDeadlineSeconds) | quote }}
+  value: {{ include "headhunter.builtConnectionString" (dict "root" . "suffix" (printf ";Command Timeout=%d" (int .Values.migrations.activeDeadlineSeconds))) | quote }}
 {{- end }}
 
 {{/*
@@ -184,7 +247,7 @@ Until SQL Server accepts a login and the database, if it exists, is ONLINE (SQL 
 before it has finished recovering its databases after a restart). Fails after WAIT_SECONDS. Needs
 headhunter.dbEnv.
 */}}
-{{- define "headhunter.waitForDatabaseScript" -}}
+{{- define "headhunter.mssqlWaitForDatabaseScript" -}}
 end=$(( $(date +%s) + WAIT_SECONDS ))
 # A function, not inline in $(...): BusyBox sh would run $(DB_NAME) as a command there.
 database_state() {
@@ -204,11 +267,70 @@ echo "SQL Server is up."
 {{- end }}
 
 {{/* The migration IDs the database has, into /work/applied.txt (nothing if it doesn't exist yet). */}}
-{{- define "headhunter.appliedMigrationsQuery" -}}
+{{- define "headhunter.mssqlAppliedMigrationsQuery" -}}
 sqlcmd -S "$DB_HOST,$DB_PORT" -U "$DB_USER" -C -b -h -1 -W -v DB_NAME="$DB_NAME" -Q "SET NOCOUNT ON;
     IF DB_ID(N'\$$(DB_NAME)') IS NOT NULL AND OBJECT_ID(N'[\$$(DB_NAME)].dbo.__EFMigrationsHistory') IS NOT NULL
       EXEC(N'SELECT MigrationId FROM [\$$(DB_NAME)].dbo.__EFMigrationsHistory');" \
   > /work/applied.txt
+{{- end }}
+
+
+{{/* The database's wait, by provider (needs headhunter.dbEnv and WAIT_SECONDS). */}}
+{{- define "headhunter.waitForDatabaseScript" -}}
+{{- if include "headhunter.postgres" . }}{{ include "headhunter.pgWaitForDatabaseScript" . }}{{ else }}{{ include "headhunter.mssqlWaitForDatabaseScript" . }}{{ end -}}
+{{- end }}
+
+{{/*
+Until PostgreSQL answers a query as the administrator (it refuses connections while it starts, or
+recovers after an unclean stop). Fails after WAIT_SECONDS. libpq reads the connection from PGHOST, PGPORT,
+PGUSER and PGPASSWORD (headhunter.dbEnv).
+*/}}
+{{- define "headhunter.pgWaitForDatabaseScript" -}}
+end=$(( $(date +%s) + WAIT_SECONDS ))
+# A function, not inline in $(...): BusyBox sh would run $(DB_NAME) as a command there.
+server_state() { psql -X -A -t -q -d postgres -c 'SELECT 1' 2>&1; }
+last=""
+until state=$(server_state) && [ "$state" = 1 ]; do
+  if [ "$(date +%s)" -ge "$end" ]; then echo "PostgreSQL not ready: $(echo "$state" | head -c 300)"; exit 1; fi
+  msg="Waiting for PostgreSQL: $(echo "$state" | head -c 300 | tr '\n' ' ')"
+  [ "$msg" = "$last" ] || echo "$msg"
+  last=$msg
+  sleep 5
+done
+echo "PostgreSQL is up."
+{{- end }}
+
+{{/* The migration IDs the database has, into /work/applied.txt, by provider. */}}
+{{- define "headhunter.appliedMigrationsQuery" -}}
+{{- if include "headhunter.postgres" . }}{{ include "headhunter.pgAppliedMigrationsQuery" . }}{{ else }}{{ include "headhunter.mssqlAppliedMigrationsQuery" . }}{{ end -}}
+{{- end }}
+
+{{/*
+PostgreSQL's: nothing if the database or its history table doesn't exist yet. psql quotes the name
+(:'db' a literal, :"db" an identifier); the script goes through stdin with a quoted here-document, so the
+shell expands nothing in it.
+*/}}
+{{- define "headhunter.pgAppliedMigrationsQuery" -}}
+psql -X -A -t -q -v ON_ERROR_STOP=1 -d postgres -v db="$DB_NAME" > /work/applied.txt <<'SQL'
+SELECT NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db') AS missing \gset
+\if :missing
+\else
+\connect :"db"
+SELECT to_regclass('public."__EFMigrationsHistory"') IS NOT NULL AS history \gset
+\if :history
+SELECT "MigrationId" FROM public."__EFMigrationsHistory";
+\endif
+\endif
+SQL
+{{- end }}
+
+{{/* The image's list of migrations for the provider's migrations project. */}}
+{{- define "headhunter.migrationsFile" -}}
+{{- include "headhunter.byProvider" (dict "root" . "sql" "/app/migrations.txt" "pg" "/app/migrations-postgres.txt") -}}
+{{- end }}
+
+{{- define "headhunter.migrationBundle" -}}
+{{- include "headhunter.byProvider" (dict "root" . "sql" "/app/efbundle" "pg" "/app/efbundle-postgres") -}}
 {{- end }}
 
 {{/*
@@ -216,7 +338,7 @@ The image's migrations the database lacks (/work/applied.txt), one per line. awk
 BusyBox grep matches every line against an empty pattern file.
 */}}
 {{- define "headhunter.pendingMigrations" -}}
-awk 'FILENAME == ARGV[1] { if ($0 != "") have[$0]; next } $0 != "" && !($0 in have)' /work/applied.txt /app/migrations.txt
+awk 'FILENAME == ARGV[1] { if ($0 != "") have[$0]; next } $0 != "" && !($0 in have)' /work/applied.txt {{ include "headhunter.migrationsFile" . }}
 {{- end }}
 
 {{/* Small steps (sqlcmd waits and checks): migrations.stepResources. */}}
@@ -261,7 +383,7 @@ visit. Both key forms (sablier.* and sablierapp.dev/*), the same values. Nothing
 
 {{/* "true" when the release's own SQL Server is in the onDemand group: the migration Job starts the group first. */}}
 {{- define "headhunter.onDemandWakesDatabase" -}}
-{{- if and .Values.onDemand.enabled .Values.mssql.enabled (not .Values.database.host) }}true{{ end -}}
+{{- if and .Values.onDemand.enabled (include "headhunter.ownDatabase" .) (not .Values.database.host) }}true{{ end -}}
 {{- end }}
 
 {{/* The port of a URL (80 or 443 by scheme when it names none). */}}

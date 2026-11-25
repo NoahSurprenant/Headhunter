@@ -1,0 +1,21 @@
+# PostgreSQL instead of SQL Server: the chart's own PostgreSQL, its exporter and the pg_dump backup volume.
+# Installed by CI's lint and template checks.
+database:
+  provider: Postgres
+
+mssql:
+  enabled: false
+
+postgres:
+  enabled: true
+
+sqlExporter:
+  enabled: true
+
+networkPolicy:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts: [headhunter.example.com]

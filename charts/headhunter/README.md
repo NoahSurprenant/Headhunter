@@ -5,6 +5,10 @@ things around it:
 
 - **SQL Server** (`mssql`): a StatefulSet with its data volume and a backup volume (or an NFS export).
   You can also bring your own server (`database.host`).
+- **PostgreSQL** (`postgres`, with `database.provider: Postgres`): the same, in place of SQL Server. The migration
+  Job then runs `/app/efbundle-postgres`, backs up with `pg_dump -Fc` onto the volume at
+  `migrations.backup.pgDirectory`, and sql-exporter uses its `pg_standard` collector. `ci/postgres-values.yaml`
+  is a working example. To move data from SQL Server, run `/app/convert` (see the repository readme).
 - **A migration Job** (`migrations`): applies the image's EF Core migrations, after backing up the
   database. It works the same way as GrifballWebApp's chart.
 - **sql-exporter** (`sqlExporter`): Prometheus metrics for SQL Server. It has two collectors:

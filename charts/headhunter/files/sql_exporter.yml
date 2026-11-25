@@ -11,7 +11,7 @@ global:
 # of this file. It cannot be left empty: the YAML unmarshaller rejects a blank data_source_name
 # before the environment is ever consulted.
 target:
-  data_source_name: 'sqlserver://placeholder:placeholder@127.0.0.1:1433'
-  collectors: {{ .Values.sqlExporter.collectors | toJson }}
+  data_source_name: {{ include "headhunter.byProvider" (dict "root" . "sql" "'sqlserver://placeholder:placeholder@127.0.0.1:1433'" "pg" "'pgx://placeholder:placeholder@127.0.0.1:5432/postgres'") }}
+  collectors: {{ .Values.sqlExporter.collectors | default (ternary (list "pg_standard") (list "mssql_standard" "mssql_io_writes" "mssql_query_stats") (eq (include "headhunter.postgres" .) "true")) | toJson }}
 collector_files:
   - '*.collector.yml'
