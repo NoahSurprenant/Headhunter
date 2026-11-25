@@ -44,6 +44,34 @@ public class DatabaseFixture
         return new HeadhunterContext(builder.Options);
     }
 
+    /// <summary>
+    /// A new, migrated, empty database on the same container, for tests that load or change a lot of data
+    /// (the shared one holds <see cref="TestData"/> that other tests count).
+    /// </summary>
+    public static async Task<Func<HeadhunterContext>> CreateScratchDatabaseAsync(string name)
+    {
+        await using (var admin = CreateContext())
+        {
+            await admin.Database.ExecuteSqlRawAsync(Provider == DatabaseProvider.Postgres
+                ? $"CREATE DATABASE \"{name}\""
+                : $"CREATE DATABASE [{name}]");
+        }
+
+        var connectionString = Provider == DatabaseProvider.Postgres
+            ? new Npgsql.NpgsqlConnectionStringBuilder(ConnectionString) { Database = name }.ConnectionString
+            : new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(ConnectionString) { InitialCatalog = name }.ConnectionString;
+
+        HeadhunterContext Create()
+        {
+            var builder = new DbContextOptionsBuilder<HeadhunterContext>();
+            builder.UseHeadhunterDatabase(Provider, connectionString);
+            return new HeadhunterContext(builder.Options);
+        }
+
+        await using (var context = Create()) await context.Database.MigrateAsync();
+        return Create;
+    }
+
     [OneTimeSetUp]
     public async Task StartDatabase()
     {

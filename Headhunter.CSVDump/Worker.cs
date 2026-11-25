@@ -127,7 +127,7 @@ public class Worker : BackgroundService
     /// <summary>
     /// 3556506 rows affected, took 1:45 minutes on my machine
     /// </summary>
-    private async Task InsertAddresses(CancellationToken ct = default)
+    public async Task InsertAddresses(CancellationToken ct = default)
     {
         var rawSql = """
 INSERT INTO "Addresses" (
@@ -255,7 +255,7 @@ GROUP BY
     /// <summary>
     /// 8506687 rows affected, took 3:31 minutes on my machine
     /// </summary>
-    private async Task InsertVoters(CancellationToken ct = default)
+    public async Task InsertVoters(CancellationToken ct = default)
     {
         var rawSql = """
 INSERT INTO "Voters" (
