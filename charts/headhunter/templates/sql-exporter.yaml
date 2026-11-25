@@ -2,7 +2,7 @@
 {{- if $x.enabled }}
 {{- /* Its login: sqlExporter.user and password, else the administrator's. */}}
 {{- $admin := include "headhunter.dbPasswordRef" . | fromYaml }}
-{{- $user := $x.user | default .Values.database.user }}
+{{- $user := $x.user | default (include "headhunter.dbUser" .) }}
 {{- $passwordSecret := $admin.name }}
 {{- $passwordKey := $admin.key }}
 {{- if $x.password.key }}
@@ -19,12 +19,17 @@ metadata:
 data:
   sql_exporter.yml: |
     {{- tpl (.Files.Get "files/sql_exporter.yml") . | nindent 4 }}
+  {{- if include "headhunter.postgres" . }}
+  pg_standard.collector.yml: |
+    {{- .Files.Get "files/pg_standard.collector.yml" | nindent 4 }}
+  {{- else }}
   mssql_standard.collector.yml: |
     {{- .Files.Get "files/mssql_standard.collector.yml" | nindent 4 }}
   mssql_io_writes.collector.yml: |
     {{- .Files.Get "files/mssql_io_writes.collector.yml" | nindent 4 }}
   mssql_query_stats.collector.yml: |
     {{- .Files.Get "files/mssql_query_stats.collector.yml" | nindent 4 }}
+  {{- end }}
   {{- range $name, $content := $x.extraCollectorFiles }}
   {{ $name }}: |
     {{- $content | nindent 4 }}
@@ -56,7 +61,7 @@ spec:
         {{- end }}
       annotations:
         # Restart on a config change: the exporter reads it only at start.
-        checksum/config: {{ list (tpl (.Files.Get "files/sql_exporter.yml") .) (.Files.Get "files/mssql_standard.collector.yml") (.Files.Get "files/mssql_io_writes.collector.yml") (.Files.Get "files/mssql_query_stats.collector.yml") $x.extraCollectorFiles | toJson | sha256sum }}
+        checksum/config: {{ list (tpl (.Files.Get "files/sql_exporter.yml") .) (.Files.Get "files/mssql_standard.collector.yml") (.Files.Get "files/mssql_io_writes.collector.yml") (.Files.Get "files/mssql_query_stats.collector.yml") (.Files.Get "files/pg_standard.collector.yml") $x.extraCollectorFiles | toJson | sha256sum }}
         {{- with $x.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -82,7 +87,13 @@ spec:
               enc=$(printf '%s' "$DB_PASSWORD" | awk 'BEGIN{for(i=0;i<256;i++)o[sprintf("%c",i)]=i}
                 {n=split($0,a,"");for(i=1;i<=n;i++){c=a[i];
                  if(c~/[A-Za-z0-9._~-]/)printf "%s",c;else printf "%%%02X",o[c]}}')
+              {{- if include "headhunter.postgres" . }}
+              # pgx (the pgx:// scheme): lib/pq mangles a password with a space or a backslash. The postgres
+              # database: the queries read the server's views, from any database.
+              export SQLEXPORTER_TARGET_DSN="pgx://$DB_USER:$enc@$DB_HOST:$DB_PORT/postgres?$DSN_OPTIONS"
+              {{- else }}
               export SQLEXPORTER_TARGET_DSN="sqlserver://$DB_USER:$enc@$DB_HOST:$DB_PORT?$DSN_OPTIONS"
+              {{- end }}
               exec /bin/sql_exporter -config.file=/config/sql_exporter.yml -web.listen-address=:{{ $x.port }}
           env:
             # Its cache directory ($HOME/.cache) goes on the writable /tmp.
@@ -100,7 +111,7 @@ spec:
                   name: {{ $passwordSecret }}
                   key: {{ $passwordKey }}
             - name: DSN_OPTIONS
-              value: {{ $x.dsnOptions | quote }}
+              value: {{ $x.dsnOptions | default (include "headhunter.byProvider" (dict "root" . "sql" "encrypt=true&TrustServerCertificate=true" "pg" "sslmode=prefer")) | quote }}
           ports:
             - name: metrics
               containerPort: {{ $x.port }}

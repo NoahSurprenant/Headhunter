@@ -1,0 +1,110 @@
+suite: postgres
+templates:
+  - templates/app.yaml
+  - templates/migrations.yaml
+  - templates/postgres.yaml
+  - templates/sql-exporter.yaml
+  - templates/networkpolicy.yaml
+release:
+  namespace: hh
+set:
+  database.provider: Postgres
+  mssql.enabled: false
+  postgres.enabled: true
+  sqlExporter.enabled: true
+  networkPolicy.enabled: true
+tests:
+  - it: runs the app on Npgsql
+    template: templates/app.yaml
+    documentIndex: 0
+    asserts:
+      - isKind: { of: Deployment }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: Database__Provider, value: Postgres }
+
+  - it: migrates with the Postgres bundle and its migration list
+    template: templates/migrations.yaml
+    asserts:
+      - matchRegex: { path: "spec.template.spec.containers[0].args[0]", pattern: "/app/efbundle-postgres" }
+      - matchRegex: { path: "spec.template.spec.initContainers[1].args[0]", pattern: "migrations-postgres.txt" }
+
+  - it: backs up with pg_dump onto the backup volume
+    template: templates/migrations.yaml
+    asserts:
+      - equal: { path: "spec.template.spec.initContainers[3].name", value: backup }
+      - matchRegex: { path: "spec.template.spec.initContainers[3].args[0]", pattern: "pg_dump" }
+      - matchRegex: { path: "spec.template.spec.initContainers[3].args[0]", pattern: "\\.partial" }
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: backup, persistentVolumeClaim: { claimName: postgres-backup-pvc } }
+          any: true
+
+  - it: has no SQL Server recovery model on Postgres
+    template: templates/migrations.yaml
+    set:
+      database.recoveryModel: SIMPLE
+    asserts:
+      - failedTemplate: {}
+
+  - it: runs PostgreSQL as a recreated Deployment with a service
+    template: templates/postgres.yaml
+    documentSelector: { path: kind, value: Deployment }
+    asserts:
+      - equal: { path: spec.strategy.type, value: Recreate }
+      - equal: { path: "spec.template.spec.initContainers[0].name", value: fix-permissions-data }
+
+  - it: exposes PostgreSQL on 5432 inside the cluster
+    template: templates/postgres.yaml
+    documentSelector: { path: kind, value: Service }
+    asserts:
+      - equal: { path: spec.type, value: ClusterIP }
+      - equal: { path: "spec.ports[0].port", value: 5432 }
+
+  - it: scrapes PostgreSQL with the pg_standard collector
+    template: templates/sql-exporter.yaml
+    documentSelector: { path: kind, value: ConfigMap }
+    asserts:
+      - matchRegex: { path: "data['sql_exporter.yml']", pattern: "pgx://" }
+      - isNotNull: { path: "data['pg_standard.collector.yml']" }
+
+  - it: has a NetworkPolicy for PostgreSQL
+    template: templates/networkpolicy.yaml
+    asserts:
+      - contains:
+          path: spec.egress
+          content: { ports: [{ port: 5432, protocol: TCP }] }
+          any: true
+        documentIndex: 0
+
+  - it: makes the backup volume writable by the migration user before pg_dump
+    template: templates/migrations.yaml
+    asserts:
+      - equal: { path: "spec.template.spec.initContainers[2].name", value: fix-permissions-backup }
+      - equal: { path: "spec.template.spec.initContainers[2].securityContext.runAsUser", value: 0 }
+      - matchRegex: { path: "spec.template.spec.initContainers[2].command[2]", pattern: "chown 1654:1654 /backup" }
+      - equal: { path: "spec.template.spec.initContainers[3].name", value: backup }
+
+  - it: refuses to back up with no backup volume to write to
+    template: templates/migrations.yaml
+    set:
+      postgres.backup.enabled: false
+    asserts:
+      - failedTemplate: { errorPattern: "migrations.backup.enabled needs" }
+
+  - it: refuses to back up an external server
+    template: templates/migrations.yaml
+    set:
+      postgres.enabled: false
+      database.host: db.example.com
+    asserts:
+      - failedTemplate: { errorPattern: "migrations.backup.enabled needs" }
+
+  - it: backs up nothing, and mounts nothing, when backups are off
+    template: templates/migrations.yaml
+    set:
+      migrations.backup.enabled: false
+      postgres.enabled: false
+      database.host: db.example.com
+    asserts:
+      - lengthEqual: { path: spec.template.spec.initContainers, count: 2 }

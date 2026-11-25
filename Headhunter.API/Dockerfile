@@ -3,7 +3,10 @@
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS base
 
-RUN apk add --no-cache icu-libs
+# postgresql-client: psql and pg_dump, for the chart's migration steps on PostgreSQL.
+RUN apk add --no-cache icu-libs postgresql-client
+# pg_dump refuses a server newer than itself: fail the build if the client falls behind the chart's PostgreSQL (postgres.image).
+RUN pg_dump --version | grep -q "(PostgreSQL) 18\."
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 USER $APP_UID
@@ -21,7 +24,9 @@ WORKDIR /src
 COPY ["Headhunter.API/Headhunter.API.csproj", "Headhunter.API/"]
 COPY ["Headhunter.Database/Headhunter.Database.csproj", "Headhunter.Database/"]
 COPY ["Headhunter.Migrations.Postgres/Headhunter.Migrations.Postgres.csproj", "Headhunter.Migrations.Postgres/"]
+COPY ["Headhunter.Convert/Headhunter.Convert.csproj", "Headhunter.Convert/"]
 RUN dotnet restore "./Headhunter.API/Headhunter.API.csproj"
+RUN dotnet restore "./Headhunter.Convert/Headhunter.Convert.csproj"
 COPY . .
 WORKDIR "/src/Headhunter.API"
 RUN dotnet build "./Headhunter.API.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:DefineConstants=DOCKER_BUILD /p:SourceRevisionId=$SOURCE_REVISION
@@ -31,6 +36,8 @@ FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
 ARG SOURCE_REVISION=
 RUN dotnet publish "./Headhunter.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:DefineConstants=DOCKER_BUILD /p:SourceRevisionId=$SOURCE_REVISION
+# The data copy between SQL Server and PostgreSQL (Headhunter.Convert), at /app/convert.
+RUN dotnet publish "../Headhunter.Convert/Headhunter.Convert.csproj" -c $BUILD_CONFIGURATION -o /app/convert /p:UseAppHost=false
 
 # EF Core migrations bundle: one executable that applies pending migrations, at /app/efbundle.
 # Shipping it inside the image means the migrations a deploy runs always come from the same build as
@@ -88,6 +95,7 @@ RUN npm run build
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+COPY --from=publish /app/convert /app/convert
 COPY --from=angular /usr/angular/dist/headhunter.client/browser wwwroot
 COPY --from=migrations /app/efbundle /app/efbundle
 COPY --from=migrations /app/migrations.txt /app/migrations.txt

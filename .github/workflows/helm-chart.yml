@@ -10,10 +10,10 @@ name: Helm chart
 on:
   pull_request:
     branches: [ "master" ]
-    paths: [ "charts/**", ".github/workflows/helm-chart.yml", "Headhunter.API/Dockerfile", "Headhunter.Database/**" ]
+    paths: [ "charts/**", ".github/workflows/helm-chart.yml", "Headhunter.API/Dockerfile", "Headhunter.Database/**", "Headhunter.Convert/**", "Headhunter.Migrations.Postgres/**" ]
   push:
     branches: [ "master" ]
-    paths: [ "charts/**", ".github/workflows/helm-chart.yml", "Headhunter.API/Dockerfile", "Headhunter.Database/**" ]
+    paths: [ "charts/**", ".github/workflows/helm-chart.yml", "Headhunter.API/Dockerfile", "Headhunter.Database/**", "Headhunter.Convert/**", "Headhunter.Migrations.Postgres/**" ]
   workflow_dispatch:
 
 env:

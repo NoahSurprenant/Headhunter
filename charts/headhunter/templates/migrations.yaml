@@ -66,7 +66,7 @@ spec:
         {{- toYaml $m.stepResources | nindent 8 }}
       volumeMounts:
         {{- include "headhunter.migrationMounts" . | nindent 8 }}
-    {{- with .Values.mssql.configuration }}
+    {{- with (ternary (dict) .Values.mssql.configuration (eq (include "headhunter.postgres" .) "true")) }}
     # Server settings (mssql.configuration), before the migrations: only those that differ change.
     - name: configure
       {{- include "headhunter.stepContainer" $ | nindent 6 }}
@@ -107,7 +107,7 @@ spec:
           set -eu
           {{- include "headhunter.appliedMigrationsQuery" . | nindent 10 }}
           {{ include "headhunter.pendingMigrations" . }} > /work/pending.txt
-          awk 'FILENAME == ARGV[1] { if ($0 != "") have[$0]; next } $0 != "" && !($0 in have)' /app/migrations.txt /work/applied.txt > /work/unknown.txt
+          awk 'FILENAME == ARGV[1] { if ($0 != "") have[$0]; next } $0 != "" && !($0 in have)' {{ include "headhunter.migrationsFile" . }} /work/applied.txt > /work/unknown.txt
           if [ -s /work/unknown.txt ]; then
             echo "Database $DB_NAME has migrations this image doesn't: $(tr '\n' ' ' < /work/unknown.txt)"
             echo "Deploy an image that has them (or roll the database back by hand)."
@@ -125,6 +125,60 @@ spec:
       volumeMounts:
         {{- include "headhunter.migrationMounts" . | nindent 8 }}
     {{- if $m.backup.enabled }}
+    {{- if include "headhunter.postgres" . }}
+    {{- if not (and .Values.postgres.enabled (or .Values.postgres.backup.enabled .Values.postgres.backup.existingClaim)) }}
+    {{- fail "migrations.backup.enabled needs the chart's own PostgreSQL with postgres.backup (or an existingClaim) to write to: set migrations.backup.enabled false for an external server" }}
+    {{- end }}
+    # The backup volume's root may be root-owned (a new volume, an NFS export): the dump runs as the app's user.
+    - name: fix-permissions-backup
+      image: {{ include "headhunter.image" .Values.postgres.image }}
+      imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+      command: ["sh", "-c", "chown {{ $m.backup.pgOwner }} {{ $m.backup.pgDirectory }}"]
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        readOnlyRootFilesystem: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      volumeMounts:
+        - name: backup
+          mountPath: {{ $m.backup.pgDirectory }}
+    # Before changing an existing database: a pg_dump archive (custom format, checked by reading it back) on
+    # postgres.backup's volume, written as .partial and moved into place once complete.
+    - name: backup
+      {{- include "headhunter.stepContainer" . | nindent 6 }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -eu
+          if [ ! -s /work/pending.txt ]; then echo "Nothing pending: no backup."; exit 0; fi
+          if [ ! -s /work/applied.txt ]; then echo "New database: nothing to back up."; exit 0; fi
+          file="$BACKUP_DIR/$BACKUP_PREFIX-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          echo "Backing up $DB_NAME to $file."
+          trap 'rm -f "$file.partial"' EXIT
+          pg_dump -Fc -d "$DB_NAME" -f "$file.partial"
+          pg_restore --list "$file.partial" > /dev/null
+          mv "$file.partial" "$file"
+          trap - EXIT
+          echo "Backed up and verified: $file"
+      env:
+        {{- include "headhunter.migrationStepEnv" . | nindent 8 }}
+        - name: BACKUP_DIR
+          value: {{ $m.backup.pgDirectory | quote }}
+        - name: BACKUP_PREFIX
+          value: {{ $m.backup.prefix | quote }}
+      resources:
+        {{- toYaml $m.stepResources | nindent 8 }}
+      volumeMounts:
+        {{- include "headhunter.migrationMounts" . | nindent 8 }}
+        - name: backup
+          mountPath: {{ $m.backup.pgDirectory }}
+    {{- else }}
     # Before changing an existing database: a backup, written by SQL Server to its backup volume.
     - name: backup
       {{- include "headhunter.stepContainer" . | nindent 6 }}
@@ -149,6 +203,7 @@ spec:
       volumeMounts:
         {{- include "headhunter.migrationMounts" . | nindent 8 }}
     {{- end }}
+    {{- end }}
   containers:
     - name: migrate
       {{- include "headhunter.stepContainer" . | nindent 6 }}
@@ -157,10 +212,11 @@ spec:
         - |
           set -eu
           if [ -s /work/pending.txt ]; then
-            /app/efbundle
+            {{ include "headhunter.migrationBundle" . }}
           else
             echo "Nothing to migrate."
           fi
+          {{- if and .Values.database.recoveryModel (include "headhunter.postgres" .) }}{{ fail "database.recoveryModel is SQL Server's: leave it empty with database.provider Postgres" }}{{ end }}
           {{- with .Values.database.recoveryModel }}
           {{- if not (has . (list "SIMPLE" "FULL" "BULK_LOGGED")) }}{{ fail "database.recoveryModel must be SIMPLE, FULL or BULK_LOGGED" }}{{ end }}
           # database.recoveryModel, once the database exists: only if it differs.
@@ -190,6 +246,11 @@ spec:
       emptyDir: {}
     - name: tmp
       emptyDir: {}
+  {{- if and $m.backup.enabled (include "headhunter.postgres" .) }}
+    - name: backup
+      persistentVolumeClaim:
+        claimName: {{ .Values.postgres.backup.existingClaim | default .Values.postgres.backup.claimName }}
+  {{- end }}
   {{- with $m.nodeSelector }}
   nodeSelector:
     {{- toYaml . | nindent 4 }}

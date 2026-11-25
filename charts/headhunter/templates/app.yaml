@@ -50,7 +50,7 @@ spec:
               {{- include "headhunter.waitForDatabaseScript" . | nindent 14 }}
               last=""
               while :; do
-                if ( {{- include "headhunter.appliedMigrationsQuery" . | nindent 18 }}
+                if ( {{- include "headhunter.appliedMigrationsQuery" . | nindent 14 }}
                    ) 2>/work/error.txt; then
                   {{ include "headhunter.pendingMigrations" . }} > /work/pending.txt
                   if [ ! -s /work/pending.txt ]; then echo "Database $DB_NAME is up to date."; exit 0; fi

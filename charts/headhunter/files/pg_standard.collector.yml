@@ -1,0 +1,131 @@
+# A collector defining standard metrics for PostgreSQL: cheap reads of its statistics views.
+#
+# It is required that the PostgreSQL user has the following role:
+#
+#   GRANT pg_monitor TO
+#
+# Values are cast to float8 (double precision), which every driver reads as a number.
+collector_name: pg_standard
+
+# Similar to global.min_interval, but applies to the queries defined by this collector only.
+#min_interval: 0s
+
+metrics:
+- metric_name: pg_start_time_seconds
+  type: gauge
+  help: 'When the server started, in seconds since epoch (Unix time).'
+  values: [start_time]
+  query: |
+    SELECT extract(epoch FROM pg_postmaster_start_time())::float8 AS start_time
+
+- metric_name: pg_max_connections
+  type: gauge
+  help: 'The most connections the server accepts (max_connections).'
+  values: [max_connections]
+  query: |
+    SELECT setting::float8 AS max_connections FROM pg_settings WHERE name = 'max_connections'
+
+- metric_name: pg_connections
+  type: gauge
+  help: 'Client connections, by database and state (active, idle, idle in transaction, ...).'
+  key_labels:
+    - database
+    - state
+  values: [count]
+  query: |
+    SELECT coalesce(datname, '') AS database, coalesce(state, 'unknown') AS state, count(*)::float8 AS count
+    FROM pg_stat_activity
+    WHERE backend_type = 'client backend'
+    GROUP BY 1, 2
+
+- metric_name: pg_oldest_transaction_seconds
+  type: gauge
+  help: 'Age of the oldest open transaction (0 with none): a long one holds back vacuum and may hold locks.'
+  values: [age]
+  query: |
+    SELECT coalesce(max(extract(epoch FROM clock_timestamp() - xact_start)), 0)::float8 AS age
+    FROM pg_stat_activity
+    WHERE xact_start IS NOT NULL AND backend_type = 'client backend'
+
+- metric_name: pg_database_size_bytes
+  type: gauge
+  help: 'Disk space each database uses.'
+  key_labels:
+    - database
+  values: [size]
+  query: |
+    SELECT datname AS database, pg_database_size(datname)::float8 AS size
+    FROM pg_database
+    WHERE datallowconn AND NOT datistemplate
+
+- metric_name: pg_locks
+  type: gauge
+  help: 'Locks held or awaited, by mode.'
+  key_labels:
+    - mode
+  values: [count]
+  query: |
+    SELECT mode, count(*)::float8 AS count FROM pg_locks GROUP BY mode
+
+#
+# Collected from pg_stat_database (one query, several metrics). Counters since the statistics were
+# last reset.
+#
+- metric_name: pg_xact_commit
+  type: counter
+  help: 'Transactions committed.'
+  key_labels: [database]
+  values: [xact_commit]
+  query_ref: pg_stat_database
+
+- metric_name: pg_xact_rollback
+  type: counter
+  help: 'Transactions rolled back.'
+  key_labels: [database]
+  values: [xact_rollback]
+  query_ref: pg_stat_database
+
+- metric_name: pg_blks_hit
+  type: counter
+  help: 'Blocks found in shared buffers (cache hits); the hit ratio is hit / (hit + read).'
+  key_labels: [database]
+  values: [blks_hit]
+  query_ref: pg_stat_database
+
+- metric_name: pg_blks_read
+  type: counter
+  help: 'Blocks read from disk (or the OS cache).'
+  key_labels: [database]
+  values: [blks_read]
+  query_ref: pg_stat_database
+
+- metric_name: pg_temp_bytes
+  type: counter
+  help: 'Bytes written to temporary files by queries (sorts and hashes larger than work_mem).'
+  key_labels: [database]
+  values: [temp_bytes]
+  query_ref: pg_stat_database
+
+- metric_name: pg_deadlocks
+  type: counter
+  help: 'Deadlocks detected.'
+  key_labels: [database]
+  values: [deadlocks]
+  query_ref: pg_stat_database
+
+- metric_name: pg_conflicts
+  type: counter
+  help: 'Queries canceled by conflicts with recovery (standbys only).'
+  key_labels: [database]
+  values: [conflicts]
+  query_ref: pg_stat_database
+
+queries:
+- query_name: pg_stat_database
+  query: |
+    SELECT datname AS database,
+           xact_commit::float8 AS xact_commit, xact_rollback::float8 AS xact_rollback,
+           blks_hit::float8 AS blks_hit, blks_read::float8 AS blks_read,
+           temp_bytes::float8 AS temp_bytes, deadlocks::float8 AS deadlocks, conflicts::float8 AS conflicts
+    FROM pg_stat_database
+    WHERE datname IS NOT NULL AND datname NOT IN ('template0', 'template1')

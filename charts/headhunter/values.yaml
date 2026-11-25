@@ -20,21 +20,29 @@ imagePullSecrets: []
 
 # The database the app and its migrations use: the chart's SQL Server (mssql.enabled) or any other.
 database:
-  # Empty: the chart's SQL Server's Service (mssql.service.name). Required with mssql.enabled false.
+  # SqlServer (the default) or Postgres: Database:Provider in the app, and which migrations bundle, wait and
+  # backup the migration Job runs. The chart's own server is mssql (SqlServer) or postgres (Postgres); both
+  # can run at once while data is copied from one to the other (Headhunter.Convert, at /app/convert).
+  provider: SqlServer
+  # Empty: the chart's own database's Service (mssql.service.name, or postgres.service.name with provider Postgres).
+  # Required with that database off.
   host: ""
-  # Empty: mssql.service.port with the chart's SQL Server, else 1433.
+  # Empty: the chart's own database's Service port, else 1433 (SQL Server) or 5432 (PostgreSQL).
   port: ""
   name: Headhunter
   # The administrator the migration Job connects as (and the app, and sql-exporter, unless told otherwise).
-  user: sa
-  # Its password. secretName empty: mssql.saPassword's, then secret.name. key empty: mssql.saPassword.key.
+  # Empty: sa (SQL Server) or postgres.
+  user: ""
+  # Its password. secretName and key empty: the chart's own database's (mssql.saPassword, postgres.password).
   password:
     secretName: ""
     key: ""
-  # Appended to the connection string the chart builds:
+  # Appended to the connection string the chart builds (SQL Server, then Npgsql):
   #   Server=<host>,<port>;Database=<name>;User Id=<user>;Password="<password>";<options>
-  # The password is quoted, so it must not contain '"'.
-  options: "Encrypt=True;TrustServerCertificate=True"
+  #   Host=<host>;Port=<port>;Database=<name>;Username=<user>;Password="<password>";<options>
+  # The password is quoted, so it must not contain '"'. Empty: Encrypt=True;TrustServerCertificate=True (SQL
+  # Server) or SSL Mode=Prefer (PostgreSQL).
+  options: ""
   # The database's recovery model, set by the migration Job after the migrations: SIMPLE, FULL or
   # BULK_LOGGED. Empty: left as it is (a new database gets SQL Server's default, FULL). FULL keeps every
   # change in the log until a log backup, so without log backups (the chart takes none) the log only
@@ -235,7 +243,91 @@ mssql:
   tolerations: []
   affinity: {}
 
-# Prometheus metrics for SQL Server (burningalchemist/sql_exporter).
+# The chart's own PostgreSQL (database.provider Postgres). Off the shelf image; one server for the one
+# database.
+postgres:
+  enabled: false
+  name: postgres
+  image:
+    repository: docker.io/library/postgres
+    # Pinned by digest so a restart can't upgrade PostgreSQL: a major version needs a dump and restore. 18 or
+    # later: the app's case-insensitive collation is nondeterministic, and LIKE on it needs 18.
+    tag: 18@sha256:c699303802144847d238196173655dbbecf7a96aeca1565f2b02eb671a1f0b6b
+    digest: ""
+    pullPolicy: IfNotPresent
+  # The administrator's password (the user is database.user, postgres unless set). secretName empty: secret.name.
+  password:
+    secretName: ""
+    key: POSTGRES_PASSWORD
+  # The ClusterIP Service the app connects to.
+  service:
+    name: postgres
+    port: 5432
+  # Also expose PostgreSQL outside the cluster.
+  loadBalancer:
+    enabled: false
+    name: postgres-lb
+    port: 5432
+    # Local keeps client addresses, so NetworkPolicies can allow LAN ranges.
+    externalTrafficPolicy: Cluster
+    annotations: {}
+  persistence:
+    # Use this claim instead of creating one.
+    existingClaim: ""
+    claimName: postgres-data-pvc
+    size: 20Gi
+    storageClass: ""
+    accessModes: [ReadWriteOnce]
+    annotations: {}
+  # The backup volume the migration Job mounts (migrations.backup.pgDirectory) and writes its pg_dump archives to.
+  backup:
+    enabled: true
+    existingClaim: ""
+    claimName: postgres-backup-pvc
+    size: 30Gi
+    accessModes: [ReadWriteOnce]
+    # With nfs.server: a PersistentVolume for this NFS export, bound to the claim. Otherwise the claim
+    # is provisioned from storageClass.
+    nfs:
+      server: ""
+      path: ""
+      # Empty: <namespace>-postgres-backup.
+      pvName: ""
+      reclaimPolicy: Retain
+    storageClass: ""
+    annotations: {}
+  # Server settings, each given to postgres as -c name=value. Ex, for a server on 4Gi:
+  #   shared_buffers: 1GB
+  #   effective_cache_size: 3GB
+  #   max_wal_size: 4GB
+  configuration: {}
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 250m
+    limits:
+      memory: 4Gi
+      cpu: "2"
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  # PostgreSQL's own container (its init container runs as root, to chown the data volume).
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  extraEnv: []
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Prometheus metrics for SQL Server or PostgreSQL (burningalchemist/sql_exporter).
 sqlExporter:
   enabled: false
   image:
@@ -244,16 +336,18 @@ sqlExporter:
     digest: ""
     pullPolicy: IfNotPresent
   # The login. Empty: database.user and its password. It needs VIEW SERVER STATE and VIEW ANY
-  # DEFINITION, nothing more. The password is percent-encoded into the connection URL at start.
+  # DEFINITION, nothing more. PostgreSQL: the pg_monitor role. The password is percent-encoded into the connection URL at start.
   user: ""
   password:
     secretName: ""
     key: ""
-  dsnOptions: "encrypt=true&TrustServerCertificate=true"
+  # Empty: encrypt=true&TrustServerCertificate=true (SQL Server) or sslmode=prefer (PostgreSQL).
+  dsnOptions: ""
   # mssql_standard: server-wide (memory, I/O, connections...), sql_exporter's example kept byte-for-byte
   # (CI compares it with upstream). mssql_io_writes: writes and write stall per database and file
   # type. mssql_query_stats: the plan cache's top 20 statements per database and the top wait types.
-  collectors: [mssql_standard, mssql_io_writes, mssql_query_stats]
+  # Empty: [mssql_standard, mssql_io_writes, mssql_query_stats], or [pg_standard] with provider Postgres.
+  collectors: []
   # More collector files (name.collector.yml: content), beside the chart's.
   extraCollectorFiles: {}
   port: 9399
@@ -291,6 +385,11 @@ migrations:
     enabled: true
     directory: /var/opt/mssql/backup
     prefix: headhunter-premigrate
+    # With provider Postgres: where the Job mounts postgres.backup's volume, and writes a pg_dump archive,
+    # <prefix>-<UTC time>.dump (the prefix as above).
+    pgDirectory: /backup
+    # Who owns the backup volume's root for pg_dump: the app image's user (APP_UID), as user:group.
+    pgOwner: "1654:1654"
   # How long the steps wait for SQL Server, in seconds.
   waitSeconds: 600
   # A failed migration waits for a person, not a retry.
@@ -353,6 +452,10 @@ networkPolicy:
     extraEgress: []
   mssql:
     # Who may reach the LoadBalancer (mssql.loadBalancer). Empty: anyone.
+    loadBalancerFrom: []
+    extraIngress: []
+  postgres:
+    # Who may reach the LoadBalancer (postgres.loadBalancer). Empty: anyone.
     loadBalancerFrom: []
     extraIngress: []
   migrations:

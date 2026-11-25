@@ -3,8 +3,8 @@
 {{- $app := .Values.app }}
 {{- /* Egress to the database: the chart's SQL Server pods, or networkPolicy.database.to (anywhere if empty). */}}
 {{- $dbRule := "" }}
-{{- if and .Values.mssql.enabled (not .Values.database.host) }}
-{{- $dbRule = printf "- to:\n    - podSelector:\n        matchLabels:\n          app: %s\n  ports:\n    - protocol: TCP\n      port: 1433" .Values.mssql.name }}
+{{- if and (include "headhunter.ownDatabase" .) (not .Values.database.host) }}
+{{- $dbRule = printf "- to:\n    - podSelector:\n        matchLabels:\n          app: %s\n  ports:\n    - protocol: TCP\n      port: %s" (include "headhunter.byProvider" (dict "root" . "sql" .Values.mssql.name "pg" .Values.postgres.name)) (include "headhunter.byProvider" (dict "root" . "sql" "1433" "pg" "5432")) }}
 {{- else }}
 {{- $dbRule = printf "- %sports:\n    - protocol: TCP\n      port: %s" (ternary "" (printf "to:\n    %s\n  " (toYaml $np.database.to | indent 4 | trim)) (empty $np.database.to)) (include "headhunter.dbPort" .) }}
 {{- end }}
@@ -133,6 +133,55 @@ spec:
           port: 1433
     {{- end }}
     {{- with $np.mssql.extraIngress }}
+    {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}
+  egress:
+    {{- $dnsRule | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.postgres.enabled }}
+{{- $pg := .Values.postgres }}
+# PostgreSQL: in from the app, the migration Job and sql-exporter (and the LoadBalancer's clients);
+# out to DNS only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $pg.name }}
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ $pg.name }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: {{ $app.name }}
+        {{- if .Values.migrations.enabled }}
+        - podSelector:
+            matchLabels:
+              app: headhunter-migrate
+        {{- end }}
+        {{- if .Values.sqlExporter.enabled }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sql-exporter
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 5432
+    {{- if $pg.loadBalancer.enabled }}
+    - {{- with $np.postgres.loadBalancerFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: 5432
+    {{- end }}
+    {{- with $np.postgres.extraIngress }}
     {{- tpl (toYaml .) $ | nindent 4 }}
     {{- end }}
   egress:
