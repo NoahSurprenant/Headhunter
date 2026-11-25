@@ -9,6 +9,7 @@ public class HeadhunterApiFactory(string environment) : WebApplicationFactory<AP
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(environment);
-        builder.UseSetting("ConnectionStrings:Headhunter", SqlServerFixture.ConnectionString);
+        builder.UseSetting("ConnectionStrings:Headhunter", DatabaseFixture.ConnectionString);
+        builder.UseSetting("Database:Provider", DatabaseFixture.Provider.ToString());
     }
 }

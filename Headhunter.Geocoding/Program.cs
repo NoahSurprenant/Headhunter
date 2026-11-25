@@ -12,7 +12,7 @@ public class Program
         builder.Services.AddHostedService<Worker>();
         builder.Services.AddDbContextFactory<HeadhunterContext>(options =>
         {
-            options.UseSqlServer(builder.Configuration.GetConnectionString("Headhunter"));
+            options.UseHeadhunterDatabase(builder.Configuration);
         });
         builder.Services.RegisterGeocodingService();
 

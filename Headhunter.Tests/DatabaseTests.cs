@@ -8,7 +8,7 @@ public class DatabaseTests
     [Test]
     public async Task Migrations_AreAllAppliedAndMatchTheModel()
     {
-        await using var context = SqlServerFixture.CreateContext();
+        await using var context = DatabaseFixture.CreateContext();
 
         var pending = await context.Database.GetPendingMigrationsAsync();
 
@@ -23,7 +23,7 @@ public class DatabaseTests
     [Test]
     public async Task StartsWith_IsTranslatedToSqlAndCaseInsensitiveUnderDefaultCollation()
     {
-        await using var context = SqlServerFixture.CreateContext();
+        await using var context = DatabaseFixture.CreateContext();
 
         // SQL_Latin1_General_CP1_CI_AS (the SQL Server default) is case-insensitive; the API relies on that.
         var names = await context.Voters
@@ -39,7 +39,7 @@ public class DatabaseTests
     [Test]
     public async Task VoterToAddress_NavigationLoadsWithSplitQuery()
     {
-        await using var context = SqlServerFixture.CreateContext();
+        await using var context = DatabaseFixture.CreateContext();
 
         var address = await context.Addresses
             .Include(a => a.Voters)
@@ -52,7 +52,7 @@ public class DatabaseTests
     [Test]
     public async Task Voter_IsLinkedToItsRawMichiganVoterRecord()
     {
-        await using var context = SqlServerFixture.CreateContext();
+        await using var context = DatabaseFixture.CreateContext();
 
         var voter = await context.Voters
             .Include(v => v.MichiganVoterRecord)
@@ -73,7 +73,10 @@ public class DatabaseTests
     [TestCase("IX_Voters_HAS_MAILING_ADDRESS")]
     public async Task SuggestionQuery_SeeksItsIndex(string index)
     {
-        await using var context = SqlServerFixture.CreateContext();
+        // A showplan check; Postgres cannot seek a btree for LIKE on its case-insensitive (ICU) collation at all.
+        Assume.That(DatabaseFixture.Provider, Is.EqualTo(DatabaseProvider.SqlServer), "SQL Server showplan only");
+
+        await using var context = DatabaseFixture.CreateContext();
 
         IQueryable<string> query = index switch
         {
@@ -117,7 +120,10 @@ public class DatabaseTests
     [TestCase(API.DistrictType.CountyCommissioner, "TESTSHIRE", "IX_Addresses_COUNTY_NAME_COUNTY_COMMISSIONER_DISTRICT_NAME")]
     public async Task DistrictSuggestionQuery_SeeksItsIndex(API.DistrictType type, string within, string index)
     {
-        await using var context = SqlServerFixture.CreateContext();
+        // A showplan check; Postgres cannot seek a btree for LIKE on its case-insensitive (ICU) collation at all.
+        Assume.That(DatabaseFixture.Provider, Is.EqualTo(DatabaseProvider.SqlServer), "SQL Server showplan only");
+
+        await using var context = DatabaseFixture.CreateContext();
 
         // Same shape as DistrictController.DistrictSuggestions.
         var sql = API.Districts.Names(context.Addresses, type, within)

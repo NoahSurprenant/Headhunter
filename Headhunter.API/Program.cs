@@ -36,7 +36,7 @@ public class Program
 
             builder.Services.AddDbContextFactory<HeadhunterContext>(options =>
             {
-                options.UseSqlServer(builder.Configuration.GetConnectionString("Headhunter"));
+                options.UseHeadhunterDatabase(builder.Configuration);
             });
             builder.Services.AddHttpClient();
             // The US Census Bureau's free geocoder, no API key: NotOnMap's "Retry geocoding" (ApiController).
