@@ -323,6 +323,15 @@ public class SearchConditionTests
         return sql;
     }
 
+    /// <summary>An expected SQL fragment written for SQL Server, as the running provider prints it: "v"."X" quoting, no N prefix, and a parameter's value as a quoted literal in the log comment.</summary>
+    private static string T(string sqlServerSql)
+    {
+        if (DatabaseFixture.Provider != DatabaseProvider.Postgres) return sqlServerSql;
+        var s = System.Text.RegularExpressions.Regex.Replace(sqlServerSql, @"\[(\w+)\]\.\[(\w+)\]", "$1.\"$2\"");
+        s = s.Replace("N'", "'");
+        return System.Text.RegularExpressions.Regex.Replace(s, @"= (\d+);", "='$1'");
+    }
+
     // Equals and starts with on the indexed columns, and ranges on YEAR_OF_BIRTH, stay sargable: a plain = or
     // LIKE 'x%' on the column (the % only at the end, in the parameter), never a function wrapped around it.
     [TestCase("lastName", "startsWith", "SUR", "[v].[LAST_NAME] LIKE @", "N'SUR%'")]
@@ -338,8 +347,8 @@ public class SearchConditionTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(sql, Does.Contain(where));
-            Assert.That(sql, Does.Contain(parameter));
+            Assert.That(sql, Does.Contain(T(where)));
+            Assert.That(sql, Does.Contain(T(parameter)));
             Assert.That(sql, Does.Not.Contain("LEFT(").And.Not.Contain("CHARINDEX").And.Not.Contain("LEN("));
         });
     }
@@ -353,12 +362,12 @@ public class SearchConditionTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(between, Does.Contain("[v].[YEAR_OF_BIRTH] >= @").And.Contain("[v].[YEAR_OF_BIRTH] <= @"));
-            Assert.That(between, Does.Contain("= 1990;").And.Contain("= 1999;"));
+            Assert.That(between, Does.Contain(T("[v].[YEAR_OF_BIRTH] >= @")).And.Contain(T("[v].[YEAR_OF_BIRTH] <= @")));
+            Assert.That(between, Does.Contain(T("= 1990;")).And.Contain(T("= 1999;")));
             // Age 30 on 2026-10-30: born 1995 or 1996.
-            Assert.That(age, Does.Contain("[v].[YEAR_OF_BIRTH] >= @").And.Contain("[v].[YEAR_OF_BIRTH] <= @"));
-            Assert.That(age, Does.Contain("= 1995;").And.Contain("= 1996;"));
-            Assert.That(equals, Does.Contain("[v].[YEAR_OF_BIRTH] = @"));
+            Assert.That(age, Does.Contain(T("[v].[YEAR_OF_BIRTH] >= @")).And.Contain(T("[v].[YEAR_OF_BIRTH] <= @")));
+            Assert.That(age, Does.Contain(T("= 1995;")).And.Contain(T("= 1996;")));
+            Assert.That(equals, Does.Contain(T("[v].[YEAR_OF_BIRTH] = @")));
         });
     }
 
@@ -368,11 +377,11 @@ public class SearchConditionTests
     {
         Assert.Multiple(() =>
         {
-            Assert.That(Sql(C("lastName", "contains", "UR")), Does.Contain("[v].[LAST_NAME] LIKE @").And.Contain("N'%UR%'"));
-            Assert.That(Sql(C("lastName", "endsWith", "UR")), Does.Contain("[v].[LAST_NAME] LIKE @").And.Contain("N'%UR'"));
-            Assert.That(Sql(C("lastName", "notEquals", "UR")), Does.Contain("[v].[LAST_NAME] <> @"));
+            Assert.That(Sql(C("lastName", "contains", "UR")), Does.Contain(T("[v].[LAST_NAME] LIKE @")).And.Contain(T("N'%UR%'")));
+            Assert.That(Sql(C("lastName", "endsWith", "UR")), Does.Contain(T("[v].[LAST_NAME] LIKE @")).And.Contain(T("N'%UR'")));
+            Assert.That(Sql(C("lastName", "notEquals", "UR")), Does.Contain(T("[v].[LAST_NAME] <> @")));
             Assert.That(Sql(C("registrationDate", "eq", "2020-01-15")),
-                Does.Contain("[v].[REGISTRATION_DATE] >= @").And.Contain("[v].[REGISTRATION_DATE] < @"));
+                Does.Contain(T("[v].[REGISTRATION_DATE] >= @")).And.Contain(T("[v].[REGISTRATION_DATE] < @")));
         });
     }
 }

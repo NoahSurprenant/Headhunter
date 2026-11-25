@@ -10,5 +10,6 @@ public class HeadhunterApiFactory(string environment) : WebApplicationFactory<AP
     {
         builder.UseEnvironment(environment);
         builder.UseSetting("ConnectionStrings:Headhunter", DatabaseFixture.ConnectionString);
+        builder.UseSetting("Database:Provider", DatabaseFixture.Provider.ToString());
     }
 }
