@@ -96,6 +96,7 @@ public sealed class FakeVoterFile
                 var surname = LastNames[random.Next(LastNames.Length)];
                 var size = new[] { 1, 1, 2, 2, 2, 3, 4 }[random.Next(7)];
                 var precinct = random.Next(1, 40).ToString();
+                var suffix = random.Next(40) == 0 ? "1/2" : "";
                 for (var member = 0; member < size && records.Count < voters; member++)
                 {
                     var born = random.Next(1930, 2007);
@@ -116,7 +117,7 @@ public sealed class FakeVoterFile
                         REGISTRATION_DATE = registered,
                         STREET_NUMBER_PREFIX = "",
                         STREET_NUMBER = number,
-                        STREET_NUMBER_SUFFIX = random.Next(40) == 0 ? "1/2" : "",
+                        STREET_NUMBER_SUFFIX = suffix,
                         DIRECTION_PREFIX = directionPrefix,
                         STREET_NAME = streetName,
                         STREET_TYPE = streetType,
