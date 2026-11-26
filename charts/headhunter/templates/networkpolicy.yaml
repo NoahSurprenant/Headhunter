@@ -89,6 +89,44 @@ spec:
     {{- tpl (toYaml .) $ | nindent 4 }}
     {{- end }}
 ---
+{{- $backup := .Values.migrations.backup }}
+{{- if and $backup.enabled $backup.scheduled.enabled }}
+# The scheduled backup (migrations.backup.scheduled): DNS and the database out, nothing in.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: headhunter-backup
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: headhunter-backup
+  policyTypes: [Ingress, Egress]
+  egress:
+    {{- $dnsRule | nindent 4 }}
+    {{- $dbRule | nindent 4 }}
+    {{- with $np.scheduledBackup.extraEgress }}
+    {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}
+---
+{{- end }}
+{{- if and $backup.enabled $backup.retention.enabled }}
+# Backup retention (migrations.backup.retention): it only deletes files on its volume, so nothing in or out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: headhunter-backup-retention
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: headhunter-backup-retention
+  policyTypes: [Ingress, Egress]
+  egress: []
+---
+{{- end }}
 {{- end }}
 {{- if .Values.mssql.enabled }}
 {{- $m := .Values.mssql }}
@@ -163,6 +201,11 @@ spec:
         - podSelector:
             matchLabels:
               app: headhunter-migrate
+        {{- end }}
+        {{- if and .Values.migrations.backup.enabled .Values.migrations.backup.scheduled.enabled }}
+        - podSelector:
+            matchLabels:
+              app: headhunter-backup
         {{- end }}
         {{- if .Values.sqlExporter.enabled }}
         - podSelector:

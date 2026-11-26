@@ -386,10 +386,27 @@ migrations:
     directory: /var/opt/mssql/backup
     prefix: headhunter-premigrate
     # With provider Postgres: where the Job mounts postgres.backup's volume, and writes a pg_dump archive,
-    # <prefix>-<UTC time>.dump (the prefix as above).
+    # <database>_<date>_<time>.dump (the prefix above is SQL Server's), the same names the scheduled backup writes.
     pgDirectory: /backup
     # Who owns the backup volume's root for pg_dump: the app image's user (APP_UID), as user:group.
     pgOwner: "1654:1654"
+    # With provider Postgres: a pg_dump of the database on a schedule, beside the pre-migration ones, to the same
+    # volume. Verified by reading it back; a database that does not exist yet is skipped. Needs postgres.backup.
+    scheduled:
+      enabled: false
+      schedule: "0 3 * * *"
+      suspend: false
+      activeDeadlineSeconds: 3600
+    # With provider Postgres: deletes old <database>_<date>_<time>.dump files (pre-migration and scheduled) from the
+    # volume, by the date in the name. One goes once it is older than keepDays and not among the newest keepLast;
+    # with onePerDay so does one that is not the newest of its day. Other files in the folder are never touched.
+    retention:
+      enabled: false
+      schedule: "30 3 * * *"
+      suspend: false
+      keepLast: 5
+      keepDays: 30
+      onePerDay: false
   # How long the steps wait for SQL Server, in seconds.
   waitSeconds: 600
   # A failed migration waits for a person, not a retry.
@@ -459,6 +476,9 @@ networkPolicy:
     loadBalancerFrom: []
     extraIngress: []
   migrations:
+    extraEgress: []
+  # The scheduled backup (migrations.backup.scheduled): DNS and the database are always allowed.
+  scheduledBackup:
     extraEgress: []
   sqlExporter:
     # Who may scrape it (its port). Empty: anyone.
