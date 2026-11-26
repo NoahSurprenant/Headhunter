@@ -1,0 +1,110 @@
+# Per-statement statistics from pg_stat_statements: how often each statement runs, how long it takes, its rows,
+# its buffer reads and writes, its temp files and WAL. The counterpart of the SQL Server example's
+# mssql_query_stats.
+# Needs the pg_stat_statements extension: shared_preload_libraries = 'pg_stat_statements' (a restart) and
+# CREATE EXTENSION in the database the exporter connects to. Without it these queries fail and the metrics are
+# absent from the scrape; the others still work. Block times need track_io_timing = on.
+# Cardinality is bounded: the top 20 statements per database by total execution time. Labels: database, queryid
+# and query, the statement's first 120 characters with whitespace collapsed.
+# The counters are cumulative since the statement was first seen or the statistics were reset: rate() treats
+# a reset as a counter reset. A walk over the view; once a minute is plenty.
+collector_name: pg_query_stats
+min_interval: 60s
+
+metrics:
+- metric_name: pg_query_calls_total
+  type: counter
+  help: 'Executions of the statement.'
+  key_labels: [database, queryid, query]
+  values: [calls]
+  query_ref: pg_stat_statements_top
+
+- metric_name: pg_query_exec_seconds_total
+  type: counter
+  help: 'Time spent executing the statement.'
+  key_labels: [database, queryid, query]
+  values: [exec_seconds]
+  query_ref: pg_stat_statements_top
+
+- metric_name: pg_query_max_exec_seconds
+  type: gauge
+  help: 'The longest single execution since the statistics were reset.'
+  key_labels: [database, queryid, query]
+  values: [max_exec_seconds]
+  query_ref: pg_stat_statements_top
+
+- metric_name: pg_query_rows_total
+  type: counter
+  help: 'Rows returned or affected.'
+  key_labels: [database, queryid, query]
+  values: [rows]
+  query_ref: pg_stat_statements_top
+
+- metric_name: pg_query_shared_blocks_hit_total
+  type: counter
+  help: 'Shared buffers found in memory.'
+  key_labels: [database, queryid, query]
+  values: [shared_blks_hit]
+  query_ref: pg_stat_statements_top
+
+- metric_name: pg_query_shared_blocks_read_total
+  type: counter
+  help: 'Shared buffers read from disk (or the OS cache).'
+  key_labels: [database, queryid, query]
+  values: [shared_blks_read]
+  query_ref: pg_stat_statements_top
+
+- metric_name: pg_query_shared_blocks_written_total
+  type: counter
+  help: 'Shared buffers the statement had to write.'
+  key_labels: [database, queryid, query]
+  values: [shared_blks_written]
+  query_ref: pg_stat_statements_top
+
+- metric_name: pg_query_block_read_seconds_total
+  type: counter
+  help: 'Time spent reading blocks (needs track_io_timing).'
+  key_labels: [database, queryid, query]
+  values: [read_seconds]
+  query_ref: pg_stat_statements_top
+
+- metric_name: pg_query_block_write_seconds_total
+  type: counter
+  help: 'Time spent writing blocks (needs track_io_timing).'
+  key_labels: [database, queryid, query]
+  values: [write_seconds]
+  query_ref: pg_stat_statements_top
+
+- metric_name: pg_query_temp_blocks_written_total
+  type: counter
+  help: 'Temporary-file blocks written: sorts and hashes that did not fit work_mem.'
+  key_labels: [database, queryid, query]
+  values: [temp_blks_written]
+  query_ref: pg_stat_statements_top
+
+- metric_name: pg_query_wal_bytes_total
+  type: counter
+  help: 'WAL the statement generated.'
+  key_labels: [database, queryid, query]
+  values: [wal_bytes]
+  query_ref: pg_stat_statements_top
+
+queries:
+- query_name: pg_stat_statements_top
+  query: |
+    SELECT database, queryid, query, calls, exec_seconds, max_exec_seconds, rows, shared_blks_hit, shared_blks_read,
+           shared_blks_written, read_seconds, write_seconds, temp_blks_written, wal_bytes
+    FROM (
+      SELECT d.datname AS database, s.queryid::text AS queryid,
+             left(regexp_replace(s.query, '\s+', ' ', 'g'), 120) AS query,
+             s.calls::float8 AS calls, s.total_exec_time::float8 / 1000 AS exec_seconds,
+             s.max_exec_time::float8 / 1000 AS max_exec_seconds, s.rows::float8 AS rows,
+             s.shared_blks_hit::float8 AS shared_blks_hit, s.shared_blks_read::float8 AS shared_blks_read,
+             s.shared_blks_written::float8 AS shared_blks_written,
+             s.shared_blk_read_time::float8 / 1000 AS read_seconds, s.shared_blk_write_time::float8 / 1000 AS write_seconds,
+             s.temp_blks_written::float8 AS temp_blks_written, s.wal_bytes::float8 AS wal_bytes,
+             row_number() OVER (PARTITION BY s.dbid ORDER BY s.total_exec_time DESC) AS rn
+      FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid
+      WHERE s.queryid IS NOT NULL
+    ) t
+    WHERE rn <= 20

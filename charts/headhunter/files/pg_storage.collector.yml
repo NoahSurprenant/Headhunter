@@ -1,0 +1,105 @@
+# Space and the tables and indexes that use it, in the database the exporter connects to: the biggest tables
+# (heap, indexes, TOAST), their rows and dead rows, how long since autovacuum, the tables read by sequential scan
+# the most, indexes that cost writes and serve no reads, and the WAL directory. The counterpart of the SQL Server
+# example's mssql_storage, mssql_index_usage and mssql_missing_indexes (a table scanned again and again, with
+# many rows read per scan, is where a missing index shows).
+# Needs pg_monitor (pg_ls_waldir). The statistics are emptied by a crash or a stats reset: "unused" is only
+# meaningful over an uptime that covers the whole business cycle.
+# Cardinality is bounded: the top 20 per metric.
+collector_name: pg_storage
+min_interval: 60s
+
+metrics:
+- metric_name: pg_table_bytes
+  type: gauge
+  help: 'Disk space of a table, by part: heap, indexes and toast. The 20 largest tables.'
+  key_labels: [database, schema, table, part]
+  values: [bytes]
+  query: |
+    SELECT current_database() AS database, schema, "table", part, bytes FROM (
+      SELECT n.nspname AS schema, c.relname AS "table", p.part, p.bytes::float8 AS bytes,
+             rank() OVER (ORDER BY pg_total_relation_size(c.oid) DESC) AS rk
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace,
+      LATERAL (VALUES ('heap', pg_relation_size(c.oid)), ('indexes', pg_indexes_size(c.oid)),
+                      ('toast', pg_total_relation_size(c.oid) - pg_relation_size(c.oid) - pg_indexes_size(c.oid))) AS p(part, bytes)
+      WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    ) t WHERE rk <= 20
+
+- metric_name: pg_table_live_rows
+  type: gauge
+  help: 'Estimated live rows of a table (the 20 largest).'
+  key_labels: [database, schema, table]
+  values: [rows]
+  query_ref: pg_tables_top
+
+- metric_name: pg_table_dead_rows
+  type: gauge
+  help: 'Estimated dead rows of a table, waiting for vacuum (the 20 largest tables).'
+  key_labels: [database, schema, table]
+  values: [rows]
+  query_ref: pg_tables_dead
+
+- metric_name: pg_table_last_autovacuum_age_seconds
+  type: gauge
+  help: 'Seconds since autovacuum last ran on the table (-1 never), for the 20 largest tables.'
+  key_labels: [database, schema, table]
+  values: [seconds]
+  query_ref: pg_tables_vacuum
+
+- metric_name: pg_table_seq_tuples_read_total
+  type: counter
+  help: 'Rows read by sequential scans of a table: a big number on a big table with a selective query is a missing index. The top 20.'
+  key_labels: [database, schema, table]
+  values: [rows]
+  query: |
+    SELECT current_database() AS database, schemaname AS schema, relname AS "table", seq_tup_read::float8 AS rows
+    FROM pg_stat_user_tables ORDER BY seq_tup_read DESC LIMIT 20
+
+- metric_name: pg_unused_index_bytes
+  type: gauge
+  help: 'Size of an index no query has used since the statistics began (primary keys and unique indexes left out). The 20 largest.'
+  key_labels: [database, schema, table, index]
+  values: [bytes]
+  query_ref: pg_unused_indexes
+
+- metric_name: pg_unused_index_table_writes_total
+  type: counter
+  help: 'Rows inserted, updated and deleted in the table of an unused index: each one also maintained the index.'
+  key_labels: [database, schema, table, index]
+  values: [writes]
+  query_ref: pg_unused_indexes
+
+- metric_name: pg_wal_directory_bytes
+  type: gauge
+  help: 'Size of the WAL directory (pg_wal): grows when checkpoints, archiving or a replication slot fall behind.'
+  values: [bytes]
+  query: |
+    SELECT coalesce(sum(size), 0)::float8 AS bytes FROM pg_ls_waldir()
+
+queries:
+- query_name: pg_tables_top
+  query: |
+    SELECT current_database() AS database, schemaname AS schema, relname AS "table", n_live_tup::float8 AS rows
+    FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 20
+
+- query_name: pg_tables_dead
+  query: |
+    SELECT current_database() AS database, schemaname AS schema, relname AS "table", n_dead_tup::float8 AS rows
+    FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 20
+
+- query_name: pg_tables_vacuum
+  query: |
+    SELECT current_database() AS database, schemaname AS schema, relname AS "table",
+           coalesce(extract(epoch FROM clock_timestamp() - last_autovacuum), -1)::float8 AS seconds
+    FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 20
+
+- query_name: pg_unused_indexes
+  query: |
+    SELECT current_database() AS database, i.schemaname AS schema, i.relname AS "table", i.indexrelname AS index,
+           pg_relation_size(i.indexrelid)::float8 AS bytes,
+           (t.n_tup_ins + t.n_tup_upd + t.n_tup_del)::float8 AS writes
+    FROM pg_stat_user_indexes i
+    JOIN pg_index x ON x.indexrelid = i.indexrelid
+    JOIN pg_stat_user_tables t ON t.relid = i.relid
+    WHERE i.idx_scan = 0 AND NOT x.indisunique AND NOT x.indisprimary
+    ORDER BY pg_relation_size(i.indexrelid) DESC LIMIT 20

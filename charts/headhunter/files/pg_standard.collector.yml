@@ -120,6 +120,200 @@ metrics:
   values: [conflicts]
   query_ref: pg_stat_database
 
+# What the active queries are waiting on, sampled at each scrape: a wait event name for I/O, locks and WAL, or
+# 'cpu' with none (the backend is computing).
+- metric_name: pg_active_backends_by_wait
+  type: gauge
+  help: 'Active client queries, by what they wait on (wait_event_type and wait_event; cpu when not waiting).'
+  key_labels:
+    - wait_event_type
+    - wait_event
+  values: [count]
+  query: |
+    SELECT coalesce(wait_event_type, 'cpu') AS wait_event_type, coalesce(wait_event, 'cpu') AS wait_event, count(*)::float8 AS count
+    FROM pg_stat_activity
+    WHERE state = 'active' AND backend_type = 'client backend' AND pid <> pg_backend_pid()
+    GROUP BY 1, 2
+
+#
+# Collected from pg_stat_io (PostgreSQL 16+; the times need track_io_timing = on): every read, write, extend and
+# fsync, by backend type, object and context. Counters.
+#
+- metric_name: pg_io_reads
+  type: counter
+  help: 'Read operations.'
+  key_labels: [backend_type, object, context]
+  values: [reads]
+  query_ref: pg_stat_io
+
+- metric_name: pg_io_read_bytes
+  type: counter
+  help: 'Bytes read.'
+  key_labels: [backend_type, object, context]
+  values: [read_bytes]
+  query_ref: pg_stat_io
+
+- metric_name: pg_io_read_seconds
+  type: counter
+  help: 'Time spent reading (needs track_io_timing).'
+  key_labels: [backend_type, object, context]
+  values: [read_seconds]
+  query_ref: pg_stat_io
+
+- metric_name: pg_io_writes
+  type: counter
+  help: 'Write operations.'
+  key_labels: [backend_type, object, context]
+  values: [writes]
+  query_ref: pg_stat_io
+
+- metric_name: pg_io_write_bytes
+  type: counter
+  help: 'Bytes written.'
+  key_labels: [backend_type, object, context]
+  values: [write_bytes]
+  query_ref: pg_stat_io
+
+- metric_name: pg_io_write_seconds
+  type: counter
+  help: 'Time spent writing (needs track_io_timing).'
+  key_labels: [backend_type, object, context]
+  values: [write_seconds]
+  query_ref: pg_stat_io
+
+- metric_name: pg_io_extend_bytes
+  type: counter
+  help: 'Bytes added by extending relations (a growing table or index).'
+  key_labels: [backend_type, object, context]
+  values: [extend_bytes]
+  query_ref: pg_stat_io
+
+- metric_name: pg_io_extend_seconds
+  type: counter
+  help: 'Time spent extending relations (needs track_io_timing).'
+  key_labels: [backend_type, object, context]
+  values: [extend_seconds]
+  query_ref: pg_stat_io
+
+- metric_name: pg_io_fsync_seconds
+  type: counter
+  help: 'Time spent in fsync (needs track_io_timing).'
+  key_labels: [backend_type, object, context]
+  values: [fsync_seconds]
+  query_ref: pg_stat_io
+
+- metric_name: pg_io_hits
+  type: counter
+  help: 'Reads served from shared_buffers.'
+  key_labels: [backend_type, object, context]
+  values: [hits]
+  query_ref: pg_stat_io
+
+- metric_name: pg_io_evictions
+  type: counter
+  help: 'Buffers evicted to make room (shared_buffers too small for the working set).'
+  key_labels: [backend_type, object, context]
+  values: [evictions]
+  query_ref: pg_stat_io
+
+#
+# Write-ahead log, from pg_stat_wal.
+#
+- metric_name: pg_wal_bytes
+  type: counter
+  help: 'WAL generated, in bytes.'
+  values: [wal_bytes]
+  query_ref: pg_stat_wal
+
+- metric_name: pg_wal_records
+  type: counter
+  help: 'WAL records generated.'
+  values: [wal_records]
+  query_ref: pg_stat_wal
+
+- metric_name: pg_wal_full_page_images
+  type: counter
+  help: 'Full page images written to the WAL (high after a checkpoint, or with many random writes).'
+  values: [wal_fpi]
+  query_ref: pg_stat_wal
+
+- metric_name: pg_wal_buffers_full
+  type: counter
+  help: 'Times a WAL write happened because the WAL buffers were full.'
+  values: [wal_buffers_full]
+  query_ref: pg_stat_wal
+
+#
+# Checkpoints, from pg_stat_checkpointer.
+#
+- metric_name: pg_checkpoints_timed
+  type: counter
+  help: 'Checkpoints started by checkpoint_timeout.'
+  values: [num_timed]
+  query_ref: pg_stat_checkpointer
+
+- metric_name: pg_checkpoints_requested
+  type: counter
+  help: 'Checkpoints started early, by max_wal_size or a command.'
+  values: [num_requested]
+  query_ref: pg_stat_checkpointer
+
+- metric_name: pg_checkpoint_write_seconds
+  type: counter
+  help: 'Time checkpoints spent writing buffers.'
+  values: [write_seconds]
+  query_ref: pg_stat_checkpointer
+
+- metric_name: pg_checkpoint_sync_seconds
+  type: counter
+  help: 'Time checkpoints spent syncing files.'
+  values: [sync_seconds]
+  query_ref: pg_stat_checkpointer
+
+- metric_name: pg_checkpoint_buffers_written
+  type: counter
+  help: 'Buffers written by checkpoints.'
+  values: [buffers_written]
+  query_ref: pg_stat_checkpointer
+
+#
+# Long operations in progress (every database): an index build, a COPY. Gauges; absent when none runs.
+#
+- metric_name: pg_index_build_blocks_done
+  type: gauge
+  help: 'Blocks processed by an index build in its current phase.'
+  key_labels: [database, relation, phase]
+  values: [blocks_done]
+  query_ref: pg_progress_create_index
+
+- metric_name: pg_index_build_blocks_total
+  type: gauge
+  help: 'Blocks to process by an index build in its current phase.'
+  key_labels: [database, relation, phase]
+  values: [blocks_total]
+  query_ref: pg_progress_create_index
+
+- metric_name: pg_index_build_tuples_done
+  type: gauge
+  help: 'Tuples processed by an index build in its current phase.'
+  key_labels: [database, relation, phase]
+  values: [tuples_done]
+  query_ref: pg_progress_create_index
+
+- metric_name: pg_index_build_tuples_total
+  type: gauge
+  help: 'Tuples to process by an index build in its current phase.'
+  key_labels: [database, relation, phase]
+  values: [tuples_total]
+  query_ref: pg_progress_create_index
+
+- metric_name: pg_copy_tuples_processed
+  type: gauge
+  help: 'Tuples a running COPY has processed.'
+  key_labels: [database, relation]
+  values: [tuples_processed]
+  query_ref: pg_progress_copy
+
 queries:
 - query_name: pg_stat_database
   query: |
@@ -129,3 +323,42 @@ queries:
            temp_bytes::float8 AS temp_bytes, deadlocks::float8 AS deadlocks, conflicts::float8 AS conflicts
     FROM pg_stat_database
     WHERE datname IS NOT NULL AND datname NOT IN ('template0', 'template1')
+
+- query_name: pg_stat_io
+  query: |
+    SELECT backend_type, object, context,
+           coalesce(reads, 0)::float8 AS reads, coalesce(read_bytes, 0)::float8 AS read_bytes,
+           coalesce(read_time, 0)::float8 / 1000 AS read_seconds,
+           coalesce(writes, 0)::float8 AS writes, coalesce(write_bytes, 0)::float8 AS write_bytes,
+           coalesce(write_time, 0)::float8 / 1000 AS write_seconds,
+           coalesce(extend_bytes, 0)::float8 AS extend_bytes, coalesce(extend_time, 0)::float8 / 1000 AS extend_seconds,
+           coalesce(fsync_time, 0)::float8 / 1000 AS fsync_seconds,
+           coalesce(hits, 0)::float8 AS hits, coalesce(evictions, 0)::float8 AS evictions
+    FROM pg_stat_io
+    WHERE backend_type IN ('client backend', 'background writer', 'checkpointer', 'background worker', 'walwriter')
+
+- query_name: pg_stat_wal
+  query: |
+    SELECT wal_records::float8 AS wal_records, wal_fpi::float8 AS wal_fpi, wal_bytes::float8 AS wal_bytes,
+           wal_buffers_full::float8 AS wal_buffers_full
+    FROM pg_stat_wal
+
+- query_name: pg_stat_checkpointer
+  query: |
+    SELECT num_timed::float8 AS num_timed, num_requested::float8 AS num_requested,
+           write_time::float8 / 1000 AS write_seconds, sync_time::float8 / 1000 AS sync_seconds,
+           buffers_written::float8 AS buffers_written
+    FROM pg_stat_checkpointer
+
+- query_name: pg_progress_create_index
+  query: |
+    SELECT coalesce(d.datname, '') AS database, coalesce(i.index_relid::regclass::text, '') AS relation, i.phase,
+           i.blocks_done::float8 AS blocks_done, i.blocks_total::float8 AS blocks_total,
+           i.tuples_done::float8 AS tuples_done, i.tuples_total::float8 AS tuples_total
+    FROM pg_stat_progress_create_index i LEFT JOIN pg_database d ON d.oid = i.datid
+
+- query_name: pg_progress_copy
+  query: |
+    SELECT coalesce(d.datname, '') AS database, coalesce(c.relid::regclass::text, '') AS relation,
+           c.tuples_processed::float8 AS tuples_processed
+    FROM pg_stat_progress_copy c LEFT JOIN pg_database d ON d.oid = c.datid
