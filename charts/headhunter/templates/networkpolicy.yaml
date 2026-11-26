@@ -202,7 +202,7 @@ spec:
             matchLabels:
               app: headhunter-migrate
         {{- end }}
-        {{- if and .Values.migrations.enabled .Values.migrations.backup.scheduled.enabled }}
+        {{- if and .Values.migrations.backup.enabled .Values.migrations.backup.scheduled.enabled }}
         - podSelector:
             matchLabels:
               app: headhunter-backup

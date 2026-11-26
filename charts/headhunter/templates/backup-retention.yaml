@@ -1,6 +1,6 @@
 {{- $m := .Values.migrations -}}
 {{- $r := $m.backup.retention -}}
-{{- if and $m.enabled $m.backup.enabled $r.enabled }}
+{{- if and $m.backup.enabled $r.enabled }}
 {{- if not (include "headhunter.postgres" .) }}{{ fail "migrations.backup.retention is PostgreSQL's: set it false with database.provider SqlServer" }}{{ end }}
 # Deletes old backups (values.yaml, migrations.backup.retention) from PostgreSQL's backup volume: only
 # pg_dump archives named <database>_YYYYMMDD_HHMMSS.dump in the backup folder, ranked and aged by the
@@ -83,8 +83,8 @@ spec:
           tolerations:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with $m.affinity }}
+          {{- with include "headhunter.pgBackupAffinity" . }}
           affinity:
-            {{- toYaml . | nindent 12 }}
+            {{- . | nindent 12 }}
           {{- end }}
 {{- end }}

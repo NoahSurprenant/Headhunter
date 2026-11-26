@@ -51,7 +51,8 @@ So the migrations always match the app. The Job's steps:
    SQL Server writes it, to its backup volume. Old backups are not pruned. With PostgreSQL the step writes a `pg_dump -Fc`
    archive, `<database>_<date>_<time>.dump`, to `migrations.backup.pgDirectory`; `migrations.backup.scheduled` adds a
    nightly CronJob that writes the same, and `migrations.backup.retention` a CronJob that prunes them (newest
-   `keepLast`, anything under `keepDays`, optionally one a day). Both are off by default and PostgreSQL only.
+   `keepLast`, anything younger than `keepDays`, and with `onePerDay` only the newest of each day among the rest). Both are off by default and PostgreSQL only. Retention only knows the `<database>_<date>_<time>.dump` names: `headhunter-premigrate-*.dump` files from an
+   earlier chart version stay until they are deleted by hand.
 4. **migrate:** runs the bundle, or does nothing when nothing is pending. Then, with
    `database.recoveryModel`, it sets the database's recovery model if it differs.
 
