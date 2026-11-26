@@ -185,7 +185,7 @@ public sealed class FakeVoterFile
             csv.Append(string.Join(",", columns.Select(c => c.GetValue(record) switch
             {
                 bool flag => flag ? "\"Y\"" : "\"N\"",
-                DateTime date => date.ToString("\"yyyy-MM-dd\"", CultureInfo.InvariantCulture),
+                DateTime date => "\"" + date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + "\"",
                 IFormattable number => "\"" + number.ToString(null, CultureInfo.InvariantCulture) + "\"",
                 var value => $"\"{value}\"",
             }))).Append("\r\n");
