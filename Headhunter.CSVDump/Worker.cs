@@ -366,10 +366,50 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
                 .ToList();
             string Key(string alias) =>
                 $"md5(lower(concat_ws(chr(31), {string.Join(", ", columns.Select(c => $"coalesce({alias}.\"{c}\", '') COLLATE \"case_insensitive\""))})))";
-            rawSql = rawSql[..rawSql.IndexOf("\nON AL.", StringComparison.Ordinal)] + $"\nON {Key("AL")} = {Key("MR")};";
+            rawSql = rawSql[..rawSql.IndexOf("\nON AL.", StringComparison.Ordinal)] + $"\nON {Key("AL")} = {Key("MR")}\nORDER BY MR.\"ID\";";
         }
         context.Database.SetCommandTimeout(TimeSpan.Zero);
-        await ImportTelemetry.RunAsync("voters.insert", async step => step.Rows = await context.Database.ExecuteSqlRawAsync(rawSql, ct));
+        if (!context.Database.IsNpgsql())
+        {
+            await ImportTelemetry.RunAsync("voters.insert", async step => step.Rows = await context.Database.ExecuteSqlRawAsync(rawSql, ct));
+            return;
+        }
+
+        // One session for all of it: the SETs below apply to this connection only. The inserts arrive in voter-ID
+        // order and the secondary indexes are built after, because random inserts into 7 indexes bigger than
+        // shared_buffers were all disk reads (an hour and counting).
+        await context.Database.OpenConnectionAsync(ct);
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync("SET work_mem = '512MB'; SET maintenance_work_mem = '2GB'; SET synchronous_commit = off; SET max_parallel_maintenance_workers = 4", ct);
+            var indexes = new List<(string Name, string Definition)>();
+            await using (var command = context.Database.GetDbConnection().CreateCommand())
+            {
+                command.CommandText = "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'Voters' AND indexname <> 'PK_Voters'";
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct)) indexes.Add((reader.GetString(0), reader.GetString(1)));
+            }
+
+            await ImportTelemetry.RunAsync("voters.indexes.drop", async _ =>
+            {
+                foreach (var (name, _) in indexes) await context.Database.ExecuteSqlRawAsync($"DROP INDEX IF EXISTS \"{name}\"", ct);
+            });
+            try
+            {
+                await ImportTelemetry.RunAsync("voters.insert", async step => step.Rows = await context.Database.ExecuteSqlRawAsync(rawSql, ct));
+            }
+            finally
+            {
+                await ImportTelemetry.RunAsync("voters.indexes.build", async _ =>
+                {
+                    foreach (var (_, definition) in indexes) await context.Database.ExecuteSqlRawAsync(definition, CancellationToken.None);
+                });
+            }
+        }
+        finally
+        {
+            await context.Database.CloseConnectionAsync();
+        }
     }
 
     /// <summary>
