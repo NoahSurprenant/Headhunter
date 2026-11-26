@@ -347,7 +347,7 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
                 .Select(part => part[..part.IndexOf('"')])
                 .ToList();
             string Key(string alias) =>
-                $"md5(lower(concat_ws(chr(31), {string.Join(", ", columns.Select(c => $"coalesce({alias}.\"{c}\", '')"))})))";
+                $"md5(lower(concat_ws(chr(31), {string.Join(", ", columns.Select(c => $"coalesce({alias}.\"{c}\", '') COLLATE \"case_insensitive\""))})))";
             rawSql = rawSql[..rawSql.IndexOf("\nON AL.", StringComparison.Ordinal)] + $"\nON {Key("AL")} = {Key("MR")};";
         }
         context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
