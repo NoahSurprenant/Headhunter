@@ -9,15 +9,34 @@ namespace Headhunter.CSVDump;
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
+    private readonly IHostApplicationLifetime _lifetime;
     private readonly IServiceScopeFactory _serviceScopeFactory;
 
-    public Worker(ILogger<Worker> logger, IServiceScopeFactory serviceScopeFactory)
+    public Worker(ILogger<Worker> logger, IServiceScopeFactory serviceScopeFactory, IHostApplicationLifetime lifetime)
     {
         _logger = logger;
+        _lifetime = lifetime;
         _serviceScopeFactory = serviceScopeFactory;
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Import(ct);
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine(e);
+            Environment.ExitCode = 1;
+        }
+        finally
+        {
+            _lifetime.StopApplication();
+        }
+    }
+
+    private async Task Import(CancellationToken ct)
     {
         using (var scope = _serviceScopeFactory.CreateScope())
         {
