@@ -48,12 +48,9 @@ public class Worker : BackgroundService
             }
         }
 
-        await ImportCsvData();
-        Console.WriteLine("Imported CSV Data");
+        await ImportTelemetry.RunAsync("registration.load", async step => step.Rows = await ImportCsvData());
         await InsertAddresses(ct);
-        Console.WriteLine("Inserted Addresses");
         await InsertVoters(ct);
-        Console.WriteLine("Inserted Voters");
 
         Console.WriteLine("Done");
     }
@@ -67,7 +64,7 @@ public class Worker : BackgroundService
 
         if (configuration.GetValue<string>("CodesPath") is { Length: > 0 } codes)
         {
-            await CodeFiles.LoadAsync(context, codes, ct);
+            await ImportTelemetry.RunAsync("history.codes", _ => CodeFiles.LoadAsync(context, codes, ct));
             Console.WriteLine("Loaded code tables");
         }
 
@@ -75,7 +72,7 @@ public class Worker : BackgroundService
         Console.WriteLine($"Read {result.Rows} history rows, inserted {result.Inserted}");
     }
 
-    private async Task ImportCsvData()
+    private async Task<long> ImportCsvData()
     {
         using var scope = _serviceScopeFactory.CreateScope();
 
@@ -98,6 +95,7 @@ public class Worker : BackgroundService
         //        MaxValue = count,
         //    });
 
+        var loaded = new long[1];
         await Parallel.ForEachAsync(batches, async (batch, ct) =>
         {
             using var innerScope = _serviceScopeFactory.CreateScope();
@@ -159,12 +157,16 @@ public class Worker : BackgroundService
                 };
             });
 
-            await VoterRecordBulk.InsertAsync(context, mapped.ToList(), ct);
+            var rows = mapped.ToList();
+            await VoterRecordBulk.InsertAsync(context, rows, ct);
+            Interlocked.Add(ref loaded[0], rows.Count);
 
         });
 
         //    task.StopTask();
         //});
+
+        return loaded[0];
     }
 
     /// <summary>
@@ -269,10 +271,10 @@ GROUP BY
 """;
         using var scope = _serviceScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<HeadhunterContext>();
-        await InsertLookups(context, ct);
+        await ImportTelemetry.RunAsync("lookups", _ => InsertLookups(context, ct));
         context.Database.SetCommandTimeout(TimeSpan.Zero);
-        await context.Database.ExecuteSqlRawAsync(
-            rawSql.Replace("NEWID()", context.Database.IsNpgsql() ? "gen_random_uuid()" : "NEWID()"), ct);
+        await ImportTelemetry.RunAsync("addresses.insert", async step => step.Rows = await context.Database.ExecuteSqlRawAsync(
+            rawSql.Replace("NEWID()", context.Database.IsNpgsql() ? "gen_random_uuid()" : "NEWID()"), ct));
     }
 
     /// <summary>
@@ -367,7 +369,7 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
             rawSql = rawSql[..rawSql.IndexOf("\nON AL.", StringComparison.Ordinal)] + $"\nON {Key("AL")} = {Key("MR")};";
         }
         context.Database.SetCommandTimeout(TimeSpan.Zero);
-        await context.Database.ExecuteSqlRawAsync(rawSql, ct);
+        await ImportTelemetry.RunAsync("voters.insert", async step => step.Rows = await context.Database.ExecuteSqlRawAsync(rawSql, ct));
     }
 
     /// <summary>

@@ -45,6 +45,8 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
             var dates = new HashSet<DateOnly>();
             var rows = 0L;
 
+            await ImportTelemetry.RunAsync("history.stage", async step =>
+            {
             await using (IStagingWriter writer = postgres
                              ? new PostgresWriter((NpgsqlConnection)context.Database.GetDbConnection())
                              : new SqlServerWriter((SqlConnection)context.Database.GetDbConnection()))
@@ -70,25 +72,34 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
                 }
                 await writer.CompleteAsync(ct);
             }
+            step.Rows = rows;
+            });
 
-            await Lookups.UpsertAsync(context,
+            await ImportTelemetry.RunAsync("history.lookups", _ => Lookups.UpsertAsync(context,
                 counties.Select(c => (c.Key, c.Value)),
                 jurisdictions.Select(j => (j.Key.Item1, j.Key.Item2, j.Value)),
                 schools.Select(s => (s.Key, s.Value)),
                 dates.Select(d => (d, (int?)null, "")),
-                overwrite: false, ct);
+                overwrite: false, ct));
 
             // The voter numbers are looked up once, not once for every election.
-            await context.Database.ExecuteSqlRawAsync(postgres
-                ? $"UPDATE \"{Staging}\" AS s SET \"VoterID\" = v.\"ID\" FROM \"Voters\" AS v WHERE v.\"VOTER_IDENTIFICATION_NUMBER\" COLLATE \"C\" = s.\"VoterNumber\""
-                : $"UPDATE s SET s.\"VoterID\" = v.\"ID\" FROM \"{Staging}\" AS s JOIN \"Voters\" AS v ON v.\"VOTER_IDENTIFICATION_NUMBER\" = s.\"VoterNumber\"", ct);
-            await context.Database.ExecuteSqlRawAsync($"DELETE FROM \"{Staging}\" WHERE \"VoterID\" IS NULL", ct);
+            await ImportTelemetry.RunAsync("history.match", async step =>
+            {
+                step.Rows = await context.Database.ExecuteSqlRawAsync(postgres
+                    ? $"UPDATE \"{Staging}\" AS s SET \"VoterID\" = v.\"ID\" FROM \"Voters\" AS v WHERE v.\"VOTER_IDENTIFICATION_NUMBER\" COLLATE \"C\" = s.\"VoterNumber\""
+                    : $"UPDATE s SET s.\"VoterID\" = v.\"ID\" FROM \"{Staging}\" AS s JOIN \"Voters\" AS v ON v.\"VOTER_IDENTIFICATION_NUMBER\" = s.\"VoterNumber\"", ct);
+                await context.Database.ExecuteSqlRawAsync($"DELETE FROM \"{Staging}\" WHERE \"VoterID\" IS NULL", ct);
+            });
 
-            await context.Database.ExecuteSqlRawAsync($"CREATE INDEX \"IX_{Staging}_ElectionDate\" ON \"{Staging}\" (\"ElectionDate\")", ct);
+            await ImportTelemetry.RunAsync("history.index", _ => context.Database.ExecuteSqlRawAsync($"CREATE INDEX \"IX_{Staging}_ElectionDate\" ON \"{Staging}\" (\"ElectionDate\")", ct));
 
             var inserted = 0L;
-            foreach (var date in dates.Order())
-                inserted += await context.Database.ExecuteSqlRawAsync(InsertSql(), [date], ct);
+            await ImportTelemetry.RunAsync("history.insert", async step =>
+            {
+                foreach (var date in dates.Order())
+                    inserted += await context.Database.ExecuteSqlRawAsync(InsertSql(), [date], ct);
+                step.Rows = inserted;
+            });
 
             await context.Database.ExecuteSqlRawAsync($"DROP TABLE \"{Staging}\"", ct);
             return new VoteHistoryResult(rows, inserted);
