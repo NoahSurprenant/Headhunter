@@ -75,7 +75,7 @@ public class VoterFileTests
         {
             using (var archive = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
             {
-                archive.CreateEntryFromFile(_path, "April Entire State Reg List 2025.csv");
+                System.IO.Compression.ZipFileExtensions.CreateEntryFromFile(archive, _path, "April Entire State Reg List 2025.csv");
             }
 
             var records = VoterFile.Records(zip).ToList();
