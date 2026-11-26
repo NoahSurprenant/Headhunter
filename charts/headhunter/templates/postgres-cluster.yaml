@@ -45,7 +45,7 @@ spec:
   storage:
     size: {{ $p.persistence.size }}
     {{- with $p.persistence.storageClass }}
-    storageClassName: {{ . }}
+    storageClass: {{ . }}
     {{- end }}
   {{- if or $p.configuration $c.synchronous }}
   postgresql:
