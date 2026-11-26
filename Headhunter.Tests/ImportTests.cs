@@ -77,44 +77,13 @@ public class CsvImportTests
     [TearDown]
     public void DeleteFile() => File.Delete(_path);
 
-    // Header and rows built from Raw's own column names, so the file always matches what the import reads.
-    private static string BuildCsv(int voters)
-    {
-        var columns = typeof(Raw).GetProperties().Select(p => p.Name).ToList();
-        var lines = new List<string> { string.Join(",", columns.Select(c => $"\"{c}\"")) };
-        for (var n = 1; n <= voters; n++)
-        {
-            var household = n / 2;
-            // Odd voters spell their street in capitals: still the household of the voter before them.
-            var street = n % 2 == 1 ? $"STREET{household / 10}" : $"Street{household / 10}";
-            var values = new Dictionary<string, string>
-            {
-                ["LAST_NAME"] = $"Last{n}",
-                ["FIRST_NAME"] = $"First{n}",
-                ["YEAR_OF_BIRTH"] = (1950 + n).ToString(),
-                ["REGISTRATION_DATE"] = n % 2 == 1 ? "05/12/2019" : "2019-05-12",
-                ["STREET_NUMBER"] = (household % 10 + 1).ToString(),
-                ["STREET_NAME"] = street,
-                ["STREET_TYPE"] = "St",
-                ["CITY"] = "Testville",
-                ["STATE"] = "MI",
-                ["ZIP_CODE"] = "48000",
-                ["VOTER_IDENTIFICATION_NUMBER"] = n.ToString(),
-                ["IS_PERM_AV_BALLOT_VOTER"] = n % 3 == 0 ? "Y" : "N",
-                ["IS_PERM_AV_APP_VOTER"] = "N",
-            };
-            lines.Add(string.Join(",", columns.Select(c => $"\"{values.GetValueOrDefault(c, "")}\"")));
-        }
-        return string.Join("\r\n", lines) + "\r\n";
-    }
-
     [Test]
     public async Task Worker_ImportsACsvFileIntoRecordsAddressesAndVoters()
     {
         // 1200 voters: more than two batches of 500, so the parallel batch writes run concurrently.
-        const int voters = 1200;
+        var fake = FakeVoterFile.Create(1200);
         _path = Path.Combine(Path.GetTempPath(), $"voters-{Guid.NewGuid():N}.csv");
-        await File.WriteAllTextAsync(_path, BuildCsv(voters));
+        await File.WriteAllTextAsync(_path, fake.Csv);
 
         var create = await DatabaseFixture.CreateScratchDatabaseAsync("import_csv");
         var services = new ServiceCollection();
@@ -131,14 +100,26 @@ public class CsvImportTests
         await using var check = create();
         Assert.Multiple(async () =>
         {
-            Assert.That(await check.MichiganVoterRecords.CountAsync(), Is.EqualTo(voters));
-            Assert.That(await check.Voters.CountAsync(), Is.EqualTo(voters));
-            // Households n/2 = 0..600.
-            Assert.That(await check.Addresses.CountAsync(), Is.EqualTo(voters / 2 + 1));
-            Assert.That(await check.Voters.CountAsync(v => v.IS_PERM_AV_BALLOT_VOTER), Is.EqualTo(voters / 3));
-            var voter = await check.Voters.Include(v => v.Address).SingleAsync(v => v.VOTER_IDENTIFICATION_NUMBER == "7");
-            Assert.That(voter.REGISTRATION_DATE, Is.EqualTo(new DateTime(2019, 5, 12)));
-            Assert.That(voter.Address.FullStreetAddress, Is.EqualTo("4 Street0 St").IgnoreCase);
+            Assert.That(await check.MichiganVoterRecords.CountAsync(), Is.EqualTo(fake.Voters));
+            Assert.That(await check.Voters.CountAsync(), Is.EqualTo(fake.Voters));
+            Assert.That(await check.Addresses.CountAsync(), Is.EqualTo(fake.Households));
+            Assert.That(await check.Voters.CountAsync(v => v.IS_PERM_AV_BALLOT_VOTER), Is.EqualTo(fake.PermAvBallotVoters));
+
+            // Every household's voters share one address, and the address sizes match the file's.
+            var expectedSizes = fake.Records.GroupBy(r => (FakeVoterFile.FullStreetAddress(r).ToUpperInvariant(), r.CITY)).Select(g => g.Count()).Order().ToList();
+            var actualSizes = (await check.Addresses.Select(a => a.Voters.Count).ToListAsync()).Order().ToList();
+            Assert.That(actualSizes, Is.EqualTo(expectedSizes));
+
+            // One plain house, and one that has an apartment, so the street address is joined from every part.
+            foreach (var expected in new[] { fake.Records[7], fake.Records.First(r => r.EXTENSION.Length > 0) })
+            {
+            var voter = await check.Voters.Include(v => v.Address).SingleAsync(v => v.VOTER_IDENTIFICATION_NUMBER == expected.VOTER_IDENTIFICATION_NUMBER);
+            Assert.That(voter.LAST_NAME, Is.EqualTo(expected.LAST_NAME));
+            Assert.That(voter.REGISTRATION_DATE, Is.EqualTo(expected.REGISTRATION_DATE));
+            Assert.That(voter.Address.FullStreetAddress, Is.EqualTo(FakeVoterFile.FullStreetAddress(expected)).IgnoreCase);
+            Assert.That(voter.Address.CITY, Is.EqualTo(expected.CITY));
+                Assert.That(voter.IS_PERM_AV_APP_VOTER, Is.EqualTo(expected.IS_PERM_AV_APP_VOTER));
+            }
         });
     }
 }
