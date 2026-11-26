@@ -67,6 +67,10 @@ tests:
     asserts:
       - matchRegex: { path: "data['sql_exporter.yml']", pattern: "pgx://" }
       - isNotNull: { path: "data['pg_standard.collector.yml']" }
+      - isNotNull: { path: "data['pg_activity.collector.yml']" }
+      - isNotNull: { path: "data['pg_query_stats.collector.yml']" }
+      - isNotNull: { path: "data['pg_storage.collector.yml']" }
+      - matchRegex: { path: "data['sql_exporter.yml']", pattern: 'collectors: \["pg_standard","pg_activity","pg_query_stats","pg_storage"\]' }
 
   - it: has a NetworkPolicy for PostgreSQL
     template: templates/networkpolicy.yaml

@@ -12,6 +12,6 @@ global:
 # before the environment is ever consulted.
 target:
   data_source_name: {{ include "headhunter.byProvider" (dict "root" . "sql" "'sqlserver://placeholder:placeholder@127.0.0.1:1433'" "pg" "'pgx://placeholder:placeholder@127.0.0.1:5432/postgres'") }}
-  collectors: {{ .Values.sqlExporter.collectors | default (ternary (list "pg_standard") (list "mssql_standard" "mssql_io_writes" "mssql_query_stats") (eq (include "headhunter.postgres" .) "true")) | toJson }}
+  collectors: {{ .Values.sqlExporter.collectors | default (ternary (list "pg_standard" "pg_activity" "pg_query_stats" "pg_storage") (list "mssql_standard" "mssql_io_writes" "mssql_query_stats") (eq (include "headhunter.postgres" .) "true")) | toJson }}
 collector_files:
   - '*.collector.yml'

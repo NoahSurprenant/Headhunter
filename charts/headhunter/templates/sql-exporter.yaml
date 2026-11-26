@@ -22,6 +22,12 @@ data:
   {{- if include "headhunter.postgres" . }}
   pg_standard.collector.yml: |
     {{- .Files.Get "files/pg_standard.collector.yml" | nindent 4 }}
+  pg_activity.collector.yml: |
+    {{- .Files.Get "files/pg_activity.collector.yml" | nindent 4 }}
+  pg_query_stats.collector.yml: |
+    {{- .Files.Get "files/pg_query_stats.collector.yml" | nindent 4 }}
+  pg_storage.collector.yml: |
+    {{- .Files.Get "files/pg_storage.collector.yml" | nindent 4 }}
   {{- else }}
   mssql_standard.collector.yml: |
     {{- .Files.Get "files/mssql_standard.collector.yml" | nindent 4 }}
@@ -61,7 +67,7 @@ spec:
         {{- end }}
       annotations:
         # Restart on a config change: the exporter reads it only at start.
-        checksum/config: {{ list (tpl (.Files.Get "files/sql_exporter.yml") .) (.Files.Get "files/mssql_standard.collector.yml") (.Files.Get "files/mssql_io_writes.collector.yml") (.Files.Get "files/mssql_query_stats.collector.yml") (.Files.Get "files/pg_standard.collector.yml") $x.extraCollectorFiles | toJson | sha256sum }}
+        checksum/config: {{ list (tpl (.Files.Get "files/sql_exporter.yml") .) (.Files.Get "files/mssql_standard.collector.yml") (.Files.Get "files/mssql_io_writes.collector.yml") (.Files.Get "files/mssql_query_stats.collector.yml") (.Files.Get "files/pg_standard.collector.yml") (.Files.Get "files/pg_activity.collector.yml") (.Files.Get "files/pg_query_stats.collector.yml") (.Files.Get "files/pg_storage.collector.yml") $x.extraCollectorFiles | toJson | sha256sum }}
         {{- with $x.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -88,9 +94,9 @@ spec:
                 {n=split($0,a,"");for(i=1;i<=n;i++){c=a[i];
                  if(c~/[A-Za-z0-9._~-]/)printf "%s",c;else printf "%%%02X",o[c]}}')
               {{- if include "headhunter.postgres" . }}
-              # pgx (the pgx:// scheme): lib/pq mangles a password with a space or a backslash. The postgres
-              # database: the queries read the server's views, from any database.
-              export SQLEXPORTER_TARGET_DSN="pgx://$DB_USER:$enc@$DB_HOST:$DB_PORT/postgres?$DSN_OPTIONS"
+              # pgx (the pgx:// scheme): lib/pq mangles a password with a space or a backslash. The app
+              # database: the storage queries read its tables, the others the server's views.
+              export SQLEXPORTER_TARGET_DSN="pgx://$DB_USER:$enc@$DB_HOST:$DB_PORT/$DB_NAME?$DSN_OPTIONS"
               {{- else }}
               export SQLEXPORTER_TARGET_DSN="sqlserver://$DB_USER:$enc@$DB_HOST:$DB_PORT?$DSN_OPTIONS"
               {{- end }}
@@ -103,6 +109,8 @@ spec:
               value: {{ include "headhunter.dbHost" . | quote }}
             - name: DB_PORT
               value: {{ include "headhunter.dbPort" . | quote }}
+            - name: DB_NAME
+              value: {{ .Values.database.name | quote }}
             - name: DB_USER
               value: {{ $user | quote }}
             - name: DB_PASSWORD
