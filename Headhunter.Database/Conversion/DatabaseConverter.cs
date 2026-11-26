@@ -45,6 +45,15 @@ public sealed class DatabaseConverter(ILogger<DatabaseConverter> logger)
         targetContext.ChangeTracker.AutoDetectChangesEnabled = false;
         await using var transaction = await targetContext.Database.BeginTransactionAsync(cancellationToken);
 
+        // The code tables are small, and the addresses point at them.
+        await CopyWholeAsync(sourceContext, targetContext, c => c.Counties, cancellationToken);
+        await CopyWholeAsync(sourceContext, targetContext, c => c.Jurisdictions, cancellationToken);
+        await CopyWholeAsync(sourceContext, targetContext, c => c.SchoolDistricts, cancellationToken);
+        await CopyWholeAsync(sourceContext, targetContext, c => c.StateHouseDistricts, cancellationToken);
+        await CopyWholeAsync(sourceContext, targetContext, c => c.StateSenateDistricts, cancellationToken);
+        await CopyWholeAsync(sourceContext, targetContext, c => c.UsCongressDistricts, cancellationToken);
+        await CopyWholeAsync(sourceContext, targetContext, c => c.CountyCommissionerDistricts, cancellationToken);
+
         // Parents first: Voters point at Addresses and MichiganVoterRecords.
         var tables = new List<ConvertedTable>
         {
@@ -56,6 +65,14 @@ public sealed class DatabaseConverter(ILogger<DatabaseConverter> logger)
         await CheckAsync(tables, targetContext, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return tables;
+    }
+
+    private static async Task CopyWholeAsync<T>(HeadhunterContext source, HeadhunterContext target,
+        Func<HeadhunterContext, DbSet<T>> set, CancellationToken cancellationToken) where T : class
+    {
+        set(target).AddRange(await set(source).AsNoTracking().ToArrayAsync(cancellationToken));
+        await target.SaveChangesAsync(cancellationToken);
+        target.ChangeTracker.Clear();
     }
 
     private async Task<ConvertedTable> CopyAsync<T>(string name, HeadhunterContext source, HeadhunterContext target,
