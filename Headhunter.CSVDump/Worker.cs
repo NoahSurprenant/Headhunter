@@ -9,10 +9,10 @@ namespace Headhunter.CSVDump;
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    private readonly IHostApplicationLifetime _lifetime;
+    private readonly IHostApplicationLifetime? _lifetime;
     private readonly IServiceScopeFactory _serviceScopeFactory;
 
-    public Worker(ILogger<Worker> logger, IServiceScopeFactory serviceScopeFactory, IHostApplicationLifetime lifetime)
+    public Worker(ILogger<Worker> logger, IServiceScopeFactory serviceScopeFactory, IHostApplicationLifetime? lifetime = null)
     {
         _logger = logger;
         _lifetime = lifetime;
@@ -25,14 +25,14 @@ public class Worker : BackgroundService
         {
             await Import(ct);
         }
-        catch (Exception e)
+        catch
         {
-            Console.Error.WriteLine(e);
             Environment.ExitCode = 1;
+            throw;
         }
         finally
         {
-            _lifetime.StopApplication();
+            _lifetime?.StopApplication();
         }
     }
 
