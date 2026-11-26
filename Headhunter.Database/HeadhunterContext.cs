@@ -20,6 +20,10 @@ public class HeadhunterContext : DbContext
     public DbSet<County> Counties { get; set; }
     public DbSet<Jurisdiction> Jurisdictions { get; set; }
     public DbSet<SchoolDistrict> SchoolDistricts { get; set; }
+    public DbSet<StateHouseDistrict> StateHouseDistricts { get; set; }
+    public DbSet<StateSenateDistrict> StateSenateDistricts { get; set; }
+    public DbSet<UsCongressDistrict> UsCongressDistricts { get; set; }
+    public DbSet<CountyCommissionerDistrict> CountyCommissionerDistricts { get; set; }
     public DbSet<Election> Elections { get; set; }
     public DbSet<VoteHistory> VoteHistory { get; set; }
 
@@ -50,9 +54,9 @@ public class HeadhunterContext : DbContext
         // (which Postgres can not use for a foreign key or a hash join).
         if (Database.IsNpgsql())
             foreach (var property in modelBuilder.Model.GetEntityTypes()
-                         .Where(t => t.ClrType == typeof(County) || t.ClrType == typeof(Jurisdiction) || t.ClrType == typeof(SchoolDistrict) || t.ClrType == typeof(VoteHistory))
+                         .Where(t => t.ClrType != typeof(MichiganVoterRecord))
                          .SelectMany(t => t.GetProperties())
-                         .Where(p => p.ClrType == typeof(string) && p.Name.EndsWith("Code")))
+                         .Where(p => p.ClrType == typeof(string) && (p.Name.EndsWith("Code") || (p.DeclaringType.ClrType == typeof(Address) && p.Name.EndsWith("_CODE")))))
                 property.SetCollation("C");
 
         // VoterConfiguration's expression is SQL Server's T-SQL.

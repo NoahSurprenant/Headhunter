@@ -107,17 +107,17 @@ public class DatabaseTests
         });
     }
 
-    // The district suggestions (and the filters, on the same columns) seek the district indexes. The jurisdiction
-    // leads two composite indexes, so either may be picked for it.
-    [TestCase(API.DistrictType.County, "", "IX_Addresses_COUNTY_NAME_COUNTY_COMMISSIONER_DISTRICT_NAME")]
-    [TestCase(API.DistrictType.Jurisdiction, "", "IX_Addresses_JURISDICTION_NAME_")]
-    [TestCase(API.DistrictType.Precinct, "CITY OF TESTVILLE", "IX_Addresses_JURISDICTION_NAME_PRECINCT")]
-    [TestCase(API.DistrictType.Ward, "CITY OF TESTVILLE", "IX_Addresses_JURISDICTION_NAME_WARD")]
-    [TestCase(API.DistrictType.SchoolDistrict, "", "IX_Addresses_SCHOOL_DISTRICT_NAME")]
-    [TestCase(API.DistrictType.StateHouse, "", "IX_Addresses_STATE_HOUSE_DISTRICT_NAME")]
-    [TestCase(API.DistrictType.StateSenate, "", "IX_Addresses_STATE_SENATE_DISTRICT_NAME")]
-    [TestCase(API.DistrictType.UsCongress, "", "IX_Addresses_US_CONGRESS_DISTRICT_NAME")]
-    [TestCase(API.DistrictType.CountyCommissioner, "TESTSHIRE", "IX_Addresses_COUNTY_NAME_COUNTY_COMMISSIONER_DISTRICT_NAME")]
+    // The district suggestions check each district of the lookup table against the address index on its code (and the
+    // filters use the same indexes). The jurisdiction leads two composite indexes, so either may be picked for it.
+    [TestCase(API.DistrictType.County, "", "IX_Addresses_COUNTY_CODE_COUNTY_COMMISSIONER_DISTRICT_CODE")]
+    [TestCase(API.DistrictType.Jurisdiction, "", "IX_Addresses_COUNTY_CODE_JURISDICTION_CODE_")]
+    [TestCase(API.DistrictType.Precinct, "CITY OF TESTVILLE", "IX_Addresses_COUNTY_CODE_JURISDICTION_CODE_PRECINCT")]
+    [TestCase(API.DistrictType.Ward, "CITY OF TESTVILLE", "IX_Addresses_COUNTY_CODE_JURISDICTION_CODE_WARD")]
+    [TestCase(API.DistrictType.SchoolDistrict, "", "IX_Addresses_SCHOOL_DISTRICT_CODE")]
+    [TestCase(API.DistrictType.StateHouse, "", "IX_Addresses_STATE_HOUSE_DISTRICT_CODE")]
+    [TestCase(API.DistrictType.StateSenate, "", "IX_Addresses_STATE_SENATE_DISTRICT_CODE")]
+    [TestCase(API.DistrictType.UsCongress, "", "IX_Addresses_US_CONGRESS_DISTRICT_CODE")]
+    [TestCase(API.DistrictType.CountyCommissioner, "TESTSHIRE", "IX_Addresses_COUNTY_CODE_COUNTY_COMMISSIONER_DISTRICT_CODE")]
     public async Task DistrictSuggestionQuery_SeeksItsIndex(API.DistrictType type, string within, string index)
     {
         // A showplan check; Postgres cannot seek a btree for LIKE on its case-insensitive (ICU) collation at all.
@@ -126,7 +126,7 @@ public class DatabaseTests
         await using var context = DatabaseFixture.CreateContext();
 
         // Same shape as DistrictController.DistrictSuggestions.
-        var sql = API.Districts.Names(context.Addresses, type, within)
+        var sql = API.Districts.Names(context, type, within)
             .Where(x => x != "" && x.StartsWith("1"))
             .Distinct().OrderBy(x => x).Take(50).ToQueryString();
 

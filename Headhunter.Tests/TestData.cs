@@ -75,6 +75,7 @@ public static class TestData
 
     public static async Task SeedAsync(HeadhunterContext context)
     {
+        var districts = new DistrictBook();
         var maple = NewAddress(MapleAddressId, "100", "Maple", "St", "Testville", 42.500000000001m, -83.500000000001m);
         var oak = NewAddress(OakAddressId, "200", "Oak", "Ave", "Testburg", 43.0m, -84.0m);
         var datelineEast = NewAddress(DatelineEastAddressId, "1", "Meridian", "Rd", "Eastedge", 10.0m, 179.5m);
@@ -89,14 +90,14 @@ public static class TestData
 
         // Districts. Both Maple and Oak are precinct 00001 and ward 01, of different jurisdictions, and Maple and Eastedge
         // are commissioner district 01 of different counties: those are only unique within their jurisdiction or county.
-        InDistricts(maple, "TESTSHIRE", "CITY OF TESTVILLE", "00001", "01", "TESTVILLE SCHOOLS", "1ST DISTRICT", "DISTRICT 01");
-        InDistricts(oak, "TESTSHIRE", "CITY OF TESTBURG", "00001", "01", "TESTBURG SCHOOLS", "2ND DISTRICT", "DISTRICT 02");
-        InDistricts(datelineEast, "OTHERSHIRE", "TOWNSHIP OF EASTEDGE", "00001", "", "EASTEDGE SCHOOLS", "3RD DISTRICT", "DISTRICT 01");
+        InDistricts(districts, maple, "TESTSHIRE", "CITY OF TESTVILLE", "00001", "01", "TESTVILLE SCHOOLS", "1ST DISTRICT", "DISTRICT 01");
+        InDistricts(districts, oak, "TESTSHIRE", "CITY OF TESTBURG", "00001", "01", "TESTBURG SCHOOLS", "2ND DISTRICT", "DISTRICT 02");
+        InDistricts(districts, datelineEast, "OTHERSHIRE", "TOWNSHIP OF EASTEDGE", "00001", "", "EASTEDGE SCHOOLS", "3RD DISTRICT", "DISTRICT 01");
 
         // Not on the map: one the geocoder failed, one it hasn't reached yet, and another failure in another county.
-        var pineFailed = NewUnmatchedAddress(PineFailedAddressId, "300", "Pine", "Ln", "Lansing", "Ingham", matched: false);
-        var birchNeverTried = NewUnmatchedAddress(BirchNeverTriedAddressId, "301", "Birch", "Ln", "Lansing", "Ingham", matched: null);
-        var elmFailed = NewUnmatchedAddress(ElmFailedAddressId, "400", "Elm", "St", "Flint", "Genesee", matched: false);
+        var pineFailed = NewUnmatchedAddress(districts, PineFailedAddressId, "300", "Pine", "Ln", "Lansing", "Ingham", matched: false);
+        var birchNeverTried = NewUnmatchedAddress(districts, BirchNeverTriedAddressId, "301", "Birch", "Ln", "Lansing", "Ingham", matched: null);
+        var elmFailed = NewUnmatchedAddress(districts, ElmFailedAddressId, "400", "Elm", "St", "Flint", "Genesee", matched: false);
 
         var pine = NewAddress(PineAddressId, "300", "Pine", "Ln", "Farview", 20.0m, -90.0m);
 
@@ -104,8 +105,8 @@ public static class TestData
         // and more than one household in the group-by.
         var mixAddressA = NewAddress(MixAddressAId, "10", "Mix", "Ct", "Mixtown", 50.0m, -95.0m);
         var mixAddressB = NewAddress(MixAddressBId, "20", "Mix", "Ct", "Mixtown", 50.01m, -95.01m);
-        mixAddressA.COUNTY_NAME = "MIXCOUNTY";
-        mixAddressB.COUNTY_NAME = "MIXCOUNTY";
+        mixAddressA.COUNTY_CODE = districts.County("MIXCOUNTY");
+        mixAddressB.COUNTY_CODE = districts.County("MIXCOUNTY");
 
         context.Addresses.AddRange(maple, oak, datelineEast, datelineWest,
             relativeRef, relativeNear, relativeStreet, relativeFar, common, commonNear, commonStreet, pine,
@@ -169,6 +170,7 @@ public static class TestData
             }
         }
 
+        context.AddRange(districts.Rows());
         await context.SaveChangesAsync();
     }
 
@@ -189,21 +191,21 @@ public static class TestData
         return address;
     }
 
-    private static void InDistricts(Address address, string county, string jurisdiction, string precinct, string ward,
+    private static void InDistricts(DistrictBook districts, Address address, string county, string jurisdiction, string precinct, string ward,
         string school, string stateHouse, string commissioner)
     {
-        address.COUNTY_NAME = county;
-        address.JURISDICTION_NAME = jurisdiction;
+        address.COUNTY_CODE = districts.County(county);
+        address.JURISDICTION_CODE = districts.Jurisdiction(address.COUNTY_CODE, jurisdiction);
         address.PRECINCT = precinct;
         address.WARD = ward;
-        address.SCHOOL_DISTRICT_NAME = school;
-        address.STATE_HOUSE_DISTRICT_NAME = stateHouse;
-        address.STATE_SENATE_DISTRICT_NAME = "1ST DISTRICT";
-        address.US_CONGRESS_DISTRICT_NAME = "1ST DISTRICT";
-        address.COUNTY_COMMISSIONER_DISTRICT_NAME = commissioner;
+        address.SCHOOL_DISTRICT_CODE = districts.School(school);
+        address.STATE_HOUSE_DISTRICT_CODE = districts.StateHouse(stateHouse);
+        address.STATE_SENATE_DISTRICT_CODE = districts.StateSenate("1ST DISTRICT");
+        address.US_CONGRESS_DISTRICT_CODE = districts.UsCongress("1ST DISTRICT");
+        address.COUNTY_COMMISSIONER_DISTRICT_CODE = districts.Commissioner(address.COUNTY_CODE, commissioner);
     }
 
-    private static Address NewUnmatchedAddress(Guid id, string number, string street, string type, string city, string county, bool? matched)
+    private static Address NewUnmatchedAddress(DistrictBook districts, Guid id, string number, string street, string type, string city, string county, bool? matched)
     {
         var address = Blank<Address>();
         address.ID = id;
@@ -214,7 +216,7 @@ public static class TestData
         address.CITY = city;
         address.STATE = "MI";
         address.ZIP_CODE = "00000";
-        address.COUNTY_NAME = county;
+        address.COUNTY_CODE = districts.County(county);
         address.Latitude = null;
         address.Longitude = null;
         address.Matched = matched;
@@ -261,10 +263,43 @@ public static class TestData
     private static T Blank<T>() where T : new()
     {
         var entity = new T();
-        foreach (var property in typeof(T).GetProperties().Where(p => p.PropertyType == typeof(string) && p.CanWrite))
+        foreach (var property in typeof(T).GetProperties().Where(p => p.PropertyType == typeof(string) && p.CanWrite && !IsDistrictCode(typeof(T), p.Name)))
         {
             property.SetValue(entity, "");
         }
         return entity;
+    }
+
+    // The addresses' district codes are null when blank (they are foreign keys to the lookup tables).
+    private static bool IsDistrictCode(Type type, string name) =>
+        type == typeof(Address) && name.EndsWith("_CODE") && !name.StartsWith("VILLAGE");
+
+    /// <summary>Hands out the codes for the names the test data uses, and the lookup rows to go with them.</summary>
+    private sealed class DistrictBook
+    {
+        private readonly Dictionary<string, string> _counties = new(), _schools = new(), _houses = new(), _senates = new(), _congresses = new();
+        private readonly Dictionary<(string, string), string> _jurisdictions = new(), _commissioners = new();
+
+        private static string Code(Dictionary<string, string> codes, string name) =>
+            codes.TryGetValue(name, out var code) ? code : codes[name] = (codes.Count + 1).ToString("D2");
+
+        private static string Code(Dictionary<(string, string), string> codes, string county, string name) =>
+            codes.TryGetValue((county, name), out var code) ? code : codes[(county, name)] = (codes.Count(c => c.Key.Item1 == county) + 1).ToString("D2");
+
+        public string County(string name) => Code(_counties, name);
+        public string Jurisdiction(string? county, string name) => Code(_jurisdictions, county!, name);
+        public string School(string name) => Code(_schools, name);
+        public string StateHouse(string name) => Code(_houses, name);
+        public string StateSenate(string name) => Code(_senates, name);
+        public string UsCongress(string name) => Code(_congresses, name);
+        public string Commissioner(string? county, string name) => Code(_commissioners, county!, name);
+
+        public IEnumerable<object> Rows() => _counties.Select(c => (object)new County { Code = c.Value, Name = c.Key })
+            .Concat(_jurisdictions.Select(j => new Jurisdiction { CountyCode = j.Key.Item1, Code = j.Value, Name = j.Key.Item2 }))
+            .Concat(_schools.Select(s => new SchoolDistrict { Code = s.Value, Name = s.Key }))
+            .Concat(_houses.Select(s => new StateHouseDistrict { Code = s.Value, Name = s.Key }))
+            .Concat(_senates.Select(s => new StateSenateDistrict { Code = s.Value, Name = s.Key }))
+            .Concat(_congresses.Select(s => new UsCongressDistrict { Code = s.Value, Name = s.Key }))
+            .Concat(_commissioners.Select(c => new CountyCommissionerDistrict { CountyCode = c.Key.Item1, Code = c.Value, Name = c.Key.Item2 }));
     }
 }

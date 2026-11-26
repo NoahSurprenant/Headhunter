@@ -20,6 +20,33 @@ public class SchoolDistrict
     public string Name { get; set; } = "";
 }
 
+public class StateHouseDistrict
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
+public class StateSenateDistrict
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
+public class UsCongressDistrict
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
+/// <summary>Numbered within a county ("01" in every county that has one), so it is its county and its code.</summary>
+public class CountyCommissionerDistrict
+{
+    public string CountyCode { get; set; } = "";
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public County County { get; set; } = null!;
+}
+
 /// <summary>An election day. Description is empty for a date the election codes file doesn't list.</summary>
 public class Election
 {

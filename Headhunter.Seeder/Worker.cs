@@ -23,6 +23,11 @@ public class Worker : BackgroundService
             .States.FirstOrDefault(state => state.Name == "Michigan")
             ?? throw new Exception("Failed to load Michigan data");
 
+        // The counties are a lookup table by code; the data set has names only.
+        var countyCodes = michiganData.Provinces
+            .Select((county, i) => (county.Name!, Code: (i + 1).ToString("D2")))
+            .ToDictionary(x => x.Item1, x => x.Code);
+
         var generator = new Faker<Address>()
             .CustomInstantiator(f =>
             {
@@ -38,8 +43,7 @@ public class Worker : BackgroundService
                     CITY = cityPostCode.Name!,
                     STATE = michiganData.Code!,
                     ZIP_CODE = cityPostCode.PostCode,
-                    COUNTY_CODE = county.Code!,
-                    COUNTY_NAME = county.Name!,
+                    COUNTY_CODE = countyCodes[county.Name!],
                     Latitude = (decimal)cityPostCode.Location.Latitude + offset1,
                     Longitude = (decimal)cityPostCode.Location.Longitude + offset2,
                     Matched = true,
@@ -50,20 +54,8 @@ public class Worker : BackgroundService
                     STREET_NAME = "",
                     STREET_TYPE = "",
                     DIRECTION_SUFFIX = "",
-                    JURISDICTION_CODE = "",
-                    JURISDICTION_NAME = "",
                     PRECINCT = "",
                     WARD = "",
-                    SCHOOL_DISTRICT_CODE = "",
-                    SCHOOL_DISTRICT_NAME = "",
-                    STATE_HOUSE_DISTRICT_CODE = "",
-                    STATE_HOUSE_DISTRICT_NAME = "",
-                    STATE_SENATE_DISTRICT_CODE = "",
-                    STATE_SENATE_DISTRICT_NAME = "",
-                    US_CONGRESS_DISTRICT_CODE = "",
-                    US_CONGRESS_DISTRICT_NAME = "",
-                    COUNTY_COMMISSIONER_DISTRICT_CODE = "",
-                    COUNTY_COMMISSIONER_DISTRICT_NAME = "",
                     VILLAGE_DISTRICT_CODE = "",
                     VILLAGE_DISTRICT_NAME = "",
                     VILLAGE_PRECINCT = "",
@@ -80,6 +72,7 @@ public class Worker : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<HeadhunterContext>();
 
+        db.AddRange(countyCodes.Select(x => new County { Code = x.Value, Name = x.Key }));
         db.AddRange(addresses);
         await db.SaveChangesAsync();
     }

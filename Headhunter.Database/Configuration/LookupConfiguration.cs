@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Headhunter.Database.Configuration;
 
+// The names are searched by prefix (the district suggestions), so each has an index.
 internal class CountyConfiguration : IEntityTypeConfiguration<County>
 {
     public void Configure(EntityTypeBuilder<County> builder)
@@ -10,6 +11,7 @@ internal class CountyConfiguration : IEntityTypeConfiguration<County>
         builder.ToTable("Counties").HasKey(x => x.Code);
         builder.Property(x => x.Code).HasMaxLength(2).IsUnicode(false).ValueGeneratedNever();
         builder.Property(x => x.Name).HasMaxLength(100);
+        builder.HasIndex(x => x.Name);
     }
 }
 
@@ -22,6 +24,7 @@ internal class JurisdictionConfiguration : IEntityTypeConfiguration<Jurisdiction
         builder.Property(x => x.CountyCode).HasMaxLength(2).IsUnicode(false);
         builder.Property(x => x.Code).HasMaxLength(5).IsUnicode(false);
         builder.Property(x => x.Name).HasMaxLength(100);
+        builder.HasIndex(x => x.Name);
         builder.HasOne(x => x.County).WithMany().HasForeignKey(x => x.CountyCode).OnDelete(DeleteBehavior.Restrict);
     }
 }
@@ -33,6 +36,53 @@ internal class SchoolDistrictConfiguration : IEntityTypeConfiguration<SchoolDist
         builder.ToTable("SchoolDistricts").HasKey(x => x.Code);
         builder.Property(x => x.Code).HasMaxLength(5).IsUnicode(false).ValueGeneratedNever();
         builder.Property(x => x.Name).HasMaxLength(100);
+        builder.HasIndex(x => x.Name);
+    }
+}
+
+internal class StateHouseDistrictConfiguration : IEntityTypeConfiguration<StateHouseDistrict>
+{
+    public void Configure(EntityTypeBuilder<StateHouseDistrict> builder)
+    {
+        builder.ToTable("StateHouseDistricts").HasKey(x => x.Code);
+        builder.Property(x => x.Code).HasMaxLength(5).IsUnicode(false).ValueGeneratedNever();
+        builder.Property(x => x.Name).HasMaxLength(100);
+        builder.HasIndex(x => x.Name);
+    }
+}
+
+internal class StateSenateDistrictConfiguration : IEntityTypeConfiguration<StateSenateDistrict>
+{
+    public void Configure(EntityTypeBuilder<StateSenateDistrict> builder)
+    {
+        builder.ToTable("StateSenateDistricts").HasKey(x => x.Code);
+        builder.Property(x => x.Code).HasMaxLength(5).IsUnicode(false).ValueGeneratedNever();
+        builder.Property(x => x.Name).HasMaxLength(100);
+        builder.HasIndex(x => x.Name);
+    }
+}
+
+internal class UsCongressDistrictConfiguration : IEntityTypeConfiguration<UsCongressDistrict>
+{
+    public void Configure(EntityTypeBuilder<UsCongressDistrict> builder)
+    {
+        builder.ToTable("UsCongressDistricts").HasKey(x => x.Code);
+        builder.Property(x => x.Code).HasMaxLength(5).IsUnicode(false).ValueGeneratedNever();
+        builder.Property(x => x.Name).HasMaxLength(100);
+        builder.HasIndex(x => x.Name);
+    }
+}
+
+internal class CountyCommissionerDistrictConfiguration : IEntityTypeConfiguration<CountyCommissionerDistrict>
+{
+    public void Configure(EntityTypeBuilder<CountyCommissionerDistrict> builder)
+    {
+        builder.ToTable("CountyCommissionerDistricts").HasKey(x => new { x.CountyCode, x.Code });
+        builder.Property(x => x.CountyCode).HasMaxLength(2).IsUnicode(false);
+        builder.Property(x => x.Code).HasMaxLength(5).IsUnicode(false);
+        builder.Property(x => x.Name).HasMaxLength(100);
+        builder.HasIndex(x => x.Name);
+        builder.HasOne(x => x.County).WithMany().HasForeignKey(x => x.CountyCode).OnDelete(DeleteBehavior.Restrict);
     }
 }
 

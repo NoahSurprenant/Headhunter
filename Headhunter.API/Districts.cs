@@ -37,48 +37,71 @@ public static class Districts
     public static IQueryable<Address> InDistrict(this IQueryable<Address> addresses, DistrictType type, string name, string within) =>
         type switch
         {
-            DistrictType.County => addresses.Where(a => a.COUNTY_NAME == name),
-            DistrictType.Jurisdiction => addresses.Where(a => a.JURISDICTION_NAME == name),
-            DistrictType.Precinct => addresses.Where(a => a.JURISDICTION_NAME == within && a.PRECINCT == name),
-            DistrictType.Ward => addresses.Where(a => a.JURISDICTION_NAME == within && a.WARD == name),
-            DistrictType.SchoolDistrict => addresses.Where(a => a.SCHOOL_DISTRICT_NAME == name),
-            DistrictType.StateHouse => addresses.Where(a => a.STATE_HOUSE_DISTRICT_NAME == name),
-            DistrictType.StateSenate => addresses.Where(a => a.STATE_SENATE_DISTRICT_NAME == name),
-            DistrictType.UsCongress => addresses.Where(a => a.US_CONGRESS_DISTRICT_NAME == name),
-            DistrictType.CountyCommissioner => addresses.Where(a => a.COUNTY_NAME == within && a.COUNTY_COMMISSIONER_DISTRICT_NAME == name),
+            DistrictType.County => addresses.Where(a => a.County!.Name == name),
+            DistrictType.Jurisdiction => addresses.Where(a => a.Jurisdiction!.Name == name),
+            DistrictType.Precinct => addresses.Where(a => a.Jurisdiction!.Name == within && a.PRECINCT == name),
+            DistrictType.Ward => addresses.Where(a => a.Jurisdiction!.Name == within && a.WARD == name),
+            DistrictType.SchoolDistrict => addresses.Where(a => a.SchoolDistrict!.Name == name),
+            DistrictType.StateHouse => addresses.Where(a => a.StateHouseDistrict!.Name == name),
+            DistrictType.StateSenate => addresses.Where(a => a.StateSenateDistrict!.Name == name),
+            DistrictType.UsCongress => addresses.Where(a => a.UsCongressDistrict!.Name == name),
+            DistrictType.CountyCommissioner => addresses.Where(a => a.County!.Name == within && a.CountyCommissionerDistrict!.Name == name),
             _ => throw new ArgumentOutOfRangeException(nameof(type)),
         };
 
     /// <summary>InDistrict as a SQL predicate over Addresses, for raw SQL (the globe's coloured clusters): the district's
-    /// name is @district and, for precincts, wards and commissioner districts, what it is within is @districtWithin.</summary>
-    public static string InDistrictSql(DistrictType type) =>
-        type switch
+    /// name is @district and, for precincts, wards and commissioner districts, what it is within is @districtWithin.
+    /// The names are in the lookup tables, so each is a subquery on the address's codes.</summary>
+    public static string InDistrictSql(DistrictType type)
+    {
+        static string Lookup(string table, string name) =>
+            $"\"COUNTY_CODE\" IN (SELECT \"Code\" FROM \"{table}\" WHERE \"Name\" = {name})";
+        static string InJurisdiction(string name) =>
+            "EXISTS (SELECT 1 FROM \"Jurisdictions\" j WHERE j.\"CountyCode\" = \"Addresses\".\"COUNTY_CODE\" " +
+            $"AND j.\"Code\" = \"Addresses\".\"JURISDICTION_CODE\" AND j.\"Name\" = {name})";
+        static string Simple(string column, string table) =>
+            $"\"{column}\" IN (SELECT \"Code\" FROM \"{table}\" WHERE \"Name\" = @district)";
+
+        return type switch
         {
-            DistrictType.County => "\"COUNTY_NAME\" = @district",
-            DistrictType.Jurisdiction => "\"JURISDICTION_NAME\" = @district",
-            DistrictType.Precinct => "\"JURISDICTION_NAME\" = @districtWithin AND \"PRECINCT\" = @district",
-            DistrictType.Ward => "\"JURISDICTION_NAME\" = @districtWithin AND \"WARD\" = @district",
-            DistrictType.SchoolDistrict => "\"SCHOOL_DISTRICT_NAME\" = @district",
-            DistrictType.StateHouse => "\"STATE_HOUSE_DISTRICT_NAME\" = @district",
-            DistrictType.StateSenate => "\"STATE_SENATE_DISTRICT_NAME\" = @district",
-            DistrictType.UsCongress => "\"US_CONGRESS_DISTRICT_NAME\" = @district",
-            DistrictType.CountyCommissioner => "\"COUNTY_NAME\" = @districtWithin AND \"COUNTY_COMMISSIONER_DISTRICT_NAME\" = @district",
+            DistrictType.County => Lookup("Counties", "@district"),
+            DistrictType.Jurisdiction => InJurisdiction("@district"),
+            DistrictType.Precinct => $"{InJurisdiction("@districtWithin")} AND \"PRECINCT\" = @district",
+            DistrictType.Ward => $"{InJurisdiction("@districtWithin")} AND \"WARD\" = @district",
+            DistrictType.SchoolDistrict => Simple("SCHOOL_DISTRICT_CODE", "SchoolDistricts"),
+            DistrictType.StateHouse => Simple("STATE_HOUSE_DISTRICT_CODE", "StateHouseDistricts"),
+            DistrictType.StateSenate => Simple("STATE_SENATE_DISTRICT_CODE", "StateSenateDistricts"),
+            DistrictType.UsCongress => Simple("US_CONGRESS_DISTRICT_CODE", "UsCongressDistricts"),
+            DistrictType.CountyCommissioner => Lookup("Counties", "@districtWithin") +
+                " AND EXISTS (SELECT 1 FROM \"CountyCommissionerDistricts\" d WHERE d.\"CountyCode\" = \"Addresses\".\"COUNTY_CODE\" " +
+                "AND d.\"Code\" = \"Addresses\".\"COUNTY_COMMISSIONER_DISTRICT_CODE\" AND d.\"Name\" = @district)",
             _ => throw new ArgumentOutOfRangeException(nameof(type)),
         };
+    }
 
-    /// <summary>Every address's name for its district of this type (one row per address, not distinct).</summary>
-    public static IQueryable<string> Names(this IQueryable<Address> addresses, DistrictType type, string within) =>
+    /// <summary>The names of the districts of this type that have an address, from their lookup table (a small
+    /// table, each name checked against the address index on its code); precincts and wards from the addresses.</summary>
+    public static IQueryable<string> Names(this HeadhunterContext context, DistrictType type, string within) =>
         type switch
         {
-            DistrictType.County => addresses.Select(a => a.COUNTY_NAME),
-            DistrictType.Jurisdiction => addresses.Select(a => a.JURISDICTION_NAME),
-            DistrictType.Precinct => addresses.Where(a => a.JURISDICTION_NAME == within).Select(a => a.PRECINCT),
-            DistrictType.Ward => addresses.Where(a => a.JURISDICTION_NAME == within).Select(a => a.WARD),
-            DistrictType.SchoolDistrict => addresses.Select(a => a.SCHOOL_DISTRICT_NAME),
-            DistrictType.StateHouse => addresses.Select(a => a.STATE_HOUSE_DISTRICT_NAME),
-            DistrictType.StateSenate => addresses.Select(a => a.STATE_SENATE_DISTRICT_NAME),
-            DistrictType.UsCongress => addresses.Select(a => a.US_CONGRESS_DISTRICT_NAME),
-            DistrictType.CountyCommissioner => addresses.Where(a => a.COUNTY_NAME == within).Select(a => a.COUNTY_COMMISSIONER_DISTRICT_NAME),
+            DistrictType.County => context.Counties
+                .Where(c => context.Addresses.Any(a => a.COUNTY_CODE == c.Code)).Select(c => c.Name),
+            DistrictType.Jurisdiction => context.Jurisdictions
+                .Where(j => context.Addresses.Any(a => a.COUNTY_CODE == j.CountyCode && a.JURISDICTION_CODE == j.Code)).Select(j => j.Name),
+            DistrictType.Precinct => context.Addresses.Where(a => a.Jurisdiction!.Name == within).Select(a => a.PRECINCT),
+            DistrictType.Ward => context.Addresses.Where(a => a.Jurisdiction!.Name == within).Select(a => a.WARD),
+            DistrictType.SchoolDistrict => context.SchoolDistricts
+                .Where(d => context.Addresses.Any(a => a.SCHOOL_DISTRICT_CODE == d.Code)).Select(d => d.Name),
+            DistrictType.StateHouse => context.StateHouseDistricts
+                .Where(d => context.Addresses.Any(a => a.STATE_HOUSE_DISTRICT_CODE == d.Code)).Select(d => d.Name),
+            DistrictType.StateSenate => context.StateSenateDistricts
+                .Where(d => context.Addresses.Any(a => a.STATE_SENATE_DISTRICT_CODE == d.Code)).Select(d => d.Name),
+            DistrictType.UsCongress => context.UsCongressDistricts
+                .Where(d => context.Addresses.Any(a => a.US_CONGRESS_DISTRICT_CODE == d.Code)).Select(d => d.Name),
+            DistrictType.CountyCommissioner => context.CountyCommissionerDistricts
+                .Where(d => d.County.Name == within)
+                .Where(d => context.Addresses.Any(a => a.COUNTY_CODE == d.CountyCode && a.COUNTY_COMMISSIONER_DISTRICT_CODE == d.Code))
+                .Select(d => d.Name),
             _ => throw new ArgumentOutOfRangeException(nameof(type)),
         };
 }
@@ -112,7 +135,7 @@ public class DistrictController : ControllerBase
         if (Districts.NeedsWithin(type) && within == "")
             return [];
 
-        return await _context.Addresses
+        return await _context
             .Names(type, within)
             .Where(x => x != "" && x.StartsWith(query))
             .Distinct()

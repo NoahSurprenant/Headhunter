@@ -612,7 +612,7 @@ public class ApiController : ControllerBase
         if (!string.IsNullOrEmpty(city))
             query = query.Where(x => x.CITY == city);
         if (!string.IsNullOrEmpty(county))
-            query = query.Where(x => x.COUNTY_NAME == county);
+            query = query.Where(x => x.County!.Name == county);
 
         var final = query.OrderBy(x => x.ID).Select(x => new NotOnMapAddressDto
         {
@@ -621,7 +621,7 @@ public class ApiController : ControllerBase
             City = x.CITY,
             State = x.STATE,
             ZipCode = x.ZIP_CODE,
-            County = x.COUNTY_NAME,
+            County = x.County == null ? "" : x.County.Name,
             Matched = x.Matched,
         });
 
@@ -635,7 +635,7 @@ public class ApiController : ControllerBase
     {
         return await _context.Addresses
             .Where(x => x.Matched != true)
-            .GroupBy(x => x.COUNTY_NAME)
+            .GroupBy(x => x.County == null ? "" : x.County.Name)
             .Select(g => new CountyCountDto { County = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Count)
             .ThenBy(x => x.County)
