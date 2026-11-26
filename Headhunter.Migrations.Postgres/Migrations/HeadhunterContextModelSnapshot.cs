@@ -267,6 +267,69 @@ namespace Headhunter.Migrations.Postgres.Migrations
                     b.ToTable("Addresses", (string)null);
                 });
 
+            modelBuilder.Entity("Headhunter.Database.County", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(2)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(2)")
+                        .UseCollation("C");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .UseCollation("case_insensitive");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("Counties", (string)null);
+                });
+
+            modelBuilder.Entity("Headhunter.Database.Election", b =>
+                {
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int?>("CodeId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .UseCollation("case_insensitive");
+
+                    b.HasKey("Date");
+
+                    b.ToTable("Elections", (string)null);
+                });
+
+            modelBuilder.Entity("Headhunter.Database.Jurisdiction", b =>
+                {
+                    b.Property<string>("CountyCode")
+                        .HasMaxLength(2)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(2)")
+                        .UseCollation("C");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(5)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(5)")
+                        .UseCollation("C");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .UseCollation("case_insensitive");
+
+                    b.HasKey("CountyCode", "Code");
+
+                    b.ToTable("Jurisdictions", (string)null);
+                });
+
             modelBuilder.Entity("Headhunter.Database.MichiganVoterRecord", b =>
                 {
                     b.Property<Guid>("ID")
@@ -514,6 +577,62 @@ namespace Headhunter.Migrations.Postgres.Migrations
                     b.ToTable("MichiganVoterRecords", (string)null);
                 });
 
+            modelBuilder.Entity("Headhunter.Database.SchoolDistrict", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(5)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(5)")
+                        .UseCollation("C");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .UseCollation("case_insensitive");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("SchoolDistricts", (string)null);
+                });
+
+            modelBuilder.Entity("Headhunter.Database.VoteHistory", b =>
+                {
+                    b.Property<Guid>("VoterID")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ElectionDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("CountyCode")
+                        .HasMaxLength(2)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(2)")
+                        .UseCollation("C");
+
+                    b.Property<string>("JurisdictionCode")
+                        .HasMaxLength(5)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(5)")
+                        .UseCollation("C");
+
+                    b.Property<string>("SchoolDistrictCode")
+                        .HasMaxLength(5)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(5)")
+                        .UseCollation("C");
+
+                    b.HasKey("VoterID", "ElectionDate");
+
+                    b.HasIndex("ElectionDate");
+
+                    b.HasIndex("SchoolDistrictCode");
+
+                    b.HasIndex("CountyCode", "JurisdictionCode");
+
+                    b.ToTable("VoteHistory", (string)null);
+                });
+
             modelBuilder.Entity("Headhunter.Database.Voter", b =>
                 {
                     b.Property<Guid>("ID")
@@ -630,6 +749,50 @@ namespace Headhunter.Migrations.Postgres.Migrations
                     b.HasIndex("YEAR_OF_BIRTH");
 
                     b.ToTable("Voters", (string)null);
+                });
+
+            modelBuilder.Entity("Headhunter.Database.Jurisdiction", b =>
+                {
+                    b.HasOne("Headhunter.Database.County", "County")
+                        .WithMany()
+                        .HasForeignKey("CountyCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("County");
+                });
+
+            modelBuilder.Entity("Headhunter.Database.VoteHistory", b =>
+                {
+                    b.HasOne("Headhunter.Database.Election", "Election")
+                        .WithMany()
+                        .HasForeignKey("ElectionDate")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Headhunter.Database.SchoolDistrict", "SchoolDistrict")
+                        .WithMany()
+                        .HasForeignKey("SchoolDistrictCode")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Headhunter.Database.Voter", "Voter")
+                        .WithMany()
+                        .HasForeignKey("VoterID")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Headhunter.Database.Jurisdiction", "Jurisdiction")
+                        .WithMany()
+                        .HasForeignKey("CountyCode", "JurisdictionCode")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Election");
+
+                    b.Navigation("Jurisdiction");
+
+                    b.Navigation("SchoolDistrict");
+
+                    b.Navigation("Voter");
                 });
 
             modelBuilder.Entity("Headhunter.Database.Voter", b =>

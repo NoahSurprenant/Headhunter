@@ -188,35 +188,43 @@ namespace Headhunter.Database.Migrations
                     b.HasIndex("Matched")
                         .HasDatabaseName("IX_Addresses_Matched");
 
-                    b.HasIndex("SCHOOL_DISTRICT_NAME");
+                    b.HasIndex("SCHOOL_DISTRICT_NAME")
+                        .HasAnnotation("Npgsql:IndexInclude", new[] { "Latitude", "Longitude" });
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("SCHOOL_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
 
-                    b.HasIndex("STATE_HOUSE_DISTRICT_NAME");
+                    b.HasIndex("STATE_HOUSE_DISTRICT_NAME")
+                        .HasAnnotation("Npgsql:IndexInclude", new[] { "Latitude", "Longitude" });
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("STATE_HOUSE_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
 
-                    b.HasIndex("STATE_SENATE_DISTRICT_NAME");
+                    b.HasIndex("STATE_SENATE_DISTRICT_NAME")
+                        .HasAnnotation("Npgsql:IndexInclude", new[] { "Latitude", "Longitude" });
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("STATE_SENATE_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
 
-                    b.HasIndex("STREET_NAME");
+                    b.HasIndex("STREET_NAME")
+                        .HasAnnotation("Npgsql:IndexInclude", new[] { "FullStreetAddress" });
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("STREET_NAME"), new[] { "FullStreetAddress" });
 
-                    b.HasIndex("US_CONGRESS_DISTRICT_NAME");
+                    b.HasIndex("US_CONGRESS_DISTRICT_NAME")
+                        .HasAnnotation("Npgsql:IndexInclude", new[] { "Latitude", "Longitude" });
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("US_CONGRESS_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
 
-                    b.HasIndex("COUNTY_NAME", "COUNTY_COMMISSIONER_DISTRICT_NAME");
+                    b.HasIndex("COUNTY_NAME", "COUNTY_COMMISSIONER_DISTRICT_NAME")
+                        .HasAnnotation("Npgsql:IndexInclude", new[] { "Latitude", "Longitude" });
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("COUNTY_NAME", "COUNTY_COMMISSIONER_DISTRICT_NAME"), new[] { "Latitude", "Longitude" });
 
-                    b.HasIndex("JURISDICTION_NAME", "PRECINCT");
+                    b.HasIndex("JURISDICTION_NAME", "PRECINCT")
+                        .HasAnnotation("Npgsql:IndexInclude", new[] { "Latitude", "Longitude" });
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("JURISDICTION_NAME", "PRECINCT"), new[] { "Latitude", "Longitude" });
 
-                    b.HasIndex("JURISDICTION_NAME", "WARD");
+                    b.HasIndex("JURISDICTION_NAME", "WARD")
+                        .HasAnnotation("Npgsql:IndexInclude", new[] { "Latitude", "Longitude" });
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("JURISDICTION_NAME", "WARD"), new[] { "Latitude", "Longitude" });
 
@@ -224,6 +232,63 @@ namespace Headhunter.Database.Migrations
                         .HasDatabaseName("IX_Addresses_Latitude_Longitude");
 
                     b.ToTable("Addresses", (string)null);
+                });
+
+            modelBuilder.Entity("Headhunter.Database.County", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(2)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("Counties", (string)null);
+                });
+
+            modelBuilder.Entity("Headhunter.Database.Election", b =>
+                {
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int?>("CodeId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Date");
+
+                    b.ToTable("Elections", (string)null);
+                });
+
+            modelBuilder.Entity("Headhunter.Database.Jurisdiction", b =>
+                {
+                    b.Property<string>("CountyCode")
+                        .HasMaxLength(2)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(2)");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(5)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(5)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("CountyCode", "Code");
+
+                    b.ToTable("Jurisdictions", (string)null);
                 });
 
             modelBuilder.Entity("Headhunter.Database.MichiganVoterRecord", b =>
@@ -428,6 +493,57 @@ namespace Headhunter.Database.Migrations
                     b.ToTable("MichiganVoterRecords", (string)null);
                 });
 
+            modelBuilder.Entity("Headhunter.Database.SchoolDistrict", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(5)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(5)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("SchoolDistricts", (string)null);
+                });
+
+            modelBuilder.Entity("Headhunter.Database.VoteHistory", b =>
+                {
+                    b.Property<Guid>("VoterID")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("ElectionDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("CountyCode")
+                        .HasMaxLength(2)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(2)");
+
+                    b.Property<string>("JurisdictionCode")
+                        .HasMaxLength(5)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(5)");
+
+                    b.Property<string>("SchoolDistrictCode")
+                        .HasMaxLength(5)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(5)");
+
+                    b.HasKey("VoterID", "ElectionDate");
+
+                    b.HasIndex("ElectionDate");
+
+                    b.HasIndex("SchoolDistrictCode");
+
+                    b.HasIndex("CountyCode", "JurisdictionCode");
+
+                    b.ToTable("VoteHistory", (string)null);
+                });
+
             modelBuilder.Entity("Headhunter.Database.Voter", b =>
                 {
                     b.Property<Guid>("ID")
@@ -514,7 +630,8 @@ namespace Headhunter.Database.Migrations
 
                     b.HasKey("ID");
 
-                    b.HasIndex("AddressID");
+                    b.HasIndex("AddressID")
+                        .HasAnnotation("Npgsql:IndexInclude", new[] { "YEAR_OF_BIRTH", "GENDER", "IS_PERM_AV_BALLOT_VOTER", "REGISTRATION_DATE" });
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("AddressID"), new[] { "YEAR_OF_BIRTH", "GENDER", "IS_PERM_AV_BALLOT_VOTER", "REGISTRATION_DATE" });
 
@@ -529,6 +646,50 @@ namespace Headhunter.Database.Migrations
                     b.HasIndex("YEAR_OF_BIRTH");
 
                     b.ToTable("Voters", (string)null);
+                });
+
+            modelBuilder.Entity("Headhunter.Database.Jurisdiction", b =>
+                {
+                    b.HasOne("Headhunter.Database.County", "County")
+                        .WithMany()
+                        .HasForeignKey("CountyCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("County");
+                });
+
+            modelBuilder.Entity("Headhunter.Database.VoteHistory", b =>
+                {
+                    b.HasOne("Headhunter.Database.Election", "Election")
+                        .WithMany()
+                        .HasForeignKey("ElectionDate")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Headhunter.Database.SchoolDistrict", "SchoolDistrict")
+                        .WithMany()
+                        .HasForeignKey("SchoolDistrictCode")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Headhunter.Database.Voter", "Voter")
+                        .WithMany()
+                        .HasForeignKey("VoterID")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Headhunter.Database.Jurisdiction", "Jurisdiction")
+                        .WithMany()
+                        .HasForeignKey("CountyCode", "JurisdictionCode")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Election");
+
+                    b.Navigation("Jurisdiction");
+
+                    b.Navigation("SchoolDistrict");
+
+                    b.Navigation("Voter");
                 });
 
             modelBuilder.Entity("Headhunter.Database.Voter", b =>

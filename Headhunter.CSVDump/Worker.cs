@@ -19,6 +19,16 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        using (var scope = _serviceScopeFactory.CreateScope())
+        {
+            if (scope.ServiceProvider.GetRequiredService<IConfiguration>()["Import"]?.Equals("History", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await ImportVoteHistory(scope.ServiceProvider, ct);
+                Console.WriteLine("Done");
+                return;
+            }
+        }
+
         await ImportCsvData();
         Console.WriteLine("Imported CSV Data");
         await InsertAddresses(ct);
@@ -27,6 +37,23 @@ public class Worker : BackgroundService
         Console.WriteLine("Inserted Voters");
 
         Console.WriteLine("Done");
+    }
+
+    /// <summary>Import=History: CSVPath is the history file (the CSV or its zip), CodesPath the state's code files (optional).</summary>
+    private async Task ImportVoteHistory(IServiceProvider services, CancellationToken ct)
+    {
+        var configuration = services.GetRequiredService<IConfiguration>();
+        var path = configuration.GetValue<string>("CSVPath") ?? throw new Exception("CSVPath missing in config");
+        var context = services.GetRequiredService<HeadhunterContext>();
+
+        if (configuration.GetValue<string>("CodesPath") is { Length: > 0 } codes)
+        {
+            await CodeFiles.LoadAsync(context, codes, ct);
+            Console.WriteLine("Loaded code tables");
+        }
+
+        var result = await new VoteHistoryImporter(context).ImportAsync(path, ct);
+        Console.WriteLine($"Read {result.Rows} history rows, inserted {result.Inserted}");
     }
 
     private async Task ImportCsvData()
