@@ -1,0 +1,94 @@
+{{- $m := .Values.migrations -}}
+{{- $s := $m.backup.scheduled -}}
+{{- if and $m.enabled $m.backup.enabled $s.enabled }}
+{{- if not (include "headhunter.postgres" .) }}{{ fail "migrations.backup.scheduled is PostgreSQL's: set it false with database.provider SqlServer" }}{{ end }}
+# Backs the database up on a schedule (values.yaml, migrations.backup.scheduled), beside the migration
+# Job's pre-migration backups: same folder on the backup volume, same <database>_<date>_<time>.dump
+# names, so retention covers both. pg_dump's custom format, then verified (pg_restore --list). A
+# database that doesn't exist yet is skipped.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: headhunter-backup
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ $s.schedule | quote }}
+  suspend: {{ $s.suspend | default false }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: {{ $s.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            app: headhunter-backup
+            {{- include "headhunter.podLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+            {{- with $m.podLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $m.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $m.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          initContainers:
+            {{- include "headhunter.fixBackupPermissions" . | nindent 12 }}
+          containers:
+            - name: backup
+              {{- include "headhunter.stepContainer" . | nindent 14 }}
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  # A new pod's address may reach PostgreSQL only seconds after it starts (network policy
+                  # controllers admit it late), and the database may still be recovering after a restart.
+                  {{- include "headhunter.pgWaitForDatabaseScript" . | nindent 18 }}
+                  {{- include "headhunter.pgBackupFunction" . | nindent 18 }}
+                  database_exists() { psql -X -A -t -q -d postgres -c "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'"; }
+                  if [ "$(database_exists)" != 1 ]; then echo "Database $DB_NAME doesn't exist yet: nothing to back up."; exit 0; fi
+                  backup_database
+              env:
+                {{- include "headhunter.migrationStepEnv" . | nindent 16 }}
+                - name: BACKUP_DIR
+                  value: {{ $m.backup.pgDirectory | quote }}
+              resources:
+                {{- toYaml $m.stepResources | nindent 16 }}
+              volumeMounts:
+                {{- include "headhunter.migrationMounts" . | nindent 16 }}
+                - name: backup
+                  mountPath: {{ $m.backup.pgDirectory }}
+          volumes:
+            - name: work
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}
+            {{- include "headhunter.pgBackupVolume" . | nindent 12 }}
+          {{- with $m.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $m.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $m.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

@@ -48,7 +48,10 @@ So the migrations always match the app. The Job's steps:
    database has migrations the image doesn't (an older image on a newer schema).
 3. **backup** (`migrations.backup.enabled`): if anything is pending and the database exists, writes a
    `COPY_ONLY, COMPRESSION, CHECKSUM` backup to `<migrations.backup.directory>/<prefix>-<UTC time>.bak`.
-   SQL Server writes it, to its backup volume. Old backups are not pruned.
+   SQL Server writes it, to its backup volume. Old backups are not pruned. With PostgreSQL the step writes a `pg_dump -Fc`
+   archive, `<database>_<date>_<time>.dump`, to `migrations.backup.pgDirectory`; `migrations.backup.scheduled` adds a
+   nightly CronJob that writes the same, and `migrations.backup.retention` a CronJob that prunes them (newest
+   `keepLast`, anything under `keepDays`, optionally one a day). Both are off by default and PostgreSQL only.
 4. **migrate:** runs the bundle, or does nothing when nothing is pending. Then, with
    `database.recoveryModel`, it sets the database's recovery model if it differs.
 

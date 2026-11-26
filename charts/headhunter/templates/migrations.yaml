@@ -129,25 +129,7 @@ spec:
     {{- if not (and .Values.postgres.enabled (or .Values.postgres.backup.enabled .Values.postgres.backup.existingClaim)) }}
     {{- fail "migrations.backup.enabled needs the chart's own PostgreSQL with postgres.backup (or an existingClaim) to write to: set migrations.backup.enabled false for an external server" }}
     {{- end }}
-    # The backup volume's root may be root-owned (a new volume, an NFS export): the dump runs as the app's user.
-    - name: fix-permissions-backup
-      image: {{ include "headhunter.image" .Values.postgres.image }}
-      imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
-      command: ["sh", "-c", "chown {{ $m.backup.pgOwner }} {{ $m.backup.pgDirectory }}"]
-      securityContext:
-        runAsNonRoot: false
-        runAsUser: 0
-        readOnlyRootFilesystem: true
-      resources:
-        requests:
-          cpu: 10m
-          memory: 16Mi
-        limits:
-          cpu: 100m
-          memory: 64Mi
-      volumeMounts:
-        - name: backup
-          mountPath: {{ $m.backup.pgDirectory }}
+    {{- include "headhunter.fixBackupPermissions" . | nindent 4 }}
     # Before changing an existing database: a pg_dump archive (custom format, checked by reading it back) on
     # postgres.backup's volume, written as .partial and moved into place once complete.
     - name: backup
@@ -158,20 +140,12 @@ spec:
           set -eu
           if [ ! -s /work/pending.txt ]; then echo "Nothing pending: no backup."; exit 0; fi
           if [ ! -s /work/applied.txt ]; then echo "New database: nothing to back up."; exit 0; fi
-          file="$BACKUP_DIR/$BACKUP_PREFIX-$(date -u +%Y%m%dT%H%M%SZ).dump"
-          echo "Backing up $DB_NAME to $file."
-          trap 'rm -f "$file.partial"' EXIT
-          pg_dump -Fc -d "$DB_NAME" -f "$file.partial"
-          pg_restore --list "$file.partial" > /dev/null
-          mv "$file.partial" "$file"
-          trap - EXIT
-          echo "Backed up and verified: $file"
+          {{- include "headhunter.pgBackupFunction" . | nindent 10 }}
+          backup_database
       env:
         {{- include "headhunter.migrationStepEnv" . | nindent 8 }}
         - name: BACKUP_DIR
           value: {{ $m.backup.pgDirectory | quote }}
-        - name: BACKUP_PREFIX
-          value: {{ $m.backup.prefix | quote }}
       resources:
         {{- toYaml $m.stepResources | nindent 8 }}
       volumeMounts:
@@ -247,9 +221,7 @@ spec:
     - name: tmp
       emptyDir: {}
   {{- if and $m.backup.enabled (include "headhunter.postgres" .) }}
-    - name: backup
-      persistentVolumeClaim:
-        claimName: {{ .Values.postgres.backup.existingClaim | default .Values.postgres.backup.claimName }}
+    {{- include "headhunter.pgBackupVolume" . | nindent 4 }}
   {{- end }}
   {{- with $m.nodeSelector }}
   nodeSelector:

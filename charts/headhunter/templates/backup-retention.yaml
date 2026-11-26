@@ -1,0 +1,90 @@
+{{- $m := .Values.migrations -}}
+{{- $r := $m.backup.retention -}}
+{{- if and $m.enabled $m.backup.enabled $r.enabled }}
+{{- if not (include "headhunter.postgres" .) }}{{ fail "migrations.backup.retention is PostgreSQL's: set it false with database.provider SqlServer" }}{{ end }}
+# Deletes old backups (values.yaml, migrations.backup.retention) from PostgreSQL's backup volume: only
+# pg_dump archives named <database>_YYYYMMDD_HHMMSS.dump in the backup folder, ranked and aged by the
+# date and time in their name. One goes once it's older than keepDays and isn't among the newest
+# keepLast, and with onePerDay so does one that isn't the newest of its day. It doesn't connect to the database.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: headhunter-backup-retention
+  labels:
+    {{- include "headhunter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup-retention
+spec:
+  schedule: {{ $r.schedule | quote }}
+  suspend: {{ $r.suspend | default false }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: headhunter-backup-retention
+            {{- include "headhunter.podLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup-retention
+            {{- with $m.podLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $m.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $m.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          initContainers:
+            {{- include "headhunter.fixBackupPermissions" . | nindent 12 }}
+          containers:
+            - name: retention
+              {{- include "headhunter.stepContainer" . | nindent 14 }}
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  {{- include "headhunter.pgRetentionScript" . | nindent 18 }}
+              env:
+                - name: DB_NAME
+                  value: {{ .Values.database.name | quote }}
+                - name: BACKUP_DIR
+                  value: {{ $m.backup.pgDirectory | quote }}
+                - name: KEEP_LAST
+                  value: {{ $r.keepLast | quote }}
+                - name: KEEP_DAYS
+                  value: {{ $r.keepDays | quote }}
+                - name: ONE_PER_DAY
+                  value: {{ $r.onePerDay | default false | quote }}
+              resources:
+                {{- toYaml $m.stepResources | nindent 16 }}
+              volumeMounts:
+                - name: backup
+                  mountPath: {{ $m.backup.pgDirectory }}
+          volumes:
+            {{- include "headhunter.pgBackupVolume" . | nindent 12 }}
+          {{- with $m.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $m.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $m.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

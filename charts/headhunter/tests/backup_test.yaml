@@ -1,0 +1,177 @@
+suite: backup
+templates:
+  - templates/backup-scheduled.yaml
+  - templates/backup-retention.yaml
+  - templates/migrations.yaml
+  - templates/networkpolicy.yaml
+release:
+  namespace: hh
+set:
+  database.provider: Postgres
+  mssql.enabled: false
+  postgres.enabled: true
+  networkPolicy.enabled: true
+tests:
+  - it: takes no scheduled backup or retention by default
+    template: templates/backup-scheduled.yaml
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: has no retention by default
+    template: templates/backup-retention.yaml
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: dumps the database on a schedule onto the backup volume
+    template: templates/backup-scheduled.yaml
+    set:
+      migrations.backup.scheduled.enabled: true
+    asserts:
+      - isKind: { of: CronJob }
+      - equal: { path: metadata.name, value: headhunter-backup }
+      - equal: { path: spec.schedule, value: "0 3 * * *" }
+      - equal: { path: spec.suspend, value: false }
+      - equal: { path: spec.concurrencyPolicy, value: Forbid }
+      - equal: { path: spec.jobTemplate.spec.template.metadata.labels.app, value: headhunter-backup }
+      - matchRegex: { path: "spec.jobTemplate.spec.template.spec.containers[0].args[0]", pattern: "pg_dump -Fc" }
+      - matchRegex: { path: "spec.jobTemplate.spec.template.spec.containers[0].args[0]", pattern: "pg_restore --list" }
+      - matchRegex: { path: "spec.jobTemplate.spec.template.spec.containers[0].args[0]", pattern: '\$\{DB_NAME\}_\$\(date \+%Y%m%d_%H%M%S\)\.dump' }
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.volumes
+          content: { name: backup, persistentVolumeClaim: { claimName: postgres-backup-pvc } }
+      - equal: { path: "spec.jobTemplate.spec.template.spec.initContainers[0].name", value: fix-permissions-backup }
+      - matchRegex: { path: "spec.jobTemplate.spec.template.spec.initContainers[0].command[2]", pattern: "chown 1654:1654 /backup" }
+
+  - it: waits for the database and skips one that does not exist yet
+    template: templates/backup-scheduled.yaml
+    set:
+      migrations.backup.scheduled.enabled: true
+    asserts:
+      - matchRegex: { path: "spec.jobTemplate.spec.template.spec.containers[0].args[0]", pattern: "PostgreSQL is up" }
+      - matchRegex: { path: "spec.jobTemplate.spec.template.spec.containers[0].args[0]", pattern: "doesn't exist yet: nothing to back up" }
+
+  - it: takes the schedule and suspend from the values
+    template: templates/backup-scheduled.yaml
+    set:
+      migrations.backup.scheduled.enabled: true
+      migrations.backup.scheduled.schedule: "15 2 * * 0"
+      migrations.backup.scheduled.suspend: true
+    asserts:
+      - equal: { path: spec.schedule, value: "15 2 * * 0" }
+      - equal: { path: spec.suspend, value: true }
+
+  - it: refuses a scheduled backup with SQL Server
+    template: templates/backup-scheduled.yaml
+    set:
+      database.provider: SqlServer
+      mssql.enabled: true
+      mssql.acceptEula: true
+      migrations.backup.scheduled.enabled: true
+    asserts:
+      - failedTemplate: { errorPattern: "migrations.backup.scheduled is PostgreSQL's" }
+
+  - it: makes no scheduled backup when the migration backups are off
+    template: templates/backup-scheduled.yaml
+    set:
+      migrations.backup.scheduled.enabled: true
+      migrations.backup.enabled: false
+      postgres.backup.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: prunes old dumps on a schedule, from the values
+    template: templates/backup-retention.yaml
+    set:
+      migrations.backup.retention.enabled: true
+    asserts:
+      - isKind: { of: CronJob }
+      - equal: { path: metadata.name, value: headhunter-backup-retention }
+      - equal: { path: spec.schedule, value: "30 3 * * *" }
+      - equal: { path: spec.jobTemplate.spec.template.metadata.labels.app, value: headhunter-backup-retention }
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content: { name: KEEP_LAST, value: "5" }
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content: { name: KEEP_DAYS, value: "30" }
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content: { name: ONE_PER_DAY, value: "false" }
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content: { name: DB_NAME, value: Headhunter }
+      - matchRegex: { path: "spec.jobTemplate.spec.template.spec.containers[0].args[0]", pattern: "PGDMP" }
+      - matchRegex: { path: "spec.jobTemplate.spec.template.spec.containers[0].args[0]", pattern: "rm -f" }
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.volumes
+          content: { name: backup, persistentVolumeClaim: { claimName: postgres-backup-pvc } }
+
+  - it: keeps its own numbers
+    template: templates/backup-retention.yaml
+    set:
+      migrations.backup.retention.enabled: true
+      migrations.backup.retention.keepLast: 9
+      migrations.backup.retention.keepDays: 90
+      migrations.backup.retention.onePerDay: true
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content: { name: KEEP_LAST, value: "9" }
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content: { name: KEEP_DAYS, value: "90" }
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content: { name: ONE_PER_DAY, value: "true" }
+
+  - it: refuses retention with SQL Server
+    template: templates/backup-retention.yaml
+    set:
+      database.provider: SqlServer
+      mssql.enabled: true
+      mssql.acceptEula: true
+      migrations.backup.retention.enabled: true
+    asserts:
+      - failedTemplate: { errorPattern: "migrations.backup.retention is PostgreSQL's" }
+
+  - it: names the pre-migration dump like the scheduled ones, so retention covers both
+    template: templates/migrations.yaml
+    asserts:
+      - matchRegex: { path: "spec.template.spec.initContainers[3].args[0]", pattern: '\$\{DB_NAME\}_\$\(date \+%Y%m%d_%H%M%S\)\.dump' }
+      - notMatchRegex: { path: "spec.template.spec.initContainers[3].args[0]", pattern: "BACKUP_PREFIX" }
+
+  - it: gives the backup and retention pods their own policies, with the database out only for the backup
+    template: templates/networkpolicy.yaml
+    set:
+      migrations.backup.scheduled.enabled: true
+      migrations.backup.retention.enabled: true
+    asserts:
+      - equal: { path: spec.podSelector.matchLabels, value: { app: headhunter-backup } }
+        documentSelector: { path: metadata.name, value: headhunter-backup }
+      - contains:
+          path: spec.egress
+          content: { ports: [{ port: 5432, protocol: TCP }], to: [{ podSelector: { matchLabels: { app: postgres } } }] }
+        documentSelector: { path: metadata.name, value: headhunter-backup }
+      - equal: { path: spec.podSelector.matchLabels, value: { app: headhunter-backup-retention } }
+        documentSelector: { path: metadata.name, value: headhunter-backup-retention }
+      - equal: { path: spec.egress, value: [] }
+        documentSelector: { path: metadata.name, value: headhunter-backup-retention }
+
+  - it: lets only the backup pod, not retention, into PostgreSQL
+    template: templates/networkpolicy.yaml
+    set:
+      migrations.backup.scheduled.enabled: true
+      migrations.backup.retention.enabled: true
+    documentSelector: { path: metadata.name, value: postgres }
+    asserts:
+      - contains:
+          path: spec.ingress[0].from
+          content: { podSelector: { matchLabels: { app: headhunter-backup } } }
+      - notContains:
+          path: spec.ingress[0].from
+          content: { podSelector: { matchLabels: { app: headhunter-backup-retention } } }
+
+  - it: has no backup policies while the backups are off
+    template: templates/networkpolicy.yaml
+    asserts:
+      - hasDocuments: { count: 3 }
