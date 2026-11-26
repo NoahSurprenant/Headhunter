@@ -86,7 +86,7 @@ public class Worker : BackgroundService
 
         //var count = csv.GetRecords<MichiganVoterRecord>().Count();
         var records = VoterFile.Records(path);
-        var batches = GetBatches(records, 500);
+        var batches = GetBatches(records, 10_000);
 
         //var progress = AnsiConsole.Progress();
 
@@ -159,10 +159,8 @@ public class Worker : BackgroundService
                 };
             });
 
-            context.MichiganVoterRecords.AddRange(mapped);
+            await VoterRecordBulk.InsertAsync(context, mapped.ToList(), ct);
 
-            await context.SaveChangesAsync(ct);
-            //task.Increment(batch.Count);
         });
 
         //    task.StopTask();

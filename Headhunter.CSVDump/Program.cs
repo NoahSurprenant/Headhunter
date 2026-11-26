@@ -7,7 +7,8 @@ public class Program
 {
     public static void Main(string[] args)
     {
-        var builder = Host.CreateApplicationBuilder(args);
+        // The image runs this from /app, so appsettings.json (log level Warning) sits next to the dll, not in the working directory.
+        var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { Args = args, ContentRootPath = AppContext.BaseDirectory });
         builder.Services.AddHostedService<Worker>();
         builder.Services.AddDbContextFactory<HeadhunterContext>(options =>
         {
