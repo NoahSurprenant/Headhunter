@@ -9,15 +9,34 @@ namespace Headhunter.CSVDump;
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
+    private readonly IHostApplicationLifetime? _lifetime;
     private readonly IServiceScopeFactory _serviceScopeFactory;
 
-    public Worker(ILogger<Worker> logger, IServiceScopeFactory serviceScopeFactory)
+    public Worker(ILogger<Worker> logger, IServiceScopeFactory serviceScopeFactory, IHostApplicationLifetime? lifetime = null)
     {
         _logger = logger;
+        _lifetime = lifetime;
         _serviceScopeFactory = serviceScopeFactory;
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Import(ct);
+        }
+        catch
+        {
+            Environment.ExitCode = 1;
+            throw;
+        }
+        finally
+        {
+            _lifetime?.StopApplication();
+        }
+    }
+
+    private async Task Import(CancellationToken ct)
     {
         using (var scope = _serviceScopeFactory.CreateScope())
         {
@@ -63,11 +82,10 @@ public class Worker : BackgroundService
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var path = configuration.GetValue<string>("CSVPath") ?? throw new Exception("CSVPath missing in config");
 
-        using var csv = VoterFile.Open(path);
 
 
         //var count = csv.GetRecords<MichiganVoterRecord>().Count();
-        var records = VoterFile.Records(csv);
+        var records = VoterFile.Records(path);
         var batches = GetBatches(records, 500);
 
         //var progress = AnsiConsole.Progress();

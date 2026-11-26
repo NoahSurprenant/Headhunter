@@ -65,4 +65,30 @@ public class VoterFileTests
             Assert.That(records[1].IS_PERM_AV_APP_VOTER, Is.True);
         });
     }
+
+    // The state sends the registration list as a zip holding one CSV.
+    [Test]
+    public void ReadsTheZipTheStateSends()
+    {
+        var zip = Path.ChangeExtension(_path, ".zip");
+        try
+        {
+            using (var archive = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                System.IO.Compression.ZipFileExtensions.CreateEntryFromFile(archive, _path, "April Entire State Reg List 2025.csv");
+            }
+
+            var records = VoterFile.Records(zip).ToList();
+
+            Assert.That(records.Select(r => r.LAST_NAME), Is.EqualTo(new[] { "DOE", "ROE" }));
+        }
+        finally
+        {
+            File.Delete(zip);
+        }
+    }
+
+    [Test]
+    public void ReadsACsvByPath() =>
+        Assert.That(VoterFile.Records(_path).Select(r => r.FIRST_NAME), Is.EqualTo(new[] { "JANE", "JOHN" }));
 }
