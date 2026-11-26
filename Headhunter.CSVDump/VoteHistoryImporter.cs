@@ -27,6 +27,7 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
         await context.Database.OpenConnectionAsync(ct);
         try
         {
+            if (postgres) await context.Database.ExecuteSqlRawAsync("SET work_mem = '1GB'; SET maintenance_work_mem = '2GB'; SET synchronous_commit = off", ct);
             await context.Database.ExecuteSqlRawAsync($"DROP TABLE IF EXISTS \"{Staging}\"", ct);
             await context.Database.ExecuteSqlRawAsync(postgres
                 ? $"""
@@ -85,9 +86,16 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
             // The voter numbers are looked up once, not once for every election.
             await ImportTelemetry.RunAsync("history.match", async step =>
             {
-                step.Rows = await context.Database.ExecuteSqlRawAsync(postgres
-                    ? $"UPDATE \"{Staging}\" AS s SET \"VoterID\" = v.\"ID\" FROM \"Voters\" AS v WHERE v.\"VOTER_IDENTIFICATION_NUMBER\" COLLATE \"C\" = s.\"VoterNumber\""
-                    : $"UPDATE s SET s.\"VoterID\" = v.\"ID\" FROM \"{Staging}\" AS s JOIN \"Voters\" AS v ON v.\"VOTER_IDENTIFICATION_NUMBER\" = s.\"VoterNumber\"", ct);
+                if (postgres)
+                {
+                    // One join into a new table: an UPDATE of every staged row and a DELETE of the unmatched wrote them twice.
+                    step.Rows = await context.Database.ExecuteSqlRawAsync($"CREATE UNLOGGED TABLE \"{Staging}Matched\" AS SELECT v.\"ID\" AS \"VoterID\", s.\"ElectionDate\", s.\"CountyCode\", s.\"JurisdictionCode\", s.\"SchoolDistrictCode\" FROM \"{Staging}\" AS s JOIN \"Voters\" AS v ON v.\"VOTER_IDENTIFICATION_NUMBER\" COLLATE \"C\" = s.\"VoterNumber\"", ct);
+                    await context.Database.ExecuteSqlRawAsync($"DROP TABLE \"{Staging}\"", ct);
+                    await context.Database.ExecuteSqlRawAsync($"ALTER TABLE \"{Staging}Matched\" RENAME TO \"{Staging}\"", ct);
+                    return;
+                }
+
+                step.Rows = await context.Database.ExecuteSqlRawAsync($"UPDATE s SET s.\"VoterID\" = v.\"ID\" FROM \"{Staging}\" AS s JOIN \"Voters\" AS v ON v.\"VOTER_IDENTIFICATION_NUMBER\" = s.\"VoterNumber\"", ct);
                 await context.Database.ExecuteSqlRawAsync($"DELETE FROM \"{Staging}\" WHERE \"VoterID\" IS NULL", ct);
             });
 
