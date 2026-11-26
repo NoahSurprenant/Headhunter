@@ -253,6 +253,7 @@ GROUP BY
 """;
         using var scope = _serviceScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<HeadhunterContext>();
+        await InsertLookups(context, ct);
         context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
         await context.Database.ExecuteSqlRawAsync(
             rawSql.Replace("NEWID()", context.Database.IsNpgsql() ? "gen_random_uuid()" : "NEWID()"), ct);
@@ -336,7 +337,6 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
 """;
         using var scope = _serviceScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<HeadhunterContext>();
-        await InsertLookups(context, ct);
         if (context.Database.IsNpgsql())
         {
             // Postgres cannot hash-join on the case-insensitive (nondeterministic) collation, so 31 "=" columns
