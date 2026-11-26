@@ -38,12 +38,21 @@ public sealed class DatabaseConverter(ILogger<DatabaseConverter> logger)
         await using var targetContext = NewContext(target);
         await targetContext.Database.MigrateAsync(cancellationToken);
         if (await targetContext.Addresses.AnyAsync(cancellationToken) || await targetContext.MichiganVoterRecords.AnyAsync(cancellationToken)
-            || await targetContext.Voters.AnyAsync(cancellationToken))
+            || await targetContext.Voters.AnyAsync(cancellationToken) || await targetContext.VoteHistory.AnyAsync(cancellationToken))
             throw new ConversionException("The target database already has rows: convert into an empty one.");
 
         // Inserts need no change tracking beyond the batch in hand.
         targetContext.ChangeTracker.AutoDetectChangesEnabled = false;
         await using var transaction = await targetContext.Database.BeginTransactionAsync(cancellationToken);
+
+        // The code tables are small, and the addresses point at them.
+        await CopyWholeAsync("lookup", sourceContext, targetContext, c => c.Counties, cancellationToken);
+        await CopyWholeAsync("lookup", sourceContext, targetContext, c => c.Jurisdictions, cancellationToken);
+        await CopyWholeAsync("lookup", sourceContext, targetContext, c => c.SchoolDistricts, cancellationToken);
+        await CopyWholeAsync("lookup", sourceContext, targetContext, c => c.StateHouseDistricts, cancellationToken);
+        await CopyWholeAsync("lookup", sourceContext, targetContext, c => c.StateSenateDistricts, cancellationToken);
+        await CopyWholeAsync("lookup", sourceContext, targetContext, c => c.UsCongressDistricts, cancellationToken);
+        await CopyWholeAsync("lookup", sourceContext, targetContext, c => c.CountyCommissionerDistricts, cancellationToken);
 
         // Parents first: Voters point at Addresses and MichiganVoterRecords.
         var tables = new List<ConvertedTable>
@@ -51,11 +60,54 @@ public sealed class DatabaseConverter(ILogger<DatabaseConverter> logger)
             await CopyAsync(nameof(HeadhunterContext.Addresses), sourceContext, targetContext, c => c.Addresses, a => a.ID, cancellationToken),
             await CopyAsync(nameof(HeadhunterContext.MichiganVoterRecords), sourceContext, targetContext, c => c.MichiganVoterRecords, r => r.ID, cancellationToken),
             await CopyAsync(nameof(HeadhunterContext.Voters), sourceContext, targetContext, c => c.Voters, v => v.ID, cancellationToken),
+            await CopyWholeAsync(nameof(HeadhunterContext.Elections), sourceContext, targetContext, c => c.Elections, cancellationToken),
+            await CopyHistoryAsync(sourceContext, targetContext, cancellationToken),
         };
 
         await CheckAsync(tables, targetContext, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return tables;
+    }
+
+    private static async Task<ConvertedTable> CopyWholeAsync<T>(string name, HeadhunterContext source, HeadhunterContext target,
+        Func<HeadhunterContext, DbSet<T>> set, CancellationToken cancellationToken) where T : class
+    {
+        var rows = await set(source).AsNoTracking().ToArrayAsync(cancellationToken);
+        set(target).AddRange(rows);
+        await target.SaveChangesAsync(cancellationToken);
+        target.ChangeTracker.Clear();
+        return new ConvertedTable(name, rows.Length);
+    }
+
+    // The vote history is the biggest table (tens of millions of rows): keyset pages on its two-part key.
+    private async Task<ConvertedTable> CopyHistoryAsync(HeadhunterContext source, HeadhunterContext target, CancellationToken cancellationToken)
+    {
+        long rows = 0;
+        VoteHistory[] batch;
+        VoteHistory? last = null;
+        do
+        {
+            var query = source.VoteHistory.AsNoTracking();
+            if (last is not null)
+            {
+                var voter = last.VoterID;
+                var date = last.ElectionDate;
+                query = query.Where(h => h.VoterID.CompareTo(voter) > 0 || (h.VoterID == voter && h.ElectionDate > date));
+            }
+            batch = await query.OrderBy(h => h.VoterID).ThenBy(h => h.ElectionDate).Take(BatchSize).ToArrayAsync(cancellationToken);
+            if (batch.Length == 0) break;
+
+            target.VoteHistory.AddRange(batch);
+            await target.SaveChangesAsync(cancellationToken);
+            target.ChangeTracker.Clear();
+
+            last = batch[^1];
+            rows += batch.Length;
+            if (rows % (BatchSize * 20) == 0) logger.LogInformation("VoteHistory: {Rows} rows", rows);
+        } while (batch.Length == BatchSize);
+
+        logger.LogInformation("VoteHistory: {Rows} rows copied", rows);
+        return new ConvertedTable(nameof(HeadhunterContext.VoteHistory), rows);
     }
 
     private async Task<ConvertedTable> CopyAsync<T>(string name, HeadhunterContext source, HeadhunterContext target,
@@ -95,6 +147,8 @@ public sealed class DatabaseConverter(ILogger<DatabaseConverter> logger)
             {
                 nameof(HeadhunterContext.Addresses) => await target.Addresses.LongCountAsync(cancellationToken),
                 nameof(HeadhunterContext.MichiganVoterRecords) => await target.MichiganVoterRecords.LongCountAsync(cancellationToken),
+                nameof(HeadhunterContext.Elections) => await target.Elections.LongCountAsync(cancellationToken),
+                nameof(HeadhunterContext.VoteHistory) => await target.VoteHistory.LongCountAsync(cancellationToken),
                 _ => await target.Voters.LongCountAsync(cancellationToken),
             };
             if (count != table.Rows)

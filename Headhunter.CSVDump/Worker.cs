@@ -19,6 +19,16 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        using (var scope = _serviceScopeFactory.CreateScope())
+        {
+            if (scope.ServiceProvider.GetRequiredService<IConfiguration>()["Import"]?.Equals("History", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await ImportVoteHistory(scope.ServiceProvider, ct);
+                Console.WriteLine("Done");
+                return;
+            }
+        }
+
         await ImportCsvData();
         Console.WriteLine("Imported CSV Data");
         await InsertAddresses(ct);
@@ -27,6 +37,23 @@ public class Worker : BackgroundService
         Console.WriteLine("Inserted Voters");
 
         Console.WriteLine("Done");
+    }
+
+    /// <summary>Import=History: CSVPath is the history file (the CSV or its zip), CodesPath the state's code files (optional).</summary>
+    private async Task ImportVoteHistory(IServiceProvider services, CancellationToken ct)
+    {
+        var configuration = services.GetRequiredService<IConfiguration>();
+        var path = configuration.GetValue<string>("CSVPath") ?? throw new Exception("CSVPath missing in config");
+        var context = services.GetRequiredService<HeadhunterContext>();
+
+        if (configuration.GetValue<string>("CodesPath") is { Length: > 0 } codes)
+        {
+            await CodeFiles.LoadAsync(context, codes, ct);
+            Console.WriteLine("Loaded code tables");
+        }
+
+        var result = await new VoteHistoryImporter(context).ImportAsync(path, ct);
+        Console.WriteLine($"Read {result.Rows} history rows, inserted {result.Inserted}");
     }
 
     private async Task ImportCsvData()
@@ -145,21 +172,14 @@ INSERT INTO "Addresses" (
     "STATE",
     "ZIP_CODE",
     "COUNTY_CODE",
-    "COUNTY_NAME",
     "JURISDICTION_CODE",
-    "JURISDICTION_NAME",
     "PRECINCT",
     "WARD",
     "SCHOOL_DISTRICT_CODE",
-    "SCHOOL_DISTRICT_NAME",
     "STATE_HOUSE_DISTRICT_CODE",
-    "STATE_HOUSE_DISTRICT_NAME",
     "STATE_SENATE_DISTRICT_CODE",
-    "STATE_SENATE_DISTRICT_NAME",
     "US_CONGRESS_DISTRICT_CODE",
-    "US_CONGRESS_DISTRICT_NAME",
     "COUNTY_COMMISSIONER_DISTRICT_CODE",
-    "COUNTY_COMMISSIONER_DISTRICT_NAME",
     "VILLAGE_DISTRICT_CODE",
     "VILLAGE_DISTRICT_NAME",
     "VILLAGE_PRECINCT",
@@ -191,22 +211,15 @@ SELECT
     "CITY",
     "STATE",
     "ZIP_CODE",
-    "COUNTY_CODE",
-    "COUNTY_NAME",
-    "JURISDICTION_CODE",
-    "JURISDICTION_NAME",
+    NULLIF("COUNTY_CODE", '') AS "COUNTY_CODE",
+    NULLIF("JURISDICTION_CODE", '') AS "JURISDICTION_CODE",
     "PRECINCT",
     "WARD",
-    "SCHOOL_DISTRICT_CODE",
-    "SCHOOL_DISTRICT_NAME",
-    "STATE_HOUSE_DISTRICT_CODE",
-    "STATE_HOUSE_DISTRICT_NAME",
-    "STATE_SENATE_DISTRICT_CODE",
-    "STATE_SENATE_DISTRICT_NAME",
-    "US_CONGRESS_DISTRICT_CODE",
-    "US_CONGRESS_DISTRICT_NAME",
-    "COUNTY_COMMISSIONER_DISTRICT_CODE",
-    "COUNTY_COMMISSIONER_DISTRICT_NAME",
+    NULLIF("SCHOOL_DISTRICT_CODE", '') AS "SCHOOL_DISTRICT_CODE",
+    NULLIF("STATE_HOUSE_DISTRICT_CODE", '') AS "STATE_HOUSE_DISTRICT_CODE",
+    NULLIF("STATE_SENATE_DISTRICT_CODE", '') AS "STATE_SENATE_DISTRICT_CODE",
+    NULLIF("US_CONGRESS_DISTRICT_CODE", '') AS "US_CONGRESS_DISTRICT_CODE",
+    NULLIF("COUNTY_COMMISSIONER_DISTRICT_CODE", '') AS "COUNTY_COMMISSIONER_DISTRICT_CODE",
     "VILLAGE_DISTRICT_CODE",
     "VILLAGE_DISTRICT_NAME",
     "VILLAGE_PRECINCT",
@@ -225,21 +238,14 @@ GROUP BY
     "STATE",
     "ZIP_CODE",
     "COUNTY_CODE",
-    "COUNTY_NAME",
     "JURISDICTION_CODE",
-    "JURISDICTION_NAME",
     "PRECINCT",
     "WARD",
     "SCHOOL_DISTRICT_CODE",
-    "SCHOOL_DISTRICT_NAME",
     "STATE_HOUSE_DISTRICT_CODE",
-    "STATE_HOUSE_DISTRICT_NAME",
     "STATE_SENATE_DISTRICT_CODE",
-    "STATE_SENATE_DISTRICT_NAME",
     "US_CONGRESS_DISTRICT_CODE",
-    "US_CONGRESS_DISTRICT_NAME",
     "COUNTY_COMMISSIONER_DISTRICT_CODE",
-    "COUNTY_COMMISSIONER_DISTRICT_NAME",
     "VILLAGE_DISTRICT_CODE",
     "VILLAGE_DISTRICT_NAME",
     "VILLAGE_PRECINCT",
@@ -247,6 +253,7 @@ GROUP BY
 """;
         using var scope = _serviceScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<HeadhunterContext>();
+        await InsertLookups(context, ct);
         context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
         await context.Database.ExecuteSqlRawAsync(
             rawSql.Replace("NEWID()", context.Database.IsNpgsql() ? "gen_random_uuid()" : "NEWID()"), ct);
@@ -314,22 +321,15 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
    AL."CITY" = MR."CITY" AND
    AL."STATE" = MR."STATE" AND
    AL."ZIP_CODE" = MR."ZIP_CODE" AND
-   AL."COUNTY_CODE" = MR."COUNTY_CODE" AND
-   AL."COUNTY_NAME" = MR."COUNTY_NAME" AND
-   AL."JURISDICTION_CODE" = MR."JURISDICTION_CODE" AND
-   AL."JURISDICTION_NAME" = MR."JURISDICTION_NAME" AND
+   COALESCE(AL."COUNTY_CODE", '') = MR."COUNTY_CODE" AND
+   COALESCE(AL."JURISDICTION_CODE", '') = MR."JURISDICTION_CODE" AND
    AL."PRECINCT" = MR."PRECINCT" AND
    AL."WARD" = MR."WARD" AND
-   AL."SCHOOL_DISTRICT_CODE" = MR."SCHOOL_DISTRICT_CODE" AND
-   AL."SCHOOL_DISTRICT_NAME" = MR."SCHOOL_DISTRICT_NAME" AND
-   AL."STATE_HOUSE_DISTRICT_CODE" = MR."STATE_HOUSE_DISTRICT_CODE" AND
-   AL."STATE_HOUSE_DISTRICT_NAME" = MR."STATE_HOUSE_DISTRICT_NAME" AND
-   AL."STATE_SENATE_DISTRICT_CODE" = MR."STATE_SENATE_DISTRICT_CODE" AND
-   AL."STATE_SENATE_DISTRICT_NAME" = MR."STATE_SENATE_DISTRICT_NAME" AND
-   AL."US_CONGRESS_DISTRICT_CODE" = MR."US_CONGRESS_DISTRICT_CODE" AND
-   AL."US_CONGRESS_DISTRICT_NAME" = MR."US_CONGRESS_DISTRICT_NAME" AND
-   AL."COUNTY_COMMISSIONER_DISTRICT_CODE" = MR."COUNTY_COMMISSIONER_DISTRICT_CODE" AND
-   AL."COUNTY_COMMISSIONER_DISTRICT_NAME" = MR."COUNTY_COMMISSIONER_DISTRICT_NAME" AND
+   COALESCE(AL."SCHOOL_DISTRICT_CODE", '') = MR."SCHOOL_DISTRICT_CODE" AND
+   COALESCE(AL."STATE_HOUSE_DISTRICT_CODE", '') = MR."STATE_HOUSE_DISTRICT_CODE" AND
+   COALESCE(AL."STATE_SENATE_DISTRICT_CODE", '') = MR."STATE_SENATE_DISTRICT_CODE" AND
+   COALESCE(AL."US_CONGRESS_DISTRICT_CODE", '') = MR."US_CONGRESS_DISTRICT_CODE" AND
+   COALESCE(AL."COUNTY_COMMISSIONER_DISTRICT_CODE", '') = MR."COUNTY_COMMISSIONER_DISTRICT_CODE" AND
    AL."VILLAGE_DISTRICT_CODE" = MR."VILLAGE_DISTRICT_CODE" AND
    AL."VILLAGE_DISTRICT_NAME" = MR."VILLAGE_DISTRICT_NAME" AND
    AL."VILLAGE_PRECINCT" = MR."VILLAGE_PRECINCT" AND
@@ -347,11 +347,67 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
                 .Select(part => part[..part.IndexOf('"')])
                 .ToList();
             string Key(string alias) =>
-                $"md5(lower(concat_ws(chr(31), {string.Join(", ", columns.Select(c => $"{alias}.\"{c}\""))})))";
+                $"md5(lower(concat_ws(chr(31), {string.Join(", ", columns.Select(c => $"coalesce({alias}.\"{c}\", '') COLLATE \"case_insensitive\""))})))";
             rawSql = rawSql[..rawSql.IndexOf("\nON AL.", StringComparison.Ordinal)] + $"\nON {Key("AL")} = {Key("MR")};";
         }
         context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
         await context.Database.ExecuteSqlRawAsync(rawSql, ct);
+    }
+
+    /// <summary>
+    /// The counties, jurisdictions, school districts and the other districts in the records, by code, for the
+    /// addresses to point at. A code already in its table keeps its name (the state's code files may have loaded it).
+    /// </summary>
+    private static async Task InsertLookups(HeadhunterContext context, CancellationToken ct)
+    {
+        // Postgres compares the code columns exactly (the records' are case-insensitive).
+        var c = context.Database.IsNpgsql() ? " COLLATE \"C\"" : "";
+
+        string Lookup(string table, string code, string name) => $"""
+            INSERT INTO "{table}" ("Code", "Name")
+            SELECT r."{code}"{c}, MIN(r."{name}") FROM "MichiganVoterRecords" r
+            WHERE r."{code}" <> '' AND NOT EXISTS (SELECT 1 FROM "{table}" x WHERE x."Code" = r."{code}"{c})
+            GROUP BY r."{code}"{c}
+            """;
+
+        string InCounty(string table, string code, string name) => $"""
+            INSERT INTO "{table}" ("CountyCode", "Code", "Name")
+            SELECT r."COUNTY_CODE"{c}, r."{code}"{c}, MIN(r."{name}") FROM "MichiganVoterRecords" r
+            WHERE r."COUNTY_CODE" <> '' AND r."{code}" <> '' AND NOT EXISTS (
+                SELECT 1 FROM "{table}" x WHERE x."CountyCode" = r."COUNTY_CODE"{c} AND x."Code" = r."{code}"{c})
+            GROUP BY r."COUNTY_CODE"{c}, r."{code}"{c}
+            """;
+
+        // A name that is empty (a row made from a code alone) is filled in when the records have one.
+        string FillNames(string table, string code, string name, bool inCounty)
+        {
+            var match = $"r.\"{code}\"{c} = \"{table}\".\"Code\"" +
+                (inCounty ? $" AND r.\"COUNTY_CODE\"{c} = \"{table}\".\"CountyCode\"" : "") + $" AND r.\"{name}\" <> ''";
+            return $"UPDATE \"{table}\" SET \"Name\" = (SELECT MIN(r.\"{name}\") FROM \"MichiganVoterRecords\" r WHERE {match}) " +
+                   $"WHERE \"Name\" = '' AND EXISTS (SELECT 1 FROM \"MichiganVoterRecords\" r WHERE {match})";
+        }
+
+        // The counties first: the others have a foreign key to them.
+        string[] statements =
+        [
+            Lookup("Counties", "COUNTY_CODE", "COUNTY_NAME"),
+            InCounty("Jurisdictions", "JURISDICTION_CODE", "JURISDICTION_NAME"),
+            Lookup("SchoolDistricts", "SCHOOL_DISTRICT_CODE", "SCHOOL_DISTRICT_NAME"),
+            Lookup("StateHouseDistricts", "STATE_HOUSE_DISTRICT_CODE", "STATE_HOUSE_DISTRICT_NAME"),
+            Lookup("StateSenateDistricts", "STATE_SENATE_DISTRICT_CODE", "STATE_SENATE_DISTRICT_NAME"),
+            Lookup("UsCongressDistricts", "US_CONGRESS_DISTRICT_CODE", "US_CONGRESS_DISTRICT_NAME"),
+            InCounty("CountyCommissionerDistricts", "COUNTY_COMMISSIONER_DISTRICT_CODE", "COUNTY_COMMISSIONER_DISTRICT_NAME"),
+            FillNames("Counties", "COUNTY_CODE", "COUNTY_NAME", false),
+            FillNames("Jurisdictions", "JURISDICTION_CODE", "JURISDICTION_NAME", true),
+            FillNames("SchoolDistricts", "SCHOOL_DISTRICT_CODE", "SCHOOL_DISTRICT_NAME", false),
+            FillNames("StateHouseDistricts", "STATE_HOUSE_DISTRICT_CODE", "STATE_HOUSE_DISTRICT_NAME", false),
+            FillNames("StateSenateDistricts", "STATE_SENATE_DISTRICT_CODE", "STATE_SENATE_DISTRICT_NAME", false),
+            FillNames("UsCongressDistricts", "US_CONGRESS_DISTRICT_CODE", "US_CONGRESS_DISTRICT_NAME", false),
+            FillNames("CountyCommissionerDistricts", "COUNTY_COMMISSIONER_DISTRICT_CODE", "COUNTY_COMMISSIONER_DISTRICT_NAME", true),
+        ];
+        context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+        foreach (var statement in statements)
+            await context.Database.ExecuteSqlRawAsync(statement, ct);
     }
 
     public IEnumerable<List<T>> GetBatches<T>(IEnumerable<T> source, int batchSize)

@@ -86,10 +86,14 @@ public class ConversionTests
         var addresses = await source.Addresses.LongCountAsync();
         var records = await source.MichiganVoterRecords.LongCountAsync();
         var voters = await source.Voters.LongCountAsync();
+        var elections = await source.Elections.LongCountAsync();
+        var history = await source.VoteHistory.LongCountAsync();
+        Assert.That(history, Is.GreaterThan(0));
         Assert.That(voters, Is.GreaterThan(0));
         Assert.That(tables.Select(t => (t.Name, t.Rows)), Is.EqualTo(new[]
         {
             ("Addresses", addresses), ("MichiganVoterRecords", records), ("Voters", voters),
+            ("Elections", elections), ("VoteHistory", history),
         }));
         Assert.That(await target.Addresses.LongCountAsync(), Is.EqualTo(addresses));
         Assert.That(await target.MichiganVoterRecords.LongCountAsync(), Is.EqualTo(records));
@@ -111,6 +115,17 @@ public class ConversionTests
             .Select(a => new { a.ID, a.FullStreetAddress, a.CITY, a.ZIP_CODE, a.Latitude, a.Longitude, a.Matched }).ToListAsync())
             .OrderBy(a => a.ID).ToList();
         Assert.That(actualAddresses, Is.EqualTo(expectedAddresses));
+
+        // The code tables and the vote history that points at them.
+        var expectedHistory = (await source.VoteHistory.AsNoTracking().Select(h => new { h.VoterID, h.ElectionDate, h.CountyCode }).ToListAsync())
+            .OrderBy(h => h.VoterID).ThenBy(h => h.ElectionDate).ToList();
+        var actualHistory = (await target.VoteHistory.AsNoTracking().Select(h => new { h.VoterID, h.ElectionDate, h.CountyCode }).ToListAsync())
+            .OrderBy(h => h.VoterID).ThenBy(h => h.ElectionDate).ToList();
+        Assert.That(actualHistory, Is.EqualTo(expectedHistory));
+        Assert.That((await target.Elections.AsNoTracking().OrderBy(e => e.Date).ToListAsync()).Select(e => (e.Date, e.CodeId, e.Description)),
+            Is.EqualTo((await source.Elections.AsNoTracking().OrderBy(e => e.Date).ToListAsync()).Select(e => (e.Date, e.CodeId, e.Description))));
+        Assert.That((await target.Counties.AsNoTracking().OrderBy(c => c.Code).ToListAsync()).Select(c => (c.Code, c.Name)),
+            Is.EqualTo((await source.Counties.AsNoTracking().OrderBy(c => c.Code).ToListAsync()).Select(c => (c.Code, c.Name))));
     }
 
     private sealed class Container(IAsyncDisposable inner, string connectionString) : IAsyncDisposable

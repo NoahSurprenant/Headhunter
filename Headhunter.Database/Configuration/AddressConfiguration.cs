@@ -30,27 +30,37 @@ internal class AddressConfiguration : IEntityTypeConfiguration<Address>
         builder.HasIndex(x => x.FullStreetAddress);
         builder.HasIndex(x => x.STREET_NAME).IncludeColumns(x => x.FullStreetAddress);
 
-        // The districts (Headhunter.API/Districts.cs): their suggestions' prefix searches, and the voter search, the
-        // globe and the district stats filtering on one. Precincts and wards are numbered within a jurisdiction and
-        // commissioner districts within a county, so those indexes lead with the jurisdiction or county, which also
-        // serves a search on that alone. Latitude and longitude are included so a district's extent and the globe's
-        // view of it come from the index alone (a whole county can be hundreds of thousands of addresses). The
-        // values are names and numbers like the city's, so the same 100-character cap.
-        builder.Property(x => x.COUNTY_NAME).HasMaxLength(100);
-        builder.Property(x => x.COUNTY_COMMISSIONER_DISTRICT_NAME).HasMaxLength(100);
-        builder.Property(x => x.JURISDICTION_NAME).HasMaxLength(100);
+        // The districts (Headhunter.API/Districts.cs) are the lookup tables' codes; the names are in those tables. A
+        // precinct or ward is numbered within a jurisdiction (county and code) and a commissioner district within a
+        // county, so those indexes lead with them, which also serves a search on that alone. Latitude and longitude
+        // are included so a district's extent and the globe's view of it come from the index alone (a whole county
+        // can be hundreds of thousands of addresses).
+        builder.Property(x => x.COUNTY_CODE).HasMaxLength(2).IsUnicode(false);
+        builder.Property(x => x.JURISDICTION_CODE).HasMaxLength(5).IsUnicode(false);
+        builder.Property(x => x.SCHOOL_DISTRICT_CODE).HasMaxLength(5).IsUnicode(false);
+        builder.Property(x => x.STATE_HOUSE_DISTRICT_CODE).HasMaxLength(5).IsUnicode(false);
+        builder.Property(x => x.STATE_SENATE_DISTRICT_CODE).HasMaxLength(5).IsUnicode(false);
+        builder.Property(x => x.US_CONGRESS_DISTRICT_CODE).HasMaxLength(5).IsUnicode(false);
+        builder.Property(x => x.COUNTY_COMMISSIONER_DISTRICT_CODE).HasMaxLength(5).IsUnicode(false);
         builder.Property(x => x.PRECINCT).HasMaxLength(100);
         builder.Property(x => x.WARD).HasMaxLength(100);
-        builder.Property(x => x.SCHOOL_DISTRICT_NAME).HasMaxLength(100);
-        builder.Property(x => x.STATE_HOUSE_DISTRICT_NAME).HasMaxLength(100);
-        builder.Property(x => x.STATE_SENATE_DISTRICT_NAME).HasMaxLength(100);
-        builder.Property(x => x.US_CONGRESS_DISTRICT_NAME).HasMaxLength(100);
-        builder.HasIndex(x => new { x.COUNTY_NAME, x.COUNTY_COMMISSIONER_DISTRICT_NAME }).IncludeColumns(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => new { x.JURISDICTION_NAME, x.PRECINCT }).IncludeColumns(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => new { x.JURISDICTION_NAME, x.WARD }).IncludeColumns(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => x.SCHOOL_DISTRICT_NAME).IncludeColumns(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => x.STATE_HOUSE_DISTRICT_NAME).IncludeColumns(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => x.STATE_SENATE_DISTRICT_NAME).IncludeColumns(x => new { x.Latitude, x.Longitude });
-        builder.HasIndex(x => x.US_CONGRESS_DISTRICT_NAME).IncludeColumns(x => new { x.Latitude, x.Longitude });
+
+        builder.HasOne(x => x.County).WithMany().HasForeignKey(x => x.COUNTY_CODE).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Jurisdiction).WithMany().HasForeignKey(x => new { x.COUNTY_CODE, x.JURISDICTION_CODE })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.SchoolDistrict).WithMany().HasForeignKey(x => x.SCHOOL_DISTRICT_CODE).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.StateHouseDistrict).WithMany().HasForeignKey(x => x.STATE_HOUSE_DISTRICT_CODE).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.StateSenateDistrict).WithMany().HasForeignKey(x => x.STATE_SENATE_DISTRICT_CODE).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.UsCongressDistrict).WithMany().HasForeignKey(x => x.US_CONGRESS_DISTRICT_CODE).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.CountyCommissionerDistrict).WithMany()
+            .HasForeignKey(x => new { x.COUNTY_CODE, x.COUNTY_COMMISSIONER_DISTRICT_CODE }).OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(x => new { x.COUNTY_CODE, x.COUNTY_COMMISSIONER_DISTRICT_CODE }).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => new { x.COUNTY_CODE, x.JURISDICTION_CODE, x.PRECINCT }).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => new { x.COUNTY_CODE, x.JURISDICTION_CODE, x.WARD }).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.SCHOOL_DISTRICT_CODE).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.STATE_HOUSE_DISTRICT_CODE).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.STATE_SENATE_DISTRICT_CODE).IncludeColumns(x => new { x.Latitude, x.Longitude });
+        builder.HasIndex(x => x.US_CONGRESS_DISTRICT_CODE).IncludeColumns(x => new { x.Latitude, x.Longitude });
     }
 }
