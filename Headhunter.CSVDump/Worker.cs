@@ -378,6 +378,15 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
             GROUP BY r."COUNTY_CODE"{c}, r."{code}"{c}
             """;
 
+        // A name that is empty (a row made from a code alone) is filled in when the records have one.
+        string FillNames(string table, string code, string name, bool inCounty)
+        {
+            var match = $"r.\"{code}\"{c} = \"{table}\".\"Code\"" +
+                (inCounty ? $" AND r.\"COUNTY_CODE\"{c} = \"{table}\".\"CountyCode\"" : "") + $" AND r.\"{name}\" <> ''";
+            return $"UPDATE \"{table}\" SET \"Name\" = (SELECT MIN(r.\"{name}\") FROM \"MichiganVoterRecords\" r WHERE {match}) " +
+                   $"WHERE \"Name\" = '' AND EXISTS (SELECT 1 FROM \"MichiganVoterRecords\" r WHERE {match})";
+        }
+
         // The counties first: the others have a foreign key to them.
         string[] statements =
         [
@@ -388,6 +397,13 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
             Lookup("StateSenateDistricts", "STATE_SENATE_DISTRICT_CODE", "STATE_SENATE_DISTRICT_NAME"),
             Lookup("UsCongressDistricts", "US_CONGRESS_DISTRICT_CODE", "US_CONGRESS_DISTRICT_NAME"),
             InCounty("CountyCommissionerDistricts", "COUNTY_COMMISSIONER_DISTRICT_CODE", "COUNTY_COMMISSIONER_DISTRICT_NAME"),
+            FillNames("Counties", "COUNTY_CODE", "COUNTY_NAME", false),
+            FillNames("Jurisdictions", "JURISDICTION_CODE", "JURISDICTION_NAME", true),
+            FillNames("SchoolDistricts", "SCHOOL_DISTRICT_CODE", "SCHOOL_DISTRICT_NAME", false),
+            FillNames("StateHouseDistricts", "STATE_HOUSE_DISTRICT_CODE", "STATE_HOUSE_DISTRICT_NAME", false),
+            FillNames("StateSenateDistricts", "STATE_SENATE_DISTRICT_CODE", "STATE_SENATE_DISTRICT_NAME", false),
+            FillNames("UsCongressDistricts", "US_CONGRESS_DISTRICT_CODE", "US_CONGRESS_DISTRICT_NAME", false),
+            FillNames("CountyCommissionerDistricts", "COUNTY_COMMISSIONER_DISTRICT_CODE", "COUNTY_COMMISSIONER_DISTRICT_NAME", true),
         ];
         context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
         foreach (var statement in statements)

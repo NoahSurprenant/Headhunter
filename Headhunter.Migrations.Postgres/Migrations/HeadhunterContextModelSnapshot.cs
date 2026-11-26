@@ -154,7 +154,7 @@ namespace Headhunter.Migrations.Postgres.Migrations
                     b.Property<string>("VILLAGE_DISTRICT_CODE")
                         .IsRequired()
                         .HasColumnType("text")
-                        .UseCollation("C");
+                        .UseCollation("case_insensitive");
 
                     b.Property<string>("VILLAGE_DISTRICT_NAME")
                         .IsRequired()
@@ -175,7 +175,7 @@ namespace Headhunter.Migrations.Postgres.Migrations
                     b.Property<string>("ZIP_CODE")
                         .IsRequired()
                         .HasColumnType("text")
-                        .UseCollation("C");
+                        .UseCollation("case_insensitive");
 
                     b.HasKey("ID");
 

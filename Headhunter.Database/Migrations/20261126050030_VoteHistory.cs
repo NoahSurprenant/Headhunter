@@ -460,9 +460,81 @@ namespace Headhunter.Database.Migrations
                    $"FROM [Addresses] WHERE [{codeColumn}] IS NOT NULL{countyWhere} GROUP BY {groupBy}";
         }
 
+        private static string Restore(string nameColumn, string table, string countyColumn, string codeColumn)
+        {
+            var county = countyColumn is null ? "" : $" AND l.[CountyCode] = [Addresses].[{countyColumn}]";
+            return $"UPDATE [Addresses] SET [{nameColumn}] = COALESCE((SELECT l.[Name] FROM [{table}] l " +
+                   $"WHERE l.[Code] = [Addresses].[{codeColumn}]{county}), '')";
+        }
+
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<string>(
+                name: "COUNTY_COMMISSIONER_DISTRICT_NAME",
+                table: "Addresses",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<string>(
+                name: "COUNTY_NAME",
+                table: "Addresses",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<string>(
+                name: "JURISDICTION_NAME",
+                table: "Addresses",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<string>(
+                name: "SCHOOL_DISTRICT_NAME",
+                table: "Addresses",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<string>(
+                name: "STATE_HOUSE_DISTRICT_NAME",
+                table: "Addresses",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<string>(
+                name: "STATE_SENATE_DISTRICT_NAME",
+                table: "Addresses",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<string>(
+                name: "US_CONGRESS_DISTRICT_NAME",
+                table: "Addresses",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: false,
+                defaultValue: "");
+
+            // The names go back onto the addresses before the lookup tables that hold them are dropped.
+            migrationBuilder.Sql(Restore("COUNTY_NAME", "Counties", null, "COUNTY_CODE"));
+            migrationBuilder.Sql(Restore("JURISDICTION_NAME", "Jurisdictions", "COUNTY_CODE", "JURISDICTION_CODE"));
+            migrationBuilder.Sql(Restore("SCHOOL_DISTRICT_NAME", "SchoolDistricts", null, "SCHOOL_DISTRICT_CODE"));
+            migrationBuilder.Sql(Restore("STATE_HOUSE_DISTRICT_NAME", "StateHouseDistricts", null, "STATE_HOUSE_DISTRICT_CODE"));
+            migrationBuilder.Sql(Restore("STATE_SENATE_DISTRICT_NAME", "StateSenateDistricts", null, "STATE_SENATE_DISTRICT_CODE"));
+            migrationBuilder.Sql(Restore("US_CONGRESS_DISTRICT_NAME", "UsCongressDistricts", null, "US_CONGRESS_DISTRICT_CODE"));
+            migrationBuilder.Sql(Restore("COUNTY_COMMISSIONER_DISTRICT_NAME", "CountyCommissionerDistricts", "COUNTY_CODE", "COUNTY_COMMISSIONER_DISTRICT_CODE"));
+
             migrationBuilder.DropForeignKey(
                 name: "FK_Addresses_Counties_COUNTY_CODE",
                 table: "Addresses");
@@ -629,62 +701,6 @@ namespace Headhunter.Database.Migrations
                 oldUnicode: false,
                 oldMaxLength: 2,
                 oldNullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "COUNTY_COMMISSIONER_DISTRICT_NAME",
-                table: "Addresses",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "COUNTY_NAME",
-                table: "Addresses",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "JURISDICTION_NAME",
-                table: "Addresses",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "SCHOOL_DISTRICT_NAME",
-                table: "Addresses",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "STATE_HOUSE_DISTRICT_NAME",
-                table: "Addresses",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "STATE_SENATE_DISTRICT_NAME",
-                table: "Addresses",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "US_CONGRESS_DISTRICT_NAME",
-                table: "Addresses",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Addresses_COUNTY_NAME_COUNTY_COMMISSIONER_DISTRICT_NAME",

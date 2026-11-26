@@ -171,6 +171,15 @@ public static class TestData
         }
 
         context.AddRange(districts.Rows());
+
+        // Vote history: the 2022 and 2024 generals for Ada, the 2024 one for Adaline.
+        context.Elections.AddRange(
+            new Election { Date = new DateOnly(2022, 11, 8), CodeId = 1, Description = "GENERAL ELECTION" },
+            new Election { Date = new DateOnly(2024, 11, 5), CodeId = 2, Description = "PRESIDENTIAL GENERAL" });
+        context.VoteHistory.AddRange(
+            new VoteHistory { VoterID = AdaId, ElectionDate = new DateOnly(2022, 11, 8) },
+            new VoteHistory { VoterID = AdaId, ElectionDate = new DateOnly(2024, 11, 5) },
+            new VoteHistory { VoterID = AdalineId, ElectionDate = new DateOnly(2024, 11, 5) });
         await context.SaveChangesAsync();
     }
 

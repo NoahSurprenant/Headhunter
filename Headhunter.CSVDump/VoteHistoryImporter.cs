@@ -30,12 +30,12 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
             await context.Database.ExecuteSqlRawAsync($"DROP TABLE IF EXISTS \"{Staging}\"", ct);
             await context.Database.ExecuteSqlRawAsync(postgres
                 ? $"""
-                  CREATE UNLOGGED TABLE "{Staging}" ("VoterNumber" varchar(38) COLLATE "C" NOT NULL, "ElectionDate" date NOT NULL,
+                  CREATE UNLOGGED TABLE "{Staging}" ("VoterNumber" varchar(38) COLLATE "C" NOT NULL, "VoterID" uuid NULL, "ElectionDate" date NOT NULL,
                       "CountyCode" varchar(2) COLLATE "C" NULL, "JurisdictionCode" varchar(5) COLLATE "C" NULL,
                       "SchoolDistrictCode" varchar(5) COLLATE "C" NULL)
                   """
                 : $"""
-                  CREATE TABLE "{Staging}" ("VoterNumber" varchar(38) NOT NULL, "ElectionDate" date NOT NULL,
+                  CREATE TABLE "{Staging}" ("VoterNumber" varchar(38) NOT NULL, "VoterID" uniqueidentifier NULL, "ElectionDate" date NOT NULL,
                       "CountyCode" varchar(2) NULL, "JurisdictionCode" varchar(5) NULL, "SchoolDistrictCode" varchar(5) NULL)
                   """, ct);
 
@@ -78,11 +78,17 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
                 dates.Select(d => (d, (int?)null, "")),
                 overwrite: false, ct);
 
+            // The voter numbers are looked up once, not once for every election.
+            await context.Database.ExecuteSqlRawAsync(postgres
+                ? $"UPDATE \"{Staging}\" AS s SET \"VoterID\" = v.\"ID\" FROM \"Voters\" AS v WHERE v.\"VOTER_IDENTIFICATION_NUMBER\" COLLATE \"C\" = s.\"VoterNumber\""
+                : $"UPDATE s SET s.\"VoterID\" = v.\"ID\" FROM \"{Staging}\" AS s JOIN \"Voters\" AS v ON v.\"VOTER_IDENTIFICATION_NUMBER\" = s.\"VoterNumber\"", ct);
+            await context.Database.ExecuteSqlRawAsync($"DELETE FROM \"{Staging}\" WHERE \"VoterID\" IS NULL", ct);
+
             await context.Database.ExecuteSqlRawAsync($"CREATE INDEX \"IX_{Staging}_ElectionDate\" ON \"{Staging}\" (\"ElectionDate\")", ct);
 
             var inserted = 0L;
             foreach (var date in dates.Order())
-                inserted += await context.Database.ExecuteSqlRawAsync(InsertSql(postgres), [date], ct);
+                inserted += await context.Database.ExecuteSqlRawAsync(InsertSql(), [date], ct);
 
             await context.Database.ExecuteSqlRawAsync($"DROP TABLE \"{Staging}\"", ct);
             return new VoteHistoryResult(rows, inserted);
@@ -93,18 +99,15 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
         }
     }
 
-    // Postgres can't hash-join the voter number on its case-insensitive collation (see Worker.InsertVoters).
-    private static string InsertSql(bool postgres)
+    private static string InsertSql()
     {
-        var collate = postgres ? " COLLATE \"C\"" : "";
         return $$"""
         INSERT INTO "VoteHistory" ("VoterID", "ElectionDate", "CountyCode", "JurisdictionCode", "SchoolDistrictCode")
         SELECT x."VoterID", x."ElectionDate", x."CountyCode", x."JurisdictionCode", x."SchoolDistrictCode"
         FROM (
-            SELECT v."ID" AS "VoterID", s."ElectionDate", s."CountyCode", s."JurisdictionCode", s."SchoolDistrictCode",
-                   ROW_NUMBER() OVER (PARTITION BY v."ID" ORDER BY s."CountyCode", s."JurisdictionCode", s."SchoolDistrictCode") AS rn
+            SELECT s."VoterID", s."ElectionDate", s."CountyCode", s."JurisdictionCode", s."SchoolDistrictCode",
+                   ROW_NUMBER() OVER (PARTITION BY s."VoterID" ORDER BY s."CountyCode", s."JurisdictionCode", s."SchoolDistrictCode") AS rn
             FROM "{{Staging}}" AS s
-            JOIN "Voters" AS v ON v."VOTER_IDENTIFICATION_NUMBER"{{collate}} = s."VoterNumber"
             WHERE s."ElectionDate" = {0}
         ) AS x
         WHERE x.rn = 1

@@ -40,6 +40,12 @@ public class HeadhunterContext : DbContext
         }
     }
 
+    private static readonly HashSet<string> AddressCodeKeys =
+    [
+        "COUNTY_CODE", "JURISDICTION_CODE", "SCHOOL_DISTRICT_CODE", "STATE_HOUSE_DISTRICT_CODE", "STATE_SENATE_DISTRICT_CODE",
+        "US_CONGRESS_DISTRICT_CODE", "COUNTY_COMMISSIONER_DISTRICT_CODE",
+    ];
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -56,7 +62,7 @@ public class HeadhunterContext : DbContext
             foreach (var property in modelBuilder.Model.GetEntityTypes()
                          .Where(t => t.ClrType != typeof(MichiganVoterRecord))
                          .SelectMany(t => t.GetProperties())
-                         .Where(p => p.ClrType == typeof(string) && (p.Name.EndsWith("Code") || (p.DeclaringType.ClrType == typeof(Address) && p.Name.EndsWith("_CODE")))))
+                         .Where(p => p.ClrType == typeof(string) && (p.Name.EndsWith("Code") || (p.DeclaringType.ClrType == typeof(Address) && AddressCodeKeys.Contains(p.Name)))))
                 property.SetCollation("C");
 
         // VoterConfiguration's expression is SQL Server's T-SQL.

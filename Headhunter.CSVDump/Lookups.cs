@@ -8,7 +8,7 @@ public static class Lookups
     /// <summary>
     /// Adds the counties, jurisdictions, school districts and elections that aren't in the database yet. With
     /// overwrite the given names replace the stored ones (the state's code files are the authority); without it
-    /// only missing rows are added (names read off a data file fill gaps and never change a code file's).
+    /// only missing rows and empty names are filled in (names read off a data file never change a code file's).
     /// </summary>
     public static async Task UpsertAsync(HeadhunterContext context,
         IEnumerable<(string Code, string Name)> counties,
@@ -20,7 +20,7 @@ public static class Lookups
         var countyRows = await context.Counties.ToDictionaryAsync(c => c.Code, ct);
         foreach (var (code, name) in counties)
         {
-            if (countyRows.TryGetValue(code, out var row)) { if (overwrite) row.Name = name; }
+            if (countyRows.TryGetValue(code, out var row)) { if (overwrite || row.Name.Length == 0) row.Name = name; }
             else context.Counties.Add(countyRows[code] = new County { Code = code, Name = name });
         }
         // Counties first: a jurisdiction's foreign key needs its county.
@@ -29,7 +29,7 @@ public static class Lookups
         var jurisdictionRows = await context.Jurisdictions.ToDictionaryAsync(j => (j.CountyCode, j.Code), ct);
         foreach (var (county, code, name) in jurisdictions)
         {
-            if (jurisdictionRows.TryGetValue((county, code), out var row)) { if (overwrite) row.Name = name; }
+            if (jurisdictionRows.TryGetValue((county, code), out var row)) { if (overwrite || row.Name.Length == 0) row.Name = name; }
             else
             {
                 if (!countyRows.ContainsKey(county))
@@ -41,7 +41,7 @@ public static class Lookups
         var schoolRows = await context.SchoolDistricts.ToDictionaryAsync(s => s.Code, ct);
         foreach (var (code, name) in schools)
         {
-            if (schoolRows.TryGetValue(code, out var row)) { if (overwrite) row.Name = name; }
+            if (schoolRows.TryGetValue(code, out var row)) { if (overwrite || row.Name.Length == 0) row.Name = name; }
             else context.SchoolDistricts.Add(schoolRows[code] = new SchoolDistrict { Code = code, Name = name });
         }
 
