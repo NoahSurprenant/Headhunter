@@ -270,7 +270,7 @@ GROUP BY
         using var scope = _serviceScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<HeadhunterContext>();
         await InsertLookups(context, ct);
-        context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+        context.Database.SetCommandTimeout(TimeSpan.Zero);
         await context.Database.ExecuteSqlRawAsync(
             rawSql.Replace("NEWID()", context.Database.IsNpgsql() ? "gen_random_uuid()" : "NEWID()"), ct);
     }
@@ -366,7 +366,7 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
                 $"md5(lower(concat_ws(chr(31), {string.Join(", ", columns.Select(c => $"coalesce({alias}.\"{c}\", '') COLLATE \"case_insensitive\""))})))";
             rawSql = rawSql[..rawSql.IndexOf("\nON AL.", StringComparison.Ordinal)] + $"\nON {Key("AL")} = {Key("MR")};";
         }
-        context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+        context.Database.SetCommandTimeout(TimeSpan.Zero);
         await context.Database.ExecuteSqlRawAsync(rawSql, ct);
     }
 
@@ -421,7 +421,7 @@ ON AL."STREET_NUMBER_PREFIX" = MR."STREET_NUMBER_PREFIX" AND
             FillNames("UsCongressDistricts", "US_CONGRESS_DISTRICT_CODE", "US_CONGRESS_DISTRICT_NAME", false),
             FillNames("CountyCommissionerDistricts", "COUNTY_COMMISSIONER_DISTRICT_CODE", "COUNTY_COMMISSIONER_DISTRICT_NAME", true),
         ];
-        context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+        context.Database.SetCommandTimeout(TimeSpan.Zero);
         foreach (var statement in statements)
             await context.Database.ExecuteSqlRawAsync(statement, ct);
     }
