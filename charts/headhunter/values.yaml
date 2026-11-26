@@ -279,7 +279,8 @@ postgres:
     storageClass: ""
     accessModes: [ReadWriteOnce]
     annotations: {}
-  # PostgreSQL run by the CloudNativePG operator (installed separately) instead of the Deployment above: a primary
+  # PostgreSQL run by the CloudNativePG operator instead of the Deployment above (README, "PostgreSQL on
+  # CloudNativePG": the operator and its CRDs must already be installed in the cluster): a primary
   # and streaming replicas, each on a node of its own with its own volume (persistence.size and storageClass, one
   # claim per instance, created by the operator), and failover when the primary's node is lost. The Service
   # (service.name) follows the primary. The administrator's password is the operator's generated Secret
