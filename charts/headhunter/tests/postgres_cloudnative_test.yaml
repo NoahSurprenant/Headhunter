@@ -1,0 +1,136 @@
+suite: postgres on CloudNativePG
+templates:
+  - templates/app.yaml
+  - templates/postgres.yaml
+  - templates/postgres-cluster.yaml
+  - templates/networkpolicy.yaml
+release:
+  namespace: hh
+set:
+  database.provider: Postgres
+  mssql.enabled: false
+  postgres.enabled: true
+  postgres.cloudnative.enabled: true
+  postgres.persistence.size: 100Gi
+  postgres.persistence.storageClass: local-path-samsung
+  postgres.configuration: { shared_buffers: 1GB }
+  networkPolicy.enabled: true
+tests:
+  - it: renders a two-instance Cluster, each instance on a node of its own
+    template: templates/postgres-cluster.yaml
+    documentIndex: 0
+    asserts:
+      - isKind: { of: Cluster }
+      - equal: { path: metadata.name, value: postgres-ha }
+      - equal: { path: spec.instances, value: 2 }
+      - equal: { path: spec.enableSuperuserAccess, value: true }
+      - equal: { path: spec.storage, value: { size: 100Gi, storageClassName: local-path-samsung } }
+      - equal: { path: spec.bootstrap.initdb.database, value: Headhunter }
+      - equal: { path: spec.postgresql.parameters.shared_buffers, value: 1GB }
+      - equal: { path: spec.affinity.podAntiAffinityType, value: required }
+      - equal: { path: spec.affinity.topologyKey, value: kubernetes.io/hostname }
+      - equal: { path: spec.inheritedMetadata.labels.app, value: postgres }
+      - matchRegex: { path: spec.imageName, pattern: "^ghcr.io/cloudnative-pg/postgresql:18.7-standard-trixie@sha256:" }
+      - isSubset: { path: metadata.annotations, content: { argocd.argoproj.io/sync-options: "Prune=false,Delete=false" } }
+
+  - it: is never pruned and renders no PodMonitor unless asked
+    template: templates/postgres-cluster.yaml
+    asserts:
+      - hasDocuments: { count: 1 }
+
+  - it: renders the PodMonitor on request
+    template: templates/postgres-cluster.yaml
+    documentIndex: 1
+    set:
+      postgres.cloudnative.podMonitor: { enabled: true, labels: { otel-scrape: "true" } }
+    asserts:
+      - isKind: { of: PodMonitor }
+      - isSubset: { path: spec.selector.matchLabels, content: { cnpg.io/cluster: postgres-ha } }
+      - equal: { path: metadata.labels.otel-scrape, value: "true" }
+
+  - it: gives synchronous replication and parameters in one postgresql block
+    template: templates/postgres-cluster.yaml
+    documentIndex: 0
+    set:
+      postgres.cloudnative.synchronous: { method: any, number: 1 }
+    asserts:
+      - equal: { path: spec.postgresql.synchronous.number, value: 1 }
+      - equal: { path: spec.postgresql.parameters.shared_buffers, value: 1GB }
+
+  - it: replaces the Deployment and the data volume claim; the Service follows the primary
+    template: templates/postgres.yaml
+    asserts:
+      - hasDocuments: { count: 2 }
+      - isKind: { of: PersistentVolumeClaim }
+        documentIndex: 0
+      - equal: { path: metadata.name, value: postgres-backup-pvc }
+        documentIndex: 0
+      - isKind: { of: Service }
+        documentIndex: 1
+      - equal: { path: spec.selector, value: { cnpg.io/cluster: postgres-ha, cnpg.io/instanceRole: primary } }
+        documentIndex: 1
+      - equal: { path: "spec.ports[0].targetPort", value: 5432 }
+        documentIndex: 1
+
+  - it: uses the operator's generated administrator password
+    template: templates/app.yaml
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_PASSWORD
+            valueFrom: { secretKeyRef: { name: postgres-ha-superuser, key: password } }
+        any: true
+
+  - it: keeps the password of a Secret that is named
+    template: templates/app.yaml
+    documentIndex: 0
+    set:
+      postgres.password: { secretName: mine, key: pw }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_PASSWORD
+            valueFrom: { secretKeyRef: { name: mine, key: pw } }
+        any: true
+
+  - it: lets the instances reach each other, the operator reach them, and them reach the API server
+    template: templates/networkpolicy.yaml
+    documentSelector: { path: metadata.name, value: postgres }
+    asserts:
+      - equal: { path: metadata.name, value: postgres }
+      - contains:
+          path: spec.ingress
+          content:
+            from: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: cnpg-system } }, podSelector: { matchLabels: { app.kubernetes.io/name: cloudnative-pg } } }]
+            ports: [{ protocol: TCP, port: 5432 }, { protocol: TCP, port: 8000 }]
+      - contains:
+          path: spec.ingress
+          content:
+            from: [{ podSelector: { matchLabels: { app: postgres } } }]
+            ports: [{ protocol: TCP, port: 5432 }, { protocol: TCP, port: 8000 }]
+      - contains:
+          path: spec.egress
+          content:
+            ports: [{ protocol: TCP, port: 443 }, { protocol: TCP, port: 6443 }]
+
+  - it: scrapes the metrics port only from who is named
+    template: templates/networkpolicy.yaml
+    documentSelector: { path: metadata.name, value: postgres }
+    set:
+      networkPolicy.postgres.metricsFrom: [{ podSelector: { matchLabels: { x: y } } }]
+    asserts:
+      - contains:
+          path: spec.ingress
+          content:
+            from: [{ podSelector: { matchLabels: { x: y } } }]
+            ports: [{ protocol: TCP, port: 9187 }]
+
+  - it: needs the Postgres provider
+    template: templates/postgres-cluster.yaml
+    set:
+      database.provider: SqlServer
+    asserts:
+      - failedTemplate: {}

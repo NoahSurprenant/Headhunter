@@ -1,0 +1,23 @@
+# PostgreSQL run by the CloudNativePG operator (a primary and a replica) instead of the Deployment. Installed by
+# CI's lint and template checks; the operator's CRDs are not in CI's cluster, so only the rendering is checked.
+database:
+  provider: Postgres
+
+mssql:
+  enabled: false
+
+postgres:
+  enabled: true
+  cloudnative:
+    enabled: true
+
+sqlExporter:
+  enabled: true
+
+networkPolicy:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts: [headhunter.example.com]

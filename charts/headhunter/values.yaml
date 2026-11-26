@@ -279,6 +279,36 @@ postgres:
     storageClass: ""
     accessModes: [ReadWriteOnce]
     annotations: {}
+  # PostgreSQL run by the CloudNativePG operator (installed separately) instead of the Deployment above: a primary
+  # and streaming replicas, each on a node of its own with its own volume (persistence.size and storageClass, one
+  # claim per instance, created by the operator), and failover when the primary's node is lost. The Service
+  # (service.name) follows the primary. The administrator's password is the operator's generated Secret
+  # <clusterName>-superuser (key password) unless password.secretName is set. resources, configuration,
+  # nodeSelector, tolerations, podLabels and podAnnotations apply to the instances; the Deployment, its
+  # volume claim and the securityContext values do not. The data is not moved from an earlier Deployment: restore a
+  # pg_dump archive into the new primary.
+  cloudnative:
+    enabled: false
+    # A Cluster named like the Deployment (postgres) would give its Services names the chart's own Service has.
+    clusterName: postgres-ha
+    # Primary included: 2 is a primary and one replica.
+    instances: 2
+    image:
+      repository: ghcr.io/cloudnative-pg/postgresql
+      # Pinned by digest, as the Deployment's image. The operator upgrades minor versions by a rolling update when
+      # this changes; a major version needs a dump and restore.
+      tag: 18.7-standard-trixie@sha256:1abcfd1cac6d53cda5185706819aab36d66a4ed88e99fc2ae44ab0826aa99f00
+      digest: ""
+      pullPolicy: IfNotPresent
+    # The Cluster's synchronous replication (spec.postgresql.synchronous), e.g. { method: any, number: 1,
+    # dataDurability: preferred }. Empty: asynchronous, so a failover can lose the last moments of writes.
+    synchronous: {}
+    # Merged into the Cluster's spec as given (backup, plugins, monitoring...). Keys the chart sets can't be overridden.
+    extraSpec: {}
+    # A PodMonitor for the instances' metrics port. Needs the Prometheus Operator CRDs.
+    podMonitor:
+      enabled: false
+      labels: {}
   # The backup volume the migration Job mounts (migrations.backup.pgDirectory) and writes its pg_dump archives to.
   backup:
     enabled: true
@@ -472,6 +502,16 @@ networkPolicy:
     loadBalancerFrom: []
     extraIngress: []
   postgres:
+    # postgres.cloudnative: the operator's pods (they call each instance's status port) and the instances' own
+    # peers are allowed by the chart; these are the rest.
+    operatorFrom:
+      - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: cnpg-system } }
+        podSelector: { matchLabels: { app.kubernetes.io/name: cloudnative-pg } }
+    # postgres.cloudnative: who scrapes the metrics port (9187). Empty: no rule.
+    metricsFrom: []
+    # postgres.cloudnative: the API server the instances call (each runs the operator's instance manager). Empty:
+    # anywhere.
+    apiServerTo: []
     # Who may reach the LoadBalancer (postgres.loadBalancer). Empty: anyone.
     loadBalancerFrom: []
     extraIngress: []

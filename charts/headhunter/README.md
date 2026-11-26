@@ -9,6 +9,10 @@ things around it:
   Job then runs `/app/efbundle-postgres`, backs up with `pg_dump -Fc` onto the volume at
   `migrations.backup.pgDirectory`, and sql-exporter uses its `pg_standard` collector. `ci/postgres-values.yaml`
   is a working example. To move data from SQL Server, run `/app/convert` (see the repository readme).
+  With `postgres.cloudnative.enabled` the operator CloudNativePG (installed separately) runs it instead: a primary
+  and a replica on separate nodes, with failover, the `postgres` Service always on the primary
+  (`ci/postgres-cloudnative-values.yaml`). The data is not carried over from the Deployment: restore a `pg_dump`
+  archive into the new primary.
 - **A migration Job** (`migrations`): applies the image's EF Core migrations, after backing up the
   database. It works the same way as GrifballWebApp's chart.
 - **sql-exporter** (`sqlExporter`): Prometheus metrics for SQL Server. It has two collectors:

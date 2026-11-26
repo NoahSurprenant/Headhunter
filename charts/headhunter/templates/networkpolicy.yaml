@@ -180,7 +180,7 @@ spec:
 {{- if .Values.postgres.enabled }}
 {{- $pg := .Values.postgres }}
 # PostgreSQL: in from the app, the migration Job and sql-exporter (and the LoadBalancer's clients);
-# out to DNS only.
+# out to DNS only (with postgres.cloudnative also: the other instances and the API server).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -227,8 +227,56 @@ spec:
     {{- with $np.postgres.extraIngress }}
     {{- tpl (toYaml .) $ | nindent 4 }}
     {{- end }}
+    {{- if include "headhunter.pgCloudnative" . }}
+    # CloudNativePG: the replicas streaming from the primary, the operator checking each instance.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: {{ $pg.name }}
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 8000
+    - {{- with $np.postgres.operatorFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 8000
+    {{- with $np.postgres.metricsFrom }}
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: 9187
+    {{- end }}
+    {{- end }}
   egress:
     {{- $dnsRule | nindent 4 }}
+    {{- if include "headhunter.pgCloudnative" . }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: {{ $pg.name }}
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 8000
+    - {{- with $np.postgres.apiServerTo }}
+      to:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    {{- end }}
 ---
 {{- end }}
 {{- if .Values.sqlExporter.enabled }}

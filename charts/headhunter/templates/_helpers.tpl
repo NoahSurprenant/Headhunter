@@ -90,14 +90,40 @@ repository:tag, repository:tag@digest, or repository@digest. tag may itself carr
 {{- .Values.database.options | default (include "headhunter.byProvider" (dict "root" . "sql" "Encrypt=True;TrustServerCertificate=True" "pg" "SSL Mode=Prefer")) | trimSuffix ";" -}}
 {{- end }}
 
+{{/* PostgreSQL by the CloudNativePG operator (postgres.cloudnative): "true" when on. */}}
+{{- define "headhunter.pgCloudnative" -}}
+{{- if and .Values.postgres.enabled .Values.postgres.cloudnative.enabled }}true{{ end -}}
+{{- end }}
+
+{{/* The pods the postgres Service and LoadBalancer select: the Deployment's, or the CloudNativePG Cluster's primary. */}}
+{{- define "headhunter.pgSelector" -}}
+{{- if include "headhunter.pgCloudnative" . -}}
+cnpg.io/cluster: {{ include "headhunter.pgClusterName" . }}
+cnpg.io/instanceRole: primary
+{{- else -}}
+app: {{ .Values.postgres.name }}
+{{- end -}}
+{{- end }}
+
+{{/* The CloudNativePG Cluster's name; it names the pods, its Services (-rw, -ro, -r) and its generated Secrets. */}}
+{{- define "headhunter.pgClusterName" -}}
+{{- .Values.postgres.cloudnative.clusterName -}}
+{{- end }}
+
 {{/* The administrator's password: database.password, else the chart's database's own (mssql.saPassword, postgres.password). */}}
 {{- define "headhunter.dbPasswordRef" -}}
 {{- $p := .Values.database.password -}}
 {{- $own := include "headhunter.byProvider" (dict "root" . "sql" "mssql" "pg" "postgres") -}}
 {{- $secretName := $p.secretName | default (ternary .Values.postgres.password.secretName .Values.mssql.saPassword.secretName (eq $own "postgres")) -}}
 {{- $key := $p.key | default (ternary .Values.postgres.password.key .Values.mssql.saPassword.key (eq $own "postgres")) -}}
+{{- if and (include "headhunter.pgCloudnative" .) (not $p.secretName) (not .Values.postgres.password.secretName) (not $p.key) }}
+{{- /* The operator generates the administrator's password: <cluster>-superuser, key password. */}}
+name: {{ printf "%s-superuser" (include "headhunter.pgClusterName" .) }}
+key: password
+{{- else }}
 name: {{ include "headhunter.secretName" (dict "secretName" $secretName "root" .) }}
 key: {{ $key }}
+{{- end }}
 {{- end }}
 
 {{/*
