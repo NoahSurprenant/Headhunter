@@ -25,8 +25,10 @@ COPY ["Headhunter.API/Headhunter.API.csproj", "Headhunter.API/"]
 COPY ["Headhunter.Database/Headhunter.Database.csproj", "Headhunter.Database/"]
 COPY ["Headhunter.Migrations.Postgres/Headhunter.Migrations.Postgres.csproj", "Headhunter.Migrations.Postgres/"]
 COPY ["Headhunter.Convert/Headhunter.Convert.csproj", "Headhunter.Convert/"]
+COPY ["Headhunter.CSVDump/Headhunter.CSVDump.csproj", "Headhunter.CSVDump/"]
 RUN dotnet restore "./Headhunter.API/Headhunter.API.csproj"
 RUN dotnet restore "./Headhunter.Convert/Headhunter.Convert.csproj"
+RUN dotnet restore "./Headhunter.CSVDump/Headhunter.CSVDump.csproj"
 COPY . .
 WORKDIR "/src/Headhunter.API"
 RUN dotnet build "./Headhunter.API.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:DefineConstants=DOCKER_BUILD /p:SourceRevisionId=$SOURCE_REVISION
@@ -38,6 +40,8 @@ ARG SOURCE_REVISION=
 RUN dotnet publish "./Headhunter.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:DefineConstants=DOCKER_BUILD /p:SourceRevisionId=$SOURCE_REVISION
 # The data copy between SQL Server and PostgreSQL (Headhunter.Convert), at /app/convert.
 RUN dotnet publish "../Headhunter.Convert/Headhunter.Convert.csproj" -c $BUILD_CONFIGURATION -o /app/convert /p:UseAppHost=false
+# The FOIA file import (Headhunter.CSVDump), at /app/import: Import=History for the vote history, else the registration list.
+RUN dotnet publish "../Headhunter.CSVDump/Headhunter.CSVDump.csproj" -c $BUILD_CONFIGURATION -o /app/import /p:UseAppHost=false
 
 # EF Core migrations bundle: one executable that applies pending migrations, at /app/efbundle.
 # Shipping it inside the image means the migrations a deploy runs always come from the same build as
@@ -96,6 +100,7 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 COPY --from=publish /app/convert /app/convert
+COPY --from=publish /app/import /app/import
 COPY --from=angular /usr/angular/dist/headhunter.client/browser wwwroot
 COPY --from=migrations /app/efbundle /app/efbundle
 COPY --from=migrations /app/migrations.txt /app/migrations.txt

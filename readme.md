@@ -17,3 +17,5 @@ a stored secret holds one provider's string. Give each command its own through t
 Copying a database to the other provider: `/app/convert` in the image (project `Headhunter.Convert`). It takes
 `Source__Provider`, `Source__ConnectionString`, `Target__Provider`, `Target__ConnectionString`, migrates the target,
 refuses one that already has rows, and copies in one transaction, checking row counts before it commits.
+
+Loading the state's files: `dotnet /app/import/Headhunter.CSVDump.dll` in the image, with `Database__Provider`, `ConnectionStrings__Headhunter` and `CSVPath` (the registration list, CSV or zip). With `Import=History`, `CSVPath` is the vote history file (CSV or zip) and `CodesPath` the state's code files (directory or the "Informational Documents" zip).
