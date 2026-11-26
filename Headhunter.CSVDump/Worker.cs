@@ -63,11 +63,10 @@ public class Worker : BackgroundService
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var path = configuration.GetValue<string>("CSVPath") ?? throw new Exception("CSVPath missing in config");
 
-        using var csv = VoterFile.Open(path);
 
 
         //var count = csv.GetRecords<MichiganVoterRecord>().Count();
-        var records = VoterFile.Records(csv);
+        var records = VoterFile.Records(path);
         var batches = GetBatches(records, 500);
 
         //var progress = AnsiConsole.Progress();
