@@ -105,12 +105,21 @@ public class CsvImportTests
             Assert.That(await check.Addresses.CountAsync(), Is.EqualTo(fake.Households));
             Assert.That(await check.Voters.CountAsync(v => v.IS_PERM_AV_BALLOT_VOTER), Is.EqualTo(fake.PermAvBallotVoters));
 
-            var expected = fake.Records[7];
+            // Every household's voters share one address, and the address sizes match the file's.
+            var expectedSizes = fake.Records.GroupBy(r => (FakeVoterFile.FullStreetAddress(r).ToUpperInvariant(), r.CITY)).Select(g => g.Count()).Order().ToList();
+            var actualSizes = (await check.Addresses.Select(a => a.Voters.Count).ToListAsync()).Order().ToList();
+            Assert.That(actualSizes, Is.EqualTo(expectedSizes));
+
+            // One plain house, and one that has an apartment, so the street address is joined from every part.
+            foreach (var expected in new[] { fake.Records[7], fake.Records.First(r => r.EXTENSION.Length > 0) })
+            {
             var voter = await check.Voters.Include(v => v.Address).SingleAsync(v => v.VOTER_IDENTIFICATION_NUMBER == expected.VOTER_IDENTIFICATION_NUMBER);
             Assert.That(voter.LAST_NAME, Is.EqualTo(expected.LAST_NAME));
             Assert.That(voter.REGISTRATION_DATE, Is.EqualTo(expected.REGISTRATION_DATE));
             Assert.That(voter.Address.FullStreetAddress, Is.EqualTo(FakeVoterFile.FullStreetAddress(expected)).IgnoreCase);
             Assert.That(voter.Address.CITY, Is.EqualTo(expected.CITY));
+                Assert.That(voter.IS_PERM_AV_APP_VOTER, Is.EqualTo(expected.IS_PERM_AV_APP_VOTER));
+            }
         });
     }
 }

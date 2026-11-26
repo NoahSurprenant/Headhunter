@@ -33,6 +33,7 @@ public class FakeVoterFileTests
             Assert.That(records.Select(r => r.VOTER_IDENTIFICATION_NUMBER).Distinct().Count(), Is.EqualTo(2000));
             Assert.That(records.Select(r => r.REGISTRATION_DATE), Is.EqualTo(fake.Records.Select(r => r.REGISTRATION_DATE)));
             Assert.That(records.Count(r => r.IS_PERM_AV_BALLOT_VOTER), Is.EqualTo(fake.PermAvBallotVoters));
+            Assert.That(fake.Households, Is.EqualTo(fake.Records.Select(r => (FakeVoterFile.FullStreetAddress(r), r.CITY)).Distinct().Count()));
             Assert.That(fake.Households, Is.InRange(600, 1400));
         }
         finally { File.Delete(path); }

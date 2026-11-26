@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Headhunter.Database;
 
@@ -85,7 +86,7 @@ public sealed class FakeVoterFile
             var place = Places[random.Next(Places.Length)];
             var streetName = Streets[random.Next(Streets.Length)];
             var streetType = StreetTypes[random.Next(StreetTypes.Length)];
-            var directionPrefix = random.Next(10) < 2 ? Directions[random.Next(4)] : "";
+            var directionPrefix = random.Next(10) < 2 ? Directions[random.Next(Directions.Length)] : "";
             // A building (apartments, many households on one number) or a single house.
             var apartments = random.Next(12) == 0 ? random.Next(3, 9) : 1;
             var number = (nextNumber += random.Next(1, 40)).ToString();
@@ -97,6 +98,7 @@ public sealed class FakeVoterFile
                 var size = new[] { 1, 1, 2, 2, 2, 3, 4 }[random.Next(7)];
                 var precinct = random.Next(1, 40).ToString();
                 var suffix = random.Next(40) == 0 ? "1/2" : "";
+                var directionSuffix = random.Next(30) == 0 ? Directions[random.Next(Directions.Length)] : "";
                 for (var member = 0; member < size && records.Count < voters; member++)
                 {
                     var born = random.Next(1930, 2007);
@@ -121,7 +123,7 @@ public sealed class FakeVoterFile
                         DIRECTION_PREFIX = directionPrefix,
                         STREET_NAME = streetName,
                         STREET_TYPE = streetType,
-                        DIRECTION_SUFFIX = "",
+                        DIRECTION_SUFFIX = directionSuffix,
                         EXTENSION = apartments > 1 ? $"APT {unit}" : "",
                         CITY = place.City,
                         STATE = "MI",
@@ -183,7 +185,8 @@ public sealed class FakeVoterFile
             csv.Append(string.Join(",", columns.Select(c => c.GetValue(record) switch
             {
                 bool flag => flag ? "\"Y\"" : "\"N\"",
-                DateTime date => $"\"{date:yyyy-MM-dd}\"",
+                DateTime date => date.ToString("\"yyyy-MM-dd\"", CultureInfo.InvariantCulture),
+                IFormattable number => "\"" + number.ToString(null, CultureInfo.InvariantCulture) + "\"",
                 var value => $"\"{value}\"",
             }))).Append("\r\n");
         }
