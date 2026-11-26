@@ -9,6 +9,10 @@ things around it:
   Job then runs `/app/efbundle-postgres`, backs up with `pg_dump -Fc` onto the volume at
   `migrations.backup.pgDirectory`, and sql-exporter uses its `pg_standard` collector. `ci/postgres-values.yaml`
   is a working example. To move data from SQL Server, run `/app/convert` (see the repository readme).
+  With `postgres.cloudnative.enabled` the operator CloudNativePG (installed separately) runs it instead: a primary
+  and a replica on separate nodes, with failover, the `postgres` Service always on the primary
+  (`ci/postgres-cloudnative-values.yaml`). The data is not carried over from the Deployment: restore a `pg_dump`
+  archive into the new primary.
 - **A migration Job** (`migrations`): applies the image's EF Core migrations, after backing up the
   database. It works the same way as GrifballWebApp's chart.
 - **sql-exporter** (`sqlExporter`): Prometheus metrics for SQL Server. It has two collectors:
@@ -30,6 +34,48 @@ helm install headhunter oci://ghcr.io/noahsurprenant/charts/headhunter -n headhu
 
 `ci/minimal-values.yaml` is the smallest working install. `ci/full-values.yaml` turns everything on,
 the way the homelab runs it.
+
+## PostgreSQL on CloudNativePG
+
+`postgres.cloudnative.enabled: true` runs PostgreSQL through the [CloudNativePG](https://cloudnative-pg.io) operator
+instead of the chart's single Deployment, for a replica and automatic failover. Example: `ci/postgres-cloudnative-values.yaml`.
+
+**Needs:** the operator installed in the cluster first (its CRDs and controller; the chart doesn't install it), and
+`database.provider: Postgres`. A PodMonitor (`cloudnative.podMonitor`) also needs the Prometheus Operator CRDs.
+
+**How it works**
+
+- The chart creates one CloudNativePG `Cluster` (`cloudnative.clusterName`, default `postgres-ha`) with
+  `cloudnative.instances` instances (default 2: a primary and one replica). Each instance gets its own volume from
+  `postgres.persistence` (size and storage class), created by the operator, and a node of its own (required pod
+  anti-affinity), so losing a node loses one copy. The replica streams the primary's write-ahead log.
+- If the primary's pod or node fails, the operator promotes the replica, and the old primary rejoins as a replica
+  when it is back. Replication is asynchronous by default, so a failover can lose the last moments of writes;
+  `cloudnative.synchronous` (for example `{ method: any, number: 1 }`) makes a commit wait for the replica, at the
+  cost of writes stalling when it is down (add `dataDurability: preferred` to avoid that).
+- The `postgres` Service (`postgres.service`) and the LoadBalancer select the current primary, so the app, the
+  migration Job, the backups and the exporter connect unchanged. The instances carry the label `app: <postgres.name>`
+  as the Deployment's pod did, so the NetworkPolicies and the backups' node affinity still apply to them.
+- The administrator is `postgres` with the password the operator generates in the Secret `<clusterName>-superuser`
+  (key `password`); the chart's pods read it from there unless `postgres.password.secretName` is set.
+- The Deployment and its volume claim are not created. `resources`, `configuration`, `nodeSelector`,
+  `tolerations`, `podLabels` and `podAnnotations` of `postgres` apply to the instances; `securityContext`,
+  `image` and `extraEnv` do not (see `cloudnative.image` and `cloudnative.extraSpec`).
+- The Cluster is never pruned by Argo CD or deleted by `helm uninstall` (it holds the database).
+- NetworkPolicy: the instances may reach each other and the API server (their instance manager calls it); the
+  operator's pods (`networkPolicy.postgres.operatorFrom`) may reach them on 5432 and 8000. Set
+  `networkPolicy.postgres.apiServerTo` to the API server's address, and `metricsFrom` to your scraper for port 9187.
+
+**Switching from the Deployment.** The data isn't carried over, and the new Cluster starts empty:
+
+1. Take a `pg_dump -Fc` archive of the database (the chart's backup, or by hand) to a volume you can read afterwards.
+2. Set `postgres.cloudnative.enabled: true`. The Deployment goes; its volume claim stays (it is never pruned),
+   as a copy to go back to.
+3. Restore the archive into the new primary (`pg_restore --no-owner -d <database> -j 4`, against the `postgres`
+   Service), then run the migrations as usual.
+
+**Not included:** archiving the write-ahead log for point-in-time recovery (the nightly `pg_dump` backups still
+cover that role; `cloudnative.extraSpec` can add a `backup` section and a plugin).
 
 ## Migrations
 
