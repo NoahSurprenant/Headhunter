@@ -40,6 +40,19 @@ tests:
           content: { name: backup, persistentVolumeClaim: { claimName: postgres-backup-pvc } }
           any: true
 
+  - it: dumps with zstd and enough CPU, not the small steps' quarter core
+    template: templates/migrations.yaml
+    asserts:
+      - matchRegex: { path: "spec.template.spec.initContainers[3].args[0]", pattern: "pg_dump -Fc --compress=zstd:3 -d" }
+      - equal: { path: "spec.template.spec.initContainers[3].resources.limits.cpu", value: "2" }
+
+  - it: leaves pg_dump's own compression when pgCompression is empty
+    template: templates/migrations.yaml
+    set:
+      migrations.backup.pgCompression: ""
+    asserts:
+      - matchRegex: { path: "spec.template.spec.initContainers[3].args[0]", pattern: "pg_dump -Fc -d" }
+
   - it: has no SQL Server recovery model on Postgres
     template: templates/migrations.yaml
     set:

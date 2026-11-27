@@ -23,7 +23,7 @@ backup_database() {
   file="$BACKUP_DIR/${DB_NAME}_$(date +%Y%m%d_%H%M%S).dump"
   echo "Backing up $DB_NAME to $file"
   trap 'rm -f "$file.partial"' EXIT
-  pg_dump -Fc -d "$DB_NAME" -f "$file.partial"
+  pg_dump -Fc {{ with .Values.migrations.backup.pgCompression }}--compress={{ . }} {{ end }}-d "$DB_NAME" -f "$file.partial"
   pg_restore -f /dev/null "$file.partial"
   mv "$file.partial" "$file"
   trap - EXIT
