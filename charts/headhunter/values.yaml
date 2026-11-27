@@ -390,6 +390,18 @@ migrations:
     pgDirectory: /backup
     # Who owns the backup volume's root for pg_dump: the app image's user (APP_UID), as user:group.
     pgOwner: "1654:1654"
+    # With provider Postgres: pg_dump's --compress, for the pre-migration and scheduled backups. zstd is several
+    # times faster than the default (zlib) at a similar size; "" leaves pg_dump's default.
+    pgCompression: "zstd:3"
+    # With provider Postgres: the containers that run pg_dump. It compresses, so it is CPU-bound: at the small
+    # steps' 250m a 16 GB database took hours.
+    pgResources:
+      requests:
+        cpu: 250m
+        memory: 128Mi
+      limits:
+        cpu: "2"
+        memory: 512Mi
     # With provider Postgres: a pg_dump of the database on a schedule, beside the pre-migration ones, to the same
     # volume. Verified by reading it back; a database that does not exist yet is skipped. Needs postgres.backup.
     scheduled:

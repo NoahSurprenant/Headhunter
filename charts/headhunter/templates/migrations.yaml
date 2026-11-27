@@ -147,7 +147,7 @@ spec:
         - name: BACKUP_DIR
           value: {{ $m.backup.pgDirectory | quote }}
       resources:
-        {{- toYaml $m.stepResources | nindent 8 }}
+        {{- toYaml $m.backup.pgResources | nindent 8 }}
       volumeMounts:
         {{- include "headhunter.migrationMounts" . | nindent 8 }}
         - name: backup
