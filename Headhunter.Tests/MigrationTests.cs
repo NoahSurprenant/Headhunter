@@ -45,7 +45,7 @@ public class MigrationTests
         await using (var db = create())
         {
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-            previous = applied[^2];
+            previous = applied[applied.FindIndex(m => m.EndsWith("_VoteHistory")) - 1];
             await db.GetService<IMigrator>().MigrateAsync(previous);
 
             async Task<AddressNames> Names(Guid id) => (await db.Database.SqlQueryRaw<AddressNames>(
