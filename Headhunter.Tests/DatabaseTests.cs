@@ -107,6 +107,83 @@ public class DatabaseTests
         });
     }
 
+    // Postgres: the same, from the Suggestions the API runs. The test tables are tiny, so the planner is told not to
+    // scan them; what matters is that the query can seek the index at all.
+    [TestCase("FirstNames", "IX_Voters_FIRST_NAME_Prefix")]
+    [TestCase("MiddleNames", "IX_Voters_MIDDLE_NAME_Prefix")]
+    [TestCase("LastNames", "IX_Voters_LAST_NAME_Prefix")]
+    [TestCase("Cities", "IX_Addresses_CITY_Prefix")]
+    [TestCase("Streets", "IX_Addresses_FullStreetAddress_Prefix")]
+    [TestCase("Streets", "IX_Addresses_STREET_NAME_Prefix")]
+    public async Task PostgresSuggestionQuery_SeeksItsPrefixIndex(string suggestion, string index)
+    {
+        Assume.That(DatabaseFixture.Provider, Is.EqualTo(DatabaseProvider.Postgres), "Postgres plans only");
+
+        await using var context = DatabaseFixture.CreateContext();
+        var query = suggestion switch
+        {
+            "FirstNames" => API.Suggestions.FirstNames(context, "Ada"),
+            "MiddleNames" => API.Suggestions.MiddleNames(context, "A"),
+            "LastNames" => API.Suggestions.LastNames(context, "B"),
+            "Cities" => API.Suggestions.Cities(context, "Oa"),
+            "Streets" => API.Suggestions.Streets(context, "Meri"),
+            _ => throw new ArgumentOutOfRangeException(nameof(suggestion)),
+        };
+
+        var plan = await ExplainPostgres(context, query.ToQueryString());
+
+        Assert.That(plan, Does.Contain(index), $"Plan does not use {index}:\n{plan}");
+    }
+
+    // The voter search by city and birth year joins the two from covering indexes.
+    [TestCase("IX_Addresses_CITY_ID")]
+    [TestCase("IX_Voters_YEAR_OF_BIRTH_AddressID")]
+    public async Task PostgresCityAndBirthYearSearch_UsesCoveringIndexes(string index)
+    {
+        Assume.That(DatabaseFixture.Provider, Is.EqualTo(DatabaseProvider.Postgres), "Postgres plans only");
+
+        await using var context = DatabaseFixture.CreateContext();
+        var sql = context.Voters.Where(v => v.Address.CITY == "Oakland" && v.YEAR_OF_BIRTH == 1990)
+            .Select(v => v.ID).ToQueryString();
+
+        var plan = await ExplainPostgres(context, sql, "SET LOCAL enable_hashjoin = on");
+
+        Assert.That(plan, Does.Contain(index), $"Plan does not use {index}:\n{plan}");
+    }
+
+    private static async Task<string> ExplainPostgres(HeadhunterContext context, string sql, string? extraSetting = null)
+    {
+        // ToQueryString leaves the parameters as "-- @p='value'" comments above the statement.
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(sql, @"^-- (@\w+)='(.*?)'", System.Text.RegularExpressions.RegexOptions.Multiline))
+            sql = sql.Replace(m.Groups[1].Value, "'" + m.Groups[2].Value.Replace("'", "''") + "'");
+
+        var connection = context.Database.GetDbConnection();
+        await connection.OpenAsync();
+        try
+        {
+            await using var transaction = await connection.BeginTransactionAsync();
+            foreach (var setting in new[] { "SET LOCAL enable_seqscan = off", "SET LOCAL enable_bitmapscan = off", extraSetting })
+            {
+                if (setting is null) continue;
+                await using var set = connection.CreateCommand();
+                set.Transaction = transaction;
+                set.CommandText = setting;
+                await set.ExecuteNonQueryAsync();
+            }
+            await using var explain = connection.CreateCommand();
+            explain.Transaction = transaction;
+            explain.CommandText = "EXPLAIN " + sql;
+            var plan = new System.Text.StringBuilder();
+            await using var reader = await explain.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) plan.AppendLine(reader.GetString(0));
+            return plan.ToString();
+        }
+        finally
+        {
+            await connection.CloseAsync();
+        }
+    }
+
     // The district suggestions check each district of the lookup table against the address index on its code (and the
     // filters use the same indexes). The jurisdiction leads two composite indexes, so either may be picked for it.
     [TestCase(API.DistrictType.County, "", "IX_Addresses_COUNTY_CODE_COUNTY_COMMISSIONER_DISTRICT_CODE")]

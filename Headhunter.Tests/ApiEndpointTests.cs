@@ -32,7 +32,17 @@ public class ApiEndpointTests
     {
         var names = await _client.GetFromJsonAsync<string[]>("/Api/FirstNameSuggestions?query=Ada");
 
-        Assert.That(names, Is.EqualTo(new[] { "Ada", "Adaline" }));
+        // Postgres matches and returns the upper-cased value (the voter file is upper-case anyway).
+        Assert.That(names, Is.EqualTo(new[] { "Ada", "Adaline" }).IgnoreCase);
+    }
+
+    [TestCase("ada")]
+    [TestCase("ADA")]
+    public async Task FirstNameSuggestions_IgnoreCase(string query)
+    {
+        var names = await _client.GetFromJsonAsync<string[]>($"/Api/FirstNameSuggestions?query={query}");
+
+        Assert.That(names, Is.EqualTo(new[] { "Ada", "Adaline" }).IgnoreCase);
     }
 
     [Test]
@@ -40,7 +50,7 @@ public class ApiEndpointTests
     {
         var streets = await _client.GetFromJsonAsync<string[]>("/Api/StreetSuggestions?query=Meri");
 
-        Assert.That(streets, Is.EqualTo(new[] { "1 Meridian Rd", "2 Meridian Rd" }));
+        Assert.That(streets, Is.EqualTo(new[] { "1 Meridian Rd", "2 Meridian Rd" }).IgnoreCase);
     }
 
     [Test]
@@ -48,7 +58,7 @@ public class ApiEndpointTests
     {
         var streets = await _client.GetFromJsonAsync<string[]>("/Api/StreetSuggestions?query=100%20Ma");
 
-        Assert.That(streets, Is.EqualTo(new[] { "100 Maple St" }));
+        Assert.That(streets, Is.EqualTo(new[] { "100 Maple St" }).IgnoreCase);
     }
 
     // Prefix searches only, so they can seek an index: a word inside the address doesn't match.
