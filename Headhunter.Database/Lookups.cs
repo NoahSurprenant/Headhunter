@@ -56,18 +56,14 @@ public class Election
 }
 
 /// <summary>
-/// That a voter voted in an election. The jurisdiction and school district are the voter's current ones, repeated on
-/// every row by the state's file (identical to their address in a 610k-row sample), not where they voted then.
+/// That a voter voted in an election. The history file's county, jurisdiction and school district are not kept: they are
+/// the voter's current ones, repeated on every row (identical to their address in a 610k-row sample), so for a voter
+/// who moved they name the wrong place for old elections.
 /// </summary>
 public class VoteHistory
 {
     public Guid VoterID { get; set; }
     public DateOnly ElectionDate { get; set; }
-    public string? CountyCode { get; set; }
-    public string? JurisdictionCode { get; set; }
-    public string? SchoolDistrictCode { get; set; }
     public Voter Voter { get; set; } = null!;
     public Election Election { get; set; } = null!;
-    public Jurisdiction? Jurisdiction { get; set; }
-    public SchoolDistrict? SchoolDistrict { get; set; }
 }

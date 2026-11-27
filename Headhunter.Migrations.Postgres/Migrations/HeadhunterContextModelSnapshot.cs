@@ -665,31 +665,9 @@ namespace Headhunter.Migrations.Postgres.Migrations
                     b.Property<DateOnly>("ElectionDate")
                         .HasColumnType("date");
 
-                    b.Property<string>("CountyCode")
-                        .HasMaxLength(2)
-                        .IsUnicode(false)
-                        .HasColumnType("character varying(2)")
-                        .UseCollation("C");
-
-                    b.Property<string>("JurisdictionCode")
-                        .HasMaxLength(5)
-                        .IsUnicode(false)
-                        .HasColumnType("character varying(5)")
-                        .UseCollation("C");
-
-                    b.Property<string>("SchoolDistrictCode")
-                        .HasMaxLength(5)
-                        .IsUnicode(false)
-                        .HasColumnType("character varying(5)")
-                        .UseCollation("C");
-
                     b.HasKey("VoterID", "ElectionDate");
 
                     b.HasIndex("ElectionDate");
-
-                    b.HasIndex("SchoolDistrictCode");
-
-                    b.HasIndex("CountyCode", "JurisdictionCode");
 
                     b.ToTable("VoteHistory", (string)null);
                 });
@@ -894,27 +872,13 @@ namespace Headhunter.Migrations.Postgres.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Headhunter.Database.SchoolDistrict", "SchoolDistrict")
-                        .WithMany()
-                        .HasForeignKey("SchoolDistrictCode")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Headhunter.Database.Voter", "Voter")
                         .WithMany()
                         .HasForeignKey("VoterID")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Headhunter.Database.Jurisdiction", "Jurisdiction")
-                        .WithMany()
-                        .HasForeignKey("CountyCode", "JurisdictionCode")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("Election");
-
-                    b.Navigation("Jurisdiction");
-
-                    b.Navigation("SchoolDistrict");
 
                     b.Navigation("Voter");
                 });

@@ -102,14 +102,8 @@ internal class VoteHistoryConfiguration : IEntityTypeConfiguration<VoteHistory>
     {
         // Clustered on the voter: a voter's history is read together. About 62M rows for Michigan back to 2004.
         builder.ToTable("VoteHistory").HasKey(x => new { x.VoterID, x.ElectionDate });
-        builder.Property(x => x.CountyCode).HasMaxLength(2).IsUnicode(false);
-        builder.Property(x => x.JurisdictionCode).HasMaxLength(5).IsUnicode(false);
-        builder.Property(x => x.SchoolDistrictCode).HasMaxLength(5).IsUnicode(false);
 
         builder.HasOne(x => x.Voter).WithMany().HasForeignKey(x => x.VoterID).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Election).WithMany().HasForeignKey(x => x.ElectionDate).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(x => x.Jurisdiction).WithMany().HasForeignKey(x => new { x.CountyCode, x.JurisdictionCode })
-            .OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(x => x.SchoolDistrict).WithMany().HasForeignKey(x => x.SchoolDistrictCode).OnDelete(DeleteBehavior.Restrict);
     }
 }

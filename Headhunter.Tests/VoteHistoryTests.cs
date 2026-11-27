@@ -67,14 +67,13 @@ public class VoteHistoryTests
             Assert.That(history.UnregisteredRows, Is.EqualTo(25));
             Assert.That(await check.VoteHistory.CountAsync(), Is.EqualTo(history.ExpectedRows));
 
-            // One voter's history: the dates only. The file's county, jurisdiction and school district are the voter's
-            // current ones on every row, so they are not imported.
+            // One voter's history: the dates. The file's county, jurisdiction and school district are the voter's
+            // current ones on every row, so they are not imported (the table has no columns for them).
             var voter = history.Votes[3].Voter;
             var expected = history.Votes.Where(v => v.Voter == voter)
-                .Select(v => (v.Date, (string?)null, (string?)null, (string?)null)).Order().ToList();
+                .Select(v => v.Date).Order().ToList();
             var actual = (await check.VoteHistory.Where(h => h.Voter.VOTER_IDENTIFICATION_NUMBER == voter.VOTER_IDENTIFICATION_NUMBER)
-                    .Select(h => new { h.ElectionDate, h.CountyCode, h.JurisdictionCode, h.SchoolDistrictCode }).ToListAsync())
-                .Select(h => (h.ElectionDate, h.CountyCode, h.JurisdictionCode, h.SchoolDistrictCode)).Order().ToList();
+                    .Select(h => h.ElectionDate).ToListAsync()).Order().ToList();
             Assert.That(actual, Is.EqualTo(expected));
             Assert.That(expected, Is.Not.Empty);
 

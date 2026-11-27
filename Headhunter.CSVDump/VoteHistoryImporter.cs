@@ -31,13 +31,10 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
             await context.Database.ExecuteSqlRawAsync($"DROP TABLE IF EXISTS \"{Staging}\"", ct);
             await context.Database.ExecuteSqlRawAsync(postgres
                 ? $"""
-                  CREATE UNLOGGED TABLE "{Staging}" ("VoterNumber" varchar(38) COLLATE "C" NOT NULL, "VoterID" uuid NULL, "ElectionDate" date NOT NULL,
-                      "CountyCode" varchar(2) COLLATE "C" NULL, "JurisdictionCode" varchar(5) COLLATE "C" NULL,
-                      "SchoolDistrictCode" varchar(5) COLLATE "C" NULL)
+                  CREATE UNLOGGED TABLE "{Staging}" ("VoterNumber" varchar(38) COLLATE "C" NOT NULL, "VoterID" uuid NULL, "ElectionDate" date NOT NULL)
                   """
                 : $"""
-                  CREATE TABLE "{Staging}" ("VoterNumber" varchar(38) NOT NULL, "VoterID" uniqueidentifier NULL, "ElectionDate" date NOT NULL,
-                      "CountyCode" varchar(2) NULL, "JurisdictionCode" varchar(5) NULL, "SchoolDistrictCode" varchar(5) NULL)
+                  CREATE TABLE "{Staging}" ("VoterNumber" varchar(38) NOT NULL, "VoterID" uniqueidentifier NULL, "ElectionDate" date NOT NULL)
                   """, ct);
 
             var counties = new Dictionary<string, string>();
@@ -69,7 +66,7 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
                     // The county, jurisdiction and school district in the history file are the voter's current ones,
                     // repeated on every row (a voter who moved shows the new place for old elections), so they are
                     // wrong for the election and are not imported. The code and name lookups above are fine.
-                    await writer.AddAsync(record.VOTER_IDENTIFICATION_NUMBER.Trim(), date, null, null, null, ct);
+                    await writer.AddAsync(record.VOTER_IDENTIFICATION_NUMBER.Trim(), date, ct);
                     rows++;
                 }
                 await writer.CompleteAsync(ct);
@@ -90,7 +87,7 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
                 if (postgres)
                 {
                     // One join into a new table: an UPDATE of every staged row and a DELETE of the unmatched wrote them twice.
-                    step.Rows = await context.Database.ExecuteSqlRawAsync($"CREATE UNLOGGED TABLE \"{Staging}Matched\" AS SELECT v.\"ID\" AS \"VoterID\", s.\"ElectionDate\", s.\"CountyCode\", s.\"JurisdictionCode\", s.\"SchoolDistrictCode\" FROM \"{Staging}\" AS s JOIN \"Voters\" AS v ON v.\"VOTER_IDENTIFICATION_NUMBER\" COLLATE \"C\" = s.\"VoterNumber\"", ct);
+                    step.Rows = await context.Database.ExecuteSqlRawAsync($"CREATE UNLOGGED TABLE \"{Staging}Matched\" AS SELECT v.\"ID\" AS \"VoterID\", s.\"ElectionDate\" FROM \"{Staging}\" AS s JOIN \"Voters\" AS v ON v.\"VOTER_IDENTIFICATION_NUMBER\" COLLATE \"C\" = s.\"VoterNumber\"", ct);
                     await context.Database.ExecuteSqlRawAsync($"DROP TABLE \"{Staging}\"", ct);
                     await context.Database.ExecuteSqlRawAsync($"ALTER TABLE \"{Staging}Matched\" RENAME TO \"{Staging}\"", ct);
                     return;
@@ -122,11 +119,11 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
     private static string InsertSql()
     {
         return $$"""
-        INSERT INTO "VoteHistory" ("VoterID", "ElectionDate", "CountyCode", "JurisdictionCode", "SchoolDistrictCode")
-        SELECT x."VoterID", x."ElectionDate", x."CountyCode", x."JurisdictionCode", x."SchoolDistrictCode"
+        INSERT INTO "VoteHistory" ("VoterID", "ElectionDate")
+        SELECT x."VoterID", x."ElectionDate"
         FROM (
-            SELECT s."VoterID", s."ElectionDate", s."CountyCode", s."JurisdictionCode", s."SchoolDistrictCode",
-                   ROW_NUMBER() OVER (PARTITION BY s."VoterID" ORDER BY s."CountyCode", s."JurisdictionCode", s."SchoolDistrictCode") AS rn
+            SELECT s."VoterID", s."ElectionDate",
+                   ROW_NUMBER() OVER (PARTITION BY s."VoterID" ORDER BY s."ElectionDate") AS rn
             FROM "{{Staging}}" AS s
             WHERE s."ElectionDate" = {0}
         ) AS x
@@ -139,7 +136,7 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
 
     private interface IStagingWriter : IAsyncDisposable
     {
-        Task AddAsync(string voterNumber, DateOnly date, string? county, string? jurisdiction, string? school, CancellationToken ct);
+        Task AddAsync(string voterNumber, DateOnly date, CancellationToken ct);
         Task CompleteAsync(CancellationToken ct);
     }
 
@@ -153,16 +150,12 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
             _bulk = new SqlBulkCopy(connection) { DestinationTableName = Staging, BulkCopyTimeout = 0 };
             _table.Columns.Add("VoterNumber", typeof(string));
             _table.Columns.Add("ElectionDate", typeof(DateTime));
-            _table.Columns.Add("CountyCode", typeof(string));
-            _table.Columns.Add("JurisdictionCode", typeof(string));
-            _table.Columns.Add("SchoolDistrictCode", typeof(string));
             foreach (DataColumn column in _table.Columns) _bulk.ColumnMappings.Add(column.ColumnName, column.ColumnName);
         }
 
-        public async Task AddAsync(string voterNumber, DateOnly date, string? county, string? jurisdiction, string? school, CancellationToken ct)
+        public async Task AddAsync(string voterNumber, DateOnly date, CancellationToken ct)
         {
-            _table.Rows.Add(voterNumber, date.ToDateTime(TimeOnly.MinValue), (object?)county ?? DBNull.Value,
-                (object?)jurisdiction ?? DBNull.Value, (object?)school ?? DBNull.Value);
+            _table.Rows.Add(voterNumber, date.ToDateTime(TimeOnly.MinValue));
             if (_table.Rows.Count >= BatchSize) await FlushAsync(ct);
         }
 
@@ -186,21 +179,15 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
         private NpgsqlBinaryImporter? _importer;
 
         private async Task<NpgsqlBinaryImporter> ImporterAsync(CancellationToken ct) => _importer ??= await connection.BeginBinaryImportAsync(
-            $"COPY \"{Staging}\" (\"VoterNumber\", \"ElectionDate\", \"CountyCode\", \"JurisdictionCode\", \"SchoolDistrictCode\") FROM STDIN (FORMAT BINARY)", ct);
+            $"COPY \"{Staging}\" (\"VoterNumber\", \"ElectionDate\") FROM STDIN (FORMAT BINARY)", ct);
 
-        public async Task AddAsync(string voterNumber, DateOnly date, string? county, string? jurisdiction, string? school, CancellationToken ct)
+        public async Task AddAsync(string voterNumber, DateOnly date, CancellationToken ct)
         {
             var importer = await ImporterAsync(ct);
             await importer.StartRowAsync(ct);
             await importer.WriteAsync(voterNumber, NpgsqlDbType.Varchar, ct);
             await importer.WriteAsync(date, NpgsqlDbType.Date, ct);
-            await WriteTextAsync(importer, county, ct);
-            await WriteTextAsync(importer, jurisdiction, ct);
-            await WriteTextAsync(importer, school, ct);
         }
-
-        private static Task WriteTextAsync(NpgsqlBinaryImporter importer, string? value, CancellationToken ct) =>
-            value is null ? importer.WriteNullAsync(ct) : importer.WriteAsync(value, NpgsqlDbType.Varchar, ct);
 
         public async Task CompleteAsync(CancellationToken ct)
         {
