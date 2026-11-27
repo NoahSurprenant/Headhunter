@@ -116,10 +116,10 @@ public class ConversionTests
             .OrderBy(a => a.ID).ToList();
         Assert.That(actualAddresses, Is.EqualTo(expectedAddresses));
 
-        // The code tables and the vote history that points at them.
-        var expectedHistory = (await source.VoteHistory.AsNoTracking().Select(h => new { h.VoterID, h.ElectionDate, h.CountyCode }).ToListAsync())
+        // The vote history, the elections and the code tables.
+        var expectedHistory = (await source.VoteHistory.AsNoTracking().Select(h => new { h.VoterID, h.ElectionDate }).ToListAsync())
             .OrderBy(h => h.VoterID).ThenBy(h => h.ElectionDate).ToList();
-        var actualHistory = (await target.VoteHistory.AsNoTracking().Select(h => new { h.VoterID, h.ElectionDate, h.CountyCode }).ToListAsync())
+        var actualHistory = (await target.VoteHistory.AsNoTracking().Select(h => new { h.VoterID, h.ElectionDate }).ToListAsync())
             .OrderBy(h => h.VoterID).ThenBy(h => h.ElectionDate).ToList();
         Assert.That(actualHistory, Is.EqualTo(expectedHistory));
         Assert.That((await target.Elections.AsNoTracking().OrderBy(e => e.Date).ToListAsync()).Select(e => (e.Date, e.CodeId, e.Description)),

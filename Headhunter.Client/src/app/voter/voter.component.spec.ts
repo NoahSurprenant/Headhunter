@@ -140,8 +140,8 @@ describe('VoterComponent', () => {
 
   it('lists the elections the voter voted in, newest first, with the jurisdiction they voted from', async () => {
     const history = [
-      { electionDate: '2024-11-05', description: 'PRESIDENTIAL GENERAL', jurisdiction: 'CITY OF TESTVILLE' },
-      { electionDate: '2022-08-02', description: 'AUGUST PRIMARY', jurisdiction: null },
+      { electionDate: '2024-11-05', description: 'PRESIDENTIAL GENERAL' },
+      { electionDate: '2022-08-02', description: 'AUGUST PRIMARY' },
     ];
     const fetchMock = stubFetch(url => respond([], [], history)(String(url)));
     const el = await render('voter-0001');
@@ -152,7 +152,6 @@ describe('VoterComponent', () => {
     expect(text).toContain('Voted in 2 elections');
     expect(text.indexOf('PRESIDENTIAL GENERAL')).toBeLessThan(text.indexOf('AUGUST PRIMARY'));
     expect(text).toContain('Nov 5, 2024');
-    expect(text).toContain('CITY OF TESTVILLE');
   });
 
   it('says so when the voter has no recorded elections', async () => {

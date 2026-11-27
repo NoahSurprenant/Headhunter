@@ -577,28 +577,9 @@ namespace Headhunter.Database.Migrations
                     b.Property<DateOnly>("ElectionDate")
                         .HasColumnType("date");
 
-                    b.Property<string>("CountyCode")
-                        .HasMaxLength(2)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(2)");
-
-                    b.Property<string>("JurisdictionCode")
-                        .HasMaxLength(5)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(5)");
-
-                    b.Property<string>("SchoolDistrictCode")
-                        .HasMaxLength(5)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(5)");
-
                     b.HasKey("VoterID", "ElectionDate");
 
                     b.HasIndex("ElectionDate");
-
-                    b.HasIndex("SchoolDistrictCode");
-
-                    b.HasIndex("CountyCode", "JurisdictionCode");
 
                     b.ToTable("VoteHistory", (string)null);
                 });
@@ -789,27 +770,13 @@ namespace Headhunter.Database.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Headhunter.Database.SchoolDistrict", "SchoolDistrict")
-                        .WithMany()
-                        .HasForeignKey("SchoolDistrictCode")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Headhunter.Database.Voter", "Voter")
                         .WithMany()
                         .HasForeignKey("VoterID")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Headhunter.Database.Jurisdiction", "Jurisdiction")
-                        .WithMany()
-                        .HasForeignKey("CountyCode", "JurisdictionCode")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("Election");
-
-                    b.Navigation("Jurisdiction");
-
-                    b.Navigation("SchoolDistrict");
 
                     b.Navigation("Voter");
                 });

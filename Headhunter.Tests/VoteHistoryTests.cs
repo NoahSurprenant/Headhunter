@@ -67,13 +67,13 @@ public class VoteHistoryTests
             Assert.That(history.UnregisteredRows, Is.EqualTo(25));
             Assert.That(await check.VoteHistory.CountAsync(), Is.EqualTo(history.ExpectedRows));
 
-            // One voter's history, with the place each vote was cast from.
+            // One voter's history: the dates. The file's county, jurisdiction and school district are the voter's
+            // current ones on every row, so they are not imported (the table has no columns for them).
             var voter = history.Votes[3].Voter;
             var expected = history.Votes.Where(v => v.Voter == voter)
-                .Select(v => (v.Date, v.Where.COUNTY_CODE, v.Where.JURISDICTION_CODE, v.Where.SCHOOL_DISTRICT_CODE)).Order().ToList();
+                .Select(v => v.Date).Order().ToList();
             var actual = (await check.VoteHistory.Where(h => h.Voter.VOTER_IDENTIFICATION_NUMBER == voter.VOTER_IDENTIFICATION_NUMBER)
-                    .Select(h => new { h.ElectionDate, h.CountyCode, h.JurisdictionCode, h.SchoolDistrictCode }).ToListAsync())
-                .Select(h => (h.ElectionDate, h.CountyCode, h.JurisdictionCode, h.SchoolDistrictCode)).Order().ToList();
+                    .Select(h => h.ElectionDate).ToListAsync()).Order().ToList();
             Assert.That(actual, Is.EqualTo(expected));
             Assert.That(expected, Is.Not.Empty);
 
@@ -86,11 +86,7 @@ public class VoteHistoryTests
             var schools = voters.Records.Select(r => (r.SCHOOL_DISTRICT_CODE, r.SCHOOL_DISTRICT_NAME)).Distinct().ToList();
             Assert.That((await check.SchoolDistricts.ToListAsync()).Select(s => (s.Code, s.Name)), Is.EquivalentTo(schools));
 
-            // A history row reaches its names through the code, and an election its description (the code file
-            // has none for the oldest election).
-            var named = await check.VoteHistory.Where(h => h.Voter.VOTER_IDENTIFICATION_NUMBER == voter.VOTER_IDENTIFICATION_NUMBER)
-                .Select(h => new { h.Jurisdiction!.Name, School = h.SchoolDistrict!.Name }).FirstAsync();
-            Assert.That(named.Name, Does.StartWith("CITY OF "));
+            // An election has its description (the code file has none for the oldest election).
             var elections = await check.Elections.OrderBy(e => e.Date).ToListAsync();
             Assert.That(elections.Select(e => e.Date), Is.EqualTo(FakeHistoryFile.Elections.Select(e => e.Date)));
             Assert.That(elections[0].Description, Is.Empty);

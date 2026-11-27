@@ -320,7 +320,6 @@ public class ApiController : ControllerBase
             {
                 ElectionDate = h.ElectionDate,
                 Description = h.Election.Description,
-                Jurisdiction = h.Jurisdiction == null ? null : h.Jurisdiction.Name,
             })
             .ToArrayAsync(ct);
         return Ok(history);
@@ -1284,12 +1283,11 @@ public class RelativeRow
     public decimal? Longitude { get; set; }
 }
 
-/// <summary>An election a voter voted in, and the jurisdiction they voted from then.</summary>
+/// <summary>An election a voter voted in.</summary>
 public class VoteHistoryDto
 {
     public required DateOnly ElectionDate { get; set; }
     public required string Description { get; set; }
-    public string? Jurisdiction { get; set; }
 }
 
 public class RelativeDto
