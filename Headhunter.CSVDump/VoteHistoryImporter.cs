@@ -66,9 +66,10 @@ public sealed class VoteHistoryImporter(HeadhunterContext context)
                     if (school is not null) schools.TryAdd(school, record.SCHOOL_DISTRICT_NAME.Trim());
                     dates.Add(date);
 
-                    // A jurisdiction without its county can't be a foreign key; keep neither.
-                    if (county is null) jurisdiction = null;
-                    await writer.AddAsync(record.VOTER_IDENTIFICATION_NUMBER.Trim(), date, county, jurisdiction, school, ct);
+                    // The county, jurisdiction and school district in the history file are the voter's current ones,
+                    // repeated on every row (a voter who moved shows the new place for old elections), so they are
+                    // wrong for the election and are not imported. The code and name lookups above are fine.
+                    await writer.AddAsync(record.VOTER_IDENTIFICATION_NUMBER.Trim(), date, null, null, null, ct);
                     rows++;
                 }
                 await writer.CompleteAsync(ct);
