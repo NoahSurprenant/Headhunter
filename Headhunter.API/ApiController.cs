@@ -29,71 +29,24 @@ public class ApiController : ControllerBase
     }
 
     [HttpGet("FirstNameSuggestions")]
-    public async Task<string[]> FirstNameSuggestions(string query, CancellationToken ct)
-    {
-        return await _context.Voters
-            .Where(x => x.FIRST_NAME.StartsWith(query))
-            .Select(x => x.FIRST_NAME)
-            .Distinct()
-            .OrderBy(x => x)
-            .Take(50)
-            .ToArrayAsync(ct);
-    }
+    public async Task<string[]> FirstNameSuggestions(string query, CancellationToken ct) =>
+        await Suggestions.FirstNames(_context, query).ToArrayAsync(ct);
 
     [HttpGet("MiddleNameSuggestions")]
-    public async Task<string[]> MiddleNameSuggestions(string query, CancellationToken ct)
-    {
-        return await _context.Voters
-            .Where(x => x.MIDDLE_NAME.StartsWith(query))
-            .Select(x => x.MIDDLE_NAME)
-            .Distinct()
-            .OrderBy(x => x)
-            .Take(50)
-            .ToArrayAsync(ct);
-    }
+    public async Task<string[]> MiddleNameSuggestions(string query, CancellationToken ct) =>
+        await Suggestions.MiddleNames(_context, query).ToArrayAsync(ct);
 
     [HttpGet("LastNameSuggestions")]
-    public async Task<string[]> LastNameSuggestions(string query, CancellationToken ct)
-    {
-        return await _context.Voters
-            .Where(x => x.LAST_NAME.StartsWith(query))
-            .Select(x => x.LAST_NAME)
-            .Distinct()
-            .OrderBy(x => x)
-            .Take(50)
-            .ToArrayAsync(ct);
-    }
+    public async Task<string[]> LastNameSuggestions(string query, CancellationToken ct) =>
+        await Suggestions.LastNames(_context, query).ToArrayAsync(ct);
 
     [HttpGet("CitySuggestions")]
-    public async Task<string[]> CitySuggestions(string query, CancellationToken ct)
-    {
-        return await _context.Addresses
-            .Where(x => x.CITY.StartsWith(query))
-            .Select(x => x.CITY)
-            .Distinct()
-            .OrderBy(x => x)
-            .Take(50)
-            .ToArrayAsync(ct);
-    }
+    public async Task<string[]> CitySuggestions(string query, CancellationToken ct) =>
+        await Suggestions.Cities(_context, query).ToArrayAsync(ct);
 
-    // Addresses that start with the query ("2078 W WYN") or whose street name does ("WYNDHAM"): two prefix
-    // searches, each an index seek, rather than LIKE '%query%', which reads all 4M addresses.
     [HttpGet("StreetSuggestions")]
-    public async Task<string[]> StreetSuggestions(string query, CancellationToken ct)
-    {
-        var byAddress = _context.Addresses
-            .Where(x => x.FullStreetAddress.StartsWith(query))
-            .Select(x => x.FullStreetAddress);
-        var byStreetName = _context.Addresses
-            .Where(x => x.STREET_NAME.StartsWith(query))
-            .Select(x => x.FullStreetAddress);
-
-        return await byAddress
-            .Union(byStreetName)
-            .OrderBy(x => x)
-            .Take(50)
-            .ToArrayAsync(ct);
-    }
+    public async Task<string[]> StreetSuggestions(string query, CancellationToken ct) =>
+        await Suggestions.Streets(_context, query).ToArrayAsync(ct);
 
     // The globe's view: every address inside the box when there are few enough to draw (AreaOptions.MaxAddresses),
     // else the box split into a grid with each cell's address count and centre, so a zoomed-out view shows where

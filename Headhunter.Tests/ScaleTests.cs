@@ -47,9 +47,9 @@ public class ScaleTests
 
         var searchBudget = TimeSpan.FromSeconds(2);
         // Same shapes as ApiController's suggestion endpoints.
-        await Time("FirstNameSuggestions", () => db.Voters.Where(v => v.FIRST_NAME.StartsWith("First19")).Select(v => v.FIRST_NAME).Distinct().OrderBy(x => x).Take(50).ToArrayAsync(), searchBudget);
-        await Time("LastNameSuggestions", () => db.Voters.Where(v => v.LAST_NAME.StartsWith("Last49")).Select(v => v.LAST_NAME).Distinct().OrderBy(x => x).Take(50).ToArrayAsync(), searchBudget);
-        await Time("CitySuggestions", () => db.Addresses.Where(a => a.CITY.StartsWith("City29")).Select(a => a.CITY).Distinct().OrderBy(x => x).Take(50).ToArrayAsync(), searchBudget);
-        await Time("StreetSuggestions", () => db.Addresses.Where(a => a.FullStreetAddress.StartsWith("12 Street")).Select(a => a.FullStreetAddress).OrderBy(x => x).Take(50).ToArrayAsync(), searchBudget);
+        await Time("FirstNameSuggestions", () => API.Suggestions.FirstNames(db, "First19").ToArrayAsync(), searchBudget);
+        await Time("LastNameSuggestions", () => API.Suggestions.LastNames(db, "Last49").ToArrayAsync(), searchBudget);
+        await Time("CitySuggestions", () => API.Suggestions.Cities(db, "City29").ToArrayAsync(), searchBudget);
+        await Time("StreetSuggestions", () => API.Suggestions.Streets(db, "12 Street").ToArrayAsync(), searchBudget);
     }
 }
