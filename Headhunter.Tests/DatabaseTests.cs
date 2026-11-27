@@ -135,6 +135,26 @@ public class DatabaseTests
         Assert.That(plan, Does.Contain(index), $"Plan does not use {index}:\n{plan}");
     }
 
+    // An index on upper(column) can only answer from the index alone (an index-only scan) if the column itself is
+    // included: without it a common prefix ("MAR", 566k voters) read the table for every match, 3.4 s.
+    [TestCase("IX_Voters_FIRST_NAME_Prefix")]
+    [TestCase("IX_Voters_MIDDLE_NAME_Prefix")]
+    [TestCase("IX_Voters_LAST_NAME_Prefix")]
+    [TestCase("IX_Addresses_CITY_Prefix")]
+    [TestCase("IX_Addresses_FullStreetAddress_Prefix")]
+    [TestCase("IX_Addresses_STREET_NAME_Prefix")]
+    public async Task PostgresPrefixIndex_IncludesItsColumn(string index)
+    {
+        Assume.That(DatabaseFixture.Provider, Is.EqualTo(DatabaseProvider.Postgres), "Postgres catalog only");
+
+        await using var context = DatabaseFixture.CreateContext();
+        var definition = await context.Database
+            .SqlQueryRaw<string>("SELECT indexdef AS \"Value\" FROM pg_indexes WHERE indexname = {0}", index)
+            .SingleAsync();
+
+        Assert.That(definition, Does.Contain("INCLUDE"), definition);
+    }
+
     // The voter search by city and birth year joins the two from covering indexes.
     [TestCase("IX_Addresses_CITY_ID")]
     [TestCase("IX_Voters_YEAR_OF_BIRTH_AddressID")]
