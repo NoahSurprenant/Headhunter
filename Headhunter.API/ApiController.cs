@@ -305,6 +305,27 @@ public class ApiController : ControllerBase
         return Ok(voters.Select(v => v.ToDto()).ToArray());
     }
 
+    [ProducesResponseType(typeof(VoteHistoryDto[]), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [HttpGet("Voter/{id}/VoteHistory")]
+    public async Task<IActionResult> VoteHistory([FromRoute] Guid id, CancellationToken ct)
+    {
+        if (!await _context.Voters.AnyAsync(v => v.ID == id, ct))
+            return NotFound();
+
+        var history = await _context.VoteHistory
+            .Where(h => h.VoterID == id)
+            .OrderByDescending(h => h.ElectionDate)
+            .Select(h => new VoteHistoryDto
+            {
+                ElectionDate = h.ElectionDate,
+                Description = h.Election.Description,
+                Jurisdiction = h.Jurisdiction == null ? null : h.Jurisdiction.Name,
+            })
+            .ToArrayAsync(ct);
+        return Ok(history);
+    }
+
     // Other voters with the same last name who live on the same street in the same city, or within a few km
     // as the crow flies, excluding this voter's own household. Closest first, capped.
     [ProducesResponseType(typeof(RelativeDto[]), StatusCodes.Status200OK)]
@@ -1261,6 +1282,14 @@ public class RelativeRow
     public required string Zip { get; set; }
     public decimal? Latitude { get; set; }
     public decimal? Longitude { get; set; }
+}
+
+/// <summary>An election a voter voted in, and the jurisdiction they voted from then.</summary>
+public class VoteHistoryDto
+{
+    public required DateOnly ElectionDate { get; set; }
+    public required string Description { get; set; }
+    public string? Jurisdiction { get; set; }
 }
 
 public class RelativeDto

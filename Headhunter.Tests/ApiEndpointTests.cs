@@ -370,6 +370,34 @@ public class ApiEndpointTests
     }
 
     [Test]
+    public async Task VoteHistory_ListsTheVotersElectionsNewestFirst()
+    {
+        var history = await _client.GetFromJsonAsync<VoteHistoryDto[]>($"/Api/Voter/{TestData.AdaId}/VoteHistory");
+
+        Assert.That(history!.Select(h => (h.ElectionDate, h.Description)), Is.EqualTo(new[]
+        {
+            (new DateOnly(2024, 11, 5), "PRESIDENTIAL GENERAL"),
+            (new DateOnly(2022, 11, 8), "GENERAL ELECTION"),
+        }));
+    }
+
+    [Test]
+    public async Task VoteHistory_VoterWhoNeverVotedGetsAnEmptyList()
+    {
+        var history = await _client.GetFromJsonAsync<VoteHistoryDto[]>($"/Api/Voter/{TestData.RelativeRefId}/VoteHistory");
+
+        Assert.That(history, Is.Empty);
+    }
+
+    [Test]
+    public async Task VoteHistory_UnknownVoterIsNotFound()
+    {
+        using var response = await _client.GetAsync($"/Api/Voter/{Guid.NewGuid()}/VoteHistory");
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+    }
+
+    [Test]
     public async Task Relatives_UnknownVoterIsNotFound()
     {
         using var response = await _client.GetAsync($"/Api/Voter/{Guid.NewGuid()}/Relatives");

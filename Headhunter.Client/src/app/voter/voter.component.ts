@@ -63,6 +63,20 @@ export class VoterComponent {
     return Array.isArray(all) ? all : [];
   });
 
+  // The elections this voter voted in, newest first.
+  voteHistory = resource({
+    params: () => ({ id: this.id() }),
+    loader: async ({ params, abortSignal }) => {
+      const response = await fetch(`api/voter/${params.id}/votehistory`, { method: 'GET', signal: abortSignal });
+      if (!response.ok) return [] as VoteHistoryDto[];
+      return response.json() as Promise<VoteHistoryDto[]>;
+    },
+  });
+  voteHistoryList = computed(() => {
+    const all = this.voteHistory.hasValue() ? this.voteHistory.value() : [];
+    return Array.isArray(all) ? all : [];
+  });
+
   globe = computed(() => {
     if (!this.x.hasValue()) return null;
     const v = this.x.value();
@@ -98,6 +112,13 @@ export interface VoterDetailDto {
   mailingAddressOutOfState: boolean,
   /** The non-empty mailing address lines, in order. Empty when hasMailingAddress is false. */
   mailingAddressLines: string[],
+};
+
+/** An election the voter voted in, and the jurisdiction they voted from then. */
+export interface VoteHistoryDto {
+  electionDate: string,
+  description: string,
+  jurisdiction: string | null,
 };
 
 /** A possible relative: same last name, nearby or on the same street, outside the voter's household. */
