@@ -79,6 +79,25 @@
     </div>
 
     <div class="card mt-6">
+        <h2 class="card-title">Voting history</h2>
+        @if (voteHistoryList().length === 0) {
+            <p class="text-gray-500">{{ voteHistory.isLoading() ? 'Loading…' : 'No elections on record.' }}</p>
+        } @else {
+            <p class="text-sm text-gray-500 mb-2">Voted in {{ voteHistoryList().length }} {{ voteHistoryList().length === 1 ? 'election' : 'elections' }}, newest first.</p>
+            <ul class="divide-y divide-gray-300">
+                @for (h of voteHistoryList(); track h.electionDate) {
+                    <li class="flex items-center justify-between gap-4 py-2">
+                        <span class="font-semibold text-gray-900">{{ h.description }}</span>
+                        <span class="text-sm text-gray-600">
+                            {{ h.electionDate | date:'mediumDate' }}@if (h.jurisdiction) { · {{ h.jurisdiction }} }
+                        </span>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+
+    <div class="card mt-6">
         <h2 class="card-title">Possible relatives</h2>
         <p class="text-sm text-gray-500 mb-2">Same last name, nearby or on the same street, outside this household.</p>
         @if (relativesList().length === 0) {

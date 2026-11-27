@@ -22,9 +22,10 @@ describe('VoterComponent', () => {
   }
 
   // Distinguishes the three GETs the page makes: the voter, their household, and their possible relatives.
-  function respond(household: unknown, relatives: unknown = []) {
+  function respond(household: unknown, relatives: unknown = [], voteHistory: unknown = []) {
     return (url: string) => {
       if (url.endsWith('/relatives')) return relatives;
+      if (url.endsWith('/votehistory')) return voteHistory;
       if (url.startsWith('api/address/')) return household;
       return voterDetail({ id: 'voter-0001' });
     };
@@ -135,6 +136,30 @@ describe('VoterComponent', () => {
 
     expect(el.textContent).not.toContain('Mail goes to');
     expect(el.textContent).not.toContain('Lives elsewhere');
+  });
+
+  it('lists the elections the voter voted in, newest first, with the jurisdiction they voted from', async () => {
+    const history = [
+      { electionDate: '2024-11-05', description: 'PRESIDENTIAL GENERAL', jurisdiction: 'CITY OF TESTVILLE' },
+      { electionDate: '2022-08-02', description: 'AUGUST PRIMARY', jurisdiction: null },
+    ];
+    const fetchMock = stubFetch(url => respond([], [], history)(String(url)));
+    const el = await render('voter-0001');
+    const text = el.textContent!.replace(/\s+/g, ' ');
+
+    expect(fetchMock.mock.calls.map(c => c[0])).toContain('api/voter/voter-0001/votehistory');
+    expect(text).toContain('Voting history');
+    expect(text).toContain('Voted in 2 elections');
+    expect(text.indexOf('PRESIDENTIAL GENERAL')).toBeLessThan(text.indexOf('AUGUST PRIMARY'));
+    expect(text).toContain('Nov 5, 2024');
+    expect(text).toContain('CITY OF TESTVILLE');
+  });
+
+  it('says so when the voter has no recorded elections', async () => {
+    stubFetch(url => respond([])(String(url)));
+    const el = await render('voter-0001');
+
+    expect(el.textContent).toContain('No elections on record');
   });
 
   it('shows the "Not on the map" chip instead of the map preview when ungeocoded, and reloads after a successful retry', async () => {
