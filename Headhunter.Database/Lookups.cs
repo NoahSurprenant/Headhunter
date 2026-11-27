@@ -56,8 +56,8 @@ public class Election
 }
 
 /// <summary>
-/// That a voter voted in an election, and the jurisdiction and school district they voted from then (which can
-/// differ from where they are registered now). The voter file says nothing about how they voted.
+/// That a voter voted in an election. The jurisdiction and school district are the voter's current ones, repeated on
+/// every row by the state's file (identical to their address in a 610k-row sample), not where they voted then.
 /// </summary>
 public class VoteHistory
 {

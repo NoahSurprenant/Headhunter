@@ -114,11 +114,10 @@ export interface VoterDetailDto {
   mailingAddressLines: string[],
 };
 
-/** An election the voter voted in, and the jurisdiction they voted from then. */
+/** An election the voter voted in. */
 export interface VoteHistoryDto {
   electionDate: string,
   description: string,
-  jurisdiction: string | null,
 };
 
 /** A possible relative: same last name, nearby or on the same street, outside the voter's household. */
